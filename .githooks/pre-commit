@@ -1,0 +1,4 @@
+#!/bin/sh
+# Chặn commit nếu file sắp commit có khoá bí mật. Bật bằng: git config core.hooksPath .githooks
+# (khoi-phuc.ps1 tự bật). Bỏ qua một lần: git commit --no-verify
+exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/quet-bi-mat.ps1" -Staged

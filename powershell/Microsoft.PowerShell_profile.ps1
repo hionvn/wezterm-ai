@@ -1,7 +1,13 @@
-# ===== AI CLI setup (Claude / Codex / Gemini) =====
+﻿# ===== AI CLI setup (Claude / Codex / Gemini) =====
 $AIRoot = 'E:\AI'
 # WezTerm (inside WezTerm $env:WEZTERM_PANE is set -> ai3 / aiall open panes/tabs there instead of Windows Terminal)
 $WezExe = 'C:\Program Files\WezTerm\wezterm.exe'
+# Machine-wide settings written by khoi-phuc.ps1: ~\.wez-ai.json = { aiRoot, wezterm } (other drive / install folder)
+if (Test-Path "$HOME\.wez-ai.json") {
+    $wezCfg = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($wezCfg.aiRoot) { $AIRoot = $wezCfg.aiRoot }
+    if ($wezCfg.wezterm) { $WezExe = $wezCfg.wezterm }
+}
 
 # Codex: run without background daemon so it also works in an Administrator terminal
 function codex { codex.cmd --no-daemon @args }

@@ -23,6 +23,47 @@
                                                  }
                                              ]
                                }
-                           ]
+                           ],
+                  "UserPromptSubmit":  [
+                                           {
+                                               "hooks":  [
+                                                             {
+                                                                 "type":  "command",
+                                                                 "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" work"
+                                                             }
+                                                         ]
+                                           }
+                                       ],
+                  "PreToolUse":  [
+                                     {
+                                         "matcher":  "Edit|Write|MultiEdit|NotebookEdit",
+                                         "hooks":  [
+                                                       {
+                                                           "type":  "command",
+                                                           "command":  "node \"E:/AI/_Hub/cai-dat/khoa.js\" hook-truoc"
+                                                       }
+                                                   ]
+                                     }
+                                 ],
+                  "PostToolUse":  [
+                                      {
+                                          "matcher":  "*",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" work"
+                                                        }
+                                                    ]
+                                      },
+                                      {
+                                          "matcher":  "Edit|Write|MultiEdit|NotebookEdit",
+                                          "hooks":  [
+                                                        {
+                                                            "type":  "command",
+                                                            "command":  "node \"E:/AI/_Hub/cai-dat/khoa.js\" hook-sau"
+                                                        }
+                                                    ]
+                                      }
+                                  ]
               }
 }

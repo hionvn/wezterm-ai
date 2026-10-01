@@ -24,4 +24,6 @@
 ## Làm việc trong WezTerm (đội AI)
 - Làm xong một tài liệu người dùng cần đọc hoặc duyệt (báo cáo, spec, kế hoạch, bài tập…) → bật nó lên màn hình: `node E:\AI\_Hub\cai-dat\mo-tai-lieu.js <đường dẫn file>`.
 - Việc cần người dùng quyết → ghi thêm 1 dòng vào `E:\AI\_Hub\can-duyet.md` (mục "Đang chờ", ghi rõ [tên dự án]).
-- Điều khiển ô khác: `E:\AI\_Hub\cai-dat\wez.ps1` (list · send · read · nen = đẩy ô ra tab nền · chinh = kéo ô về · mo = bật tài liệu). Luôn `list` trước để chắc đúng ô.
+- Điều khiển ô khác: `E:\AI\_Hub\cai-dat\wez.ps1` (list · send · cho · read · nen = đẩy ô ra tab nền · chinh = kéo ô về · mo = bật tài liệu). Luôn `list` trước để chắc đúng ô.
+  Giao việc cho ô khác: `send <id> "câu"` rồi `cho <id>` (đợi ô đó làm xong và in kết quả) thay vì `read` nhiều lần. `send` từ chối khi ô đang bận / chờ duyệt — đợi, đừng thêm `-Ep` nếu chưa chắc.
+- Khoá file (tránh 2 AI sửa chồng một file): Claude được tự khoá qua hooks. Codex / Gemini trước khi sửa file thì chạy `node E:\AI\_Hub\cai-dat\khoa.js giu <file> --ai codex` (hoặc `--ai gemini`); báo "đang bị giữ" thì không sửa, báo người dùng. Sửa xong: `khoa.js tha <file>`. Xem khoá: `khoa.js xem`.

@@ -5,9 +5,21 @@ local wezterm = require 'wezterm'
 local act = wezterm.action
 local config = wezterm.config_builder()
 
-local AI_ROOT = 'E:\\AI'
+-- Cấu hình chung của máy (khoi-phuc.ps1 tạo): ~\.wez-ai.json = { "aiRoot": "E:\\AI", "wezterm": "...\\wezterm.exe" }
+-- Không có file thì dùng mặc định bên dưới.
+local HOME = os.getenv('USERPROFILE') or 'C:\\Users\\Hion'
+local machine = {}
+do
+  local f = io.open(HOME .. '\\.wez-ai.json', 'rb')
+  if f then
+    local ok, v = pcall(wezterm.json_parse, (f:read('*a'):gsub('^\239\187\191', '')))
+    f:close()
+    if ok and type(v) == 'table' then machine = v end
+  end
+end
+local AI_ROOT = (machine.aiRoot or 'E:\\AI'):gsub('[\\/]+$', '')
 local HUB = AI_ROOT .. '\\_Hub'
-local AIDIR = (os.getenv('LOCALAPPDATA') or 'C:\\Users\\Hion\\AppData\\Local') .. '\\wez-ai'
+local AIDIR = (os.getenv('LOCALAPPDATA') or (HOME .. '\\AppData\\Local')) .. '\\wez-ai'
 
 -- Chạy một lệnh trong PowerShell (có nạp profile: ai, claudeRC, codex...).
 -- Xoá biến CLAUDE* thừa hưởng (nếu WezTerm được mở từ trong Claude) để Claude mới vẫn lưu lịch sử.
@@ -98,14 +110,17 @@ local function process_open(window)
     for _, p in ipairs(tab:panes()) do if not is_doc(p) then cur = p break end end
   end
   if not cur then return end
-  cur:split { direction = 'Right', size = 0.42, cwd = HUB, args = DOCVIEW(req.path) }
+  local doc = cur:split { direction = 'Right', size = 0.42, cwd = HUB, args = DOCVIEW(req.path) }
+  local docs = wezterm.GLOBAL.docs or {} -- nhớ ô 📄 nào xem file nào (để lưu / khôi phục bố cục)
+  docs[tostring(doc:pane_id())] = req.path
+  wezterm.GLOBAL.docs = docs
   cur:activate() -- giữ con trỏ ở ô bạn đang gõ
   window:toast_notification('WezTerm · đội AI', '📄 Đã mở tài liệu: ' .. (req.path:match('([^\\/]+)$') or req.path), nil, 5000)
 end
 
 -- Chuyển ô giữa tab chính và tab nền (giống anh Sơn đẩy agent ra tab phụ)
-local WEZ_EXE = 'C:\\Program Files\\WezTerm\\wezterm.exe'
-local SOCK = (os.getenv('USERPROFILE') or 'C:\\Users\\Hion') .. '\\.local\\share\\wezterm\\gui-sock-' .. wezterm.procinfo.pid()
+local WEZ_EXE = machine.wezterm or 'C:\\Program Files\\WezTerm\\wezterm.exe'
+local SOCK = HOME .. '\\.local\\share\\wezterm\\gui-sock-' .. wezterm.procinfo.pid()
 
 -- Ctrl+Shift+B: đẩy ô đang chọn ra một tab nền riêng, màn hình vẫn ở tab hiện tại
 local push_bg = wezterm.action_callback(function(window, pane)
@@ -198,6 +213,8 @@ local project_menu = wezterm.action_callback(function(window, pane)
   }, pane)
 end)
 
+local save_layout, restore_menu -- định nghĩa ở mục "Lưu / khôi phục bố cục" bên dưới
+
 config.keys = {
   -- Bàn làm việc Tổng quản, ô cần duyệt, menu dự án
   { key = 'H', mods = 'CTRL|SHIFT', action = open_desk },
@@ -206,6 +223,9 @@ config.keys = {
   -- Đẩy ô ra tab nền / kéo ô ở tab khác về
   { key = 'B', mods = 'CTRL|SHIFT', action = push_bg },
   { key = 'G', mods = 'CTRL|SHIFT', action = pull_menu },
+  -- Lưu bố cục / mở lại bố cục đã lưu (hàm ở mục "Lưu / khôi phục bố cục" bên dưới)
+  { key = 'S', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(w, p) w:perform_action(save_layout, p) end) },
+  { key = 'O', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(w, p) w:perform_action(restore_menu, p) end) },
   -- Chia ô
   { key = 'D', mods = 'ALT|SHIFT', action = act.SplitHorizontal { domain = 'CurrentPaneDomain' } },
   { key = '_', mods = 'ALT|SHIFT', action = act.SplitVertical { domain = 'CurrentPaneDomain' } },
@@ -265,11 +285,14 @@ local function pane_dir(p)
   return s
 end
 
--- Dự án = thư mục ngay dưới E:\AI ; phần sau là thư mục con
+-- Dự án = thư mục ngay dưới AI_ROOT (E:\AI) ; phần sau là thư mục con
+local ROOT_PREFIX = AI_ROOT:lower() .. '\\'
 local function split_project(dir)
   if not dir then return '?', nil end
-  local proj, rest = dir:match('^[Ee]:\\AI\\([^\\]+)\\?(.*)$')
-  if proj then return proj, (rest ~= '' and rest or nil) end
+  if dir:lower():sub(1, #ROOT_PREFIX) == ROOT_PREFIX then
+    local proj, rest = dir:sub(#ROOT_PREFIX + 1):match('^([^\\]+)\\?(.*)$')
+    if proj then return proj, (rest ~= '' and rest or nil) end
+  end
   return dir:match('([^\\]+)$') or dir, nil
 end
 
@@ -321,7 +344,9 @@ end
 
 -- Báo động: Claude ghi file qua hooks (cai-dat\wez-alert.js); Codex, Gemini thì đoán từ tiêu đề ô.
 -- File: %LOCALAPPDATA%\wez-ai\alerts\<PANEID>.json = { kind = 'need' | 'done', text, t }
+-- Trạng thái (cho wez.ps1 send / cho): wez-ai\state\<PANEID>.json = { state = 'work' | 'idle' | 'need', ai, t }
 local ALERTS = AIDIR .. '\\alerts'
+local STATE = AIDIR .. '\\state'
 local tab_alert, toasted, last_state = {}, {}, {}
 local function write_alert(id, kind, text)
   local f = io.open(ALERTS .. '\\' .. id .. '.json', 'w')
@@ -329,6 +354,30 @@ local function write_alert(id, kind, text)
     f:write(string.format('{"kind":"%s","text":"%s","t":%d}', kind, text, os.time()))
     f:close()
   end
+end
+
+-- Đồng bộ file trạng thái với điều đoán được từ tiêu đề ô.
+-- wez.ps1 send vừa ghi 'work' thì để yên 10 giây (AI chưa kịp nhận câu, tiêu đề chưa đổi).
+local function sync_state(id, state, ai)
+  local path = STATE .. '\\' .. id .. '.json'
+  local cur = read_json(path) or {}
+  if cur.state == state then return end
+  if cur.state == 'work' and cur.by == 'send' and os.time() - (cur.t or 0) < 10 then return end
+  cur.state, cur.ai, cur.t, cur.by = state, ai, os.time(), nil
+  local f = io.open(path, 'w')
+  if f then f:write(wezterm.json_encode(cur)) f:close() end
+end
+
+-- Claude: hooks ghi trạng thái; nhưng bấm Esc ngắt giữa chừng thì không có hook "xong".
+-- Tiêu đề có ✳ = Claude đang rảnh → sửa 'work' bị kẹt thành 'idle' (giữ nguyên session).
+local function fix_claude_state(id, title)
+  if not title:find('✳', 1, true) then return end
+  local path = STATE .. '\\' .. id .. '.json'
+  local cur = read_json(path)
+  if not cur or cur.state ~= 'work' or os.time() - (cur.t or 0) < 8 then return end
+  cur.state, cur.t, cur.by = 'idle', os.time(), nil
+  local f = io.open(path, 'w')
+  if f then f:write(wezterm.json_encode(cur)) f:close() end
 end
 
 -- Trạng thái Codex / Gemini đọc từ tiêu đề: 'work' đang làm, 'idle' rảnh, 'need' cần duyệt
@@ -350,16 +399,22 @@ local function process_alerts(window)
   local focused = window:is_focused()
   local active = tostring(window:active_pane():pane_id())
   local alive, pane_tab = {}, {}
-  for _, tab in ipairs(window:mux_window():tabs()) do
-    for _, p in ipairs(tab:panes()) do
-      local id = tostring(p:pane_id())
-      alive[id], pane_tab[id] = true, tostring(tab:tab_id())
-      local state, who = title_state(p)
-      if state then
-        local prev = last_state[id]
-        last_state[id] = state
-        if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
-        elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
+  -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(mw:tabs()) do
+      for _, p in ipairs(tab:panes()) do
+        local id = tostring(p:pane_id())
+        alive[id], pane_tab[id] = true, tostring(tab:tab_id())
+        local state, who = title_state(p)
+        if state then
+          local prev = last_state[id]
+          last_state[id] = state
+          if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
+          elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
+          sync_state(id, state, who:find('Codex', 1, true) and 'codex' or 'gemini')
+        else
+          fix_claude_state(id, p:get_title() or '')
+        end
       end
     end
   end
@@ -369,6 +424,7 @@ local function process_alerts(window)
     if id then
       if not alive[id] or (focused and id == active) then
         os.remove(path) -- ô đã đóng, hoặc bạn đang nhìn đúng ô đó: tắt báo động
+        if not alive[id] then toasted[id], last_state[id] = nil, nil end
       else
         local v = read_json(path)
         if v then
@@ -382,7 +438,172 @@ local function process_alerts(window)
       end
     end
   end
+  -- Dọn trạng thái của ô đã đóng (số ô có thể được dùng lại sau khi mở lại WezTerm)
+  for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
+    local id = path:match('(%d+)%.json$')
+    if id and not alive[id] then os.remove(path) end
+  end
 end
+
+-- ===== Lưu / khôi phục bố cục (thêm 02/10/2026) =====
+-- Ctrl+Shift+S lưu tay · tự lưu mỗi phút (khi có từ 2 ô) · Ctrl+Shift+O chọn bản để mở lại.
+-- Mở lại: Claude tiếp tục đúng phiên cũ (session lấy từ file trạng thái), Codex `resume --last`,
+-- Gemini `--resume latest`, ô 📋 / 📄 mở lại tài liệu. Bố cục dựng lại theo cột rồi theo hàng
+-- (khớp kiểu chia ô thường dùng; kiểu chia lồng nhau phức tạp sẽ gần đúng).
+local LAYOUT = { saved = AIDIR .. '\\bo-cuc-luu.json', auto = AIDIR .. '\\bo-cuc-tu-luu.json', prev = AIDIR .. '\\bo-cuc-phien-truoc.json' }
+
+local function pane_kind(p)
+  local title = p:get_title() or ''
+  if title:find('Cần duyệt', 1, true) then return 'canduyet' end
+  if title:find('📄', 1, true) then return 'doc' end
+  local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = title }
+  return ({ Claude = 'claude', Codex = 'codex', Gemini = 'gemini' })[ai] or 'shell'
+end
+
+local function capture_layout()
+  local out, n = { t = os.time(), tabs = {} }, 0
+  local docs = wezterm.GLOBAL.docs or {}
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(mw:tabs()) do
+      local panes = {}
+      for _, info in ipairs(tab:panes_with_info()) do
+        local p, id = info.pane, tostring(info.pane:pane_id())
+        local it = { left = info.left, top = info.top, width = info.width, height = info.height,
+          cwd = pane_dir { current_working_dir = p:get_current_working_dir() }, kind = pane_kind(p) }
+        if it.kind == 'claude' then
+          local s = read_json(STATE .. '\\' .. id .. '.json')
+          if s and s.session and s.session ~= '' then it.session = s.session end
+        elseif it.kind == 'doc' then
+          it.path = docs[id]
+        end
+        table.insert(panes, it)
+        n = n + 1
+      end
+      table.insert(out.tabs, { title = tab:get_title(), panes = panes })
+    end
+  end
+  return out, n
+end
+
+local function write_layout(path)
+  local data, n = capture_layout()
+  local f = io.open(path, 'w')
+  if f then f:write(wezterm.json_encode(data)) f:close() end
+  return n
+end
+
+local function restore_args(it)
+  if it.kind == 'claude' then return PS(it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue') end
+  if it.kind == 'codex' then return PS('codex resume --last') end
+  if it.kind == 'gemini' then return PS('gemini --resume latest') end
+  if it.kind == 'canduyet' then return VIEWER end
+  if it.kind == 'doc' and it.path then return DOCVIEW(it.path) end
+  return { 'powershell.exe', '-NoLogo' }
+end
+local function safe_cwd(dir)
+  if dir and pcall(wezterm.read_dir, dir) then return dir end
+  return HUB
+end
+
+local function restore_tab(mw, t)
+  if not t.panes or #t.panes == 0 then return end
+  local cols, by_left = {}, {}
+  for _, it in ipairs(t.panes) do -- gom ô thành cột theo mép trái
+    local c = by_left[it.left]
+    if not c then
+      c = { left = it.left, width = it.width, items = {} }
+      by_left[it.left] = c
+      table.insert(cols, c)
+    end
+    c.width = math.max(c.width, it.width)
+    table.insert(c.items, it)
+  end
+  table.sort(cols, function(a, b) return a.left < b.left end)
+  for _, c in ipairs(cols) do table.sort(c.items, function(a, b) return a.top < b.top end) end
+
+  local first = cols[1].items[1]
+  local tab, root = mw:spawn_tab { cwd = safe_cwd(first.cwd), args = restore_args(first) }
+  if t.title and t.title ~= '' then tab:set_title(t.title) end
+  local heads, cur = { root }, root
+  for i = 2, #cols do -- tách dần sang phải, giữ tỉ lệ chiều rộng
+    local rest = 0
+    for j = i, #cols do rest = rest + cols[j].width end
+    local it = cols[i].items[1]
+    cur = cur:split { direction = 'Right', size = rest / (rest + cols[i - 1].width), cwd = safe_cwd(it.cwd), args = restore_args(it) }
+    heads[i] = cur
+  end
+  for i, c in ipairs(cols) do -- trong mỗi cột: tách dần xuống dưới
+    local p = heads[i]
+    for k = 2, #c.items do
+      local rest = 0
+      for j = k, #c.items do rest = rest + c.items[j].height end
+      local it = c.items[k]
+      p = p:split { direction = 'Bottom', size = rest / (rest + c.items[k - 1].height), cwd = safe_cwd(it.cwd), args = restore_args(it) }
+    end
+  end
+  root:activate()
+end
+
+-- Ctrl+Shift+S: lưu bố cục hiện tại
+save_layout = wezterm.action_callback(function(window)
+  local n = write_layout(LAYOUT.saved)
+  window:toast_notification('WezTerm · đội AI', '💾 Đã lưu bố cục (' .. n .. ' ô). Mở lại: Ctrl+Shift+O', nil, 4000)
+end)
+
+-- Ctrl+Shift+O: chọn bản bố cục để mở lại (thành các tab mới trong cửa sổ này)
+restore_menu = wezterm.action_callback(function(window, pane)
+  local choices = {}
+  for _, c in ipairs { { 'saved', '💾 Bản lưu tay (Ctrl+Shift+S)' }, { 'prev', '⏮  Phiên trước (trước lần mở WezTerm này)' }, { 'auto', '🔄 Tự lưu gần nhất (phiên này)' } } do
+    local d = read_json(LAYOUT[c[1]])
+    if d and d.tabs then
+      local n = 0
+      for _, t in ipairs(d.tabs) do n = n + #(t.panes or {}) end
+      table.insert(choices, { id = c[1], label = c[2] .. '  ·  ' .. os.date('%H:%M %d/%m', d.t or 0) .. '  ·  ' .. #d.tabs .. ' tab, ' .. n .. ' ô' })
+    end
+  end
+  if #choices == 0 then
+    window:toast_notification('WezTerm', 'Chưa có bố cục nào được lưu', nil, 3000)
+    return
+  end
+  window:perform_action(act.InputSelector {
+    title = 'Mở lại bố cục nào?  (Enter chọn · Esc thoát)',
+    choices = choices,
+    action = wezterm.action_callback(function(w, _, id)
+      if not id then return end
+      local d = read_json(LAYOUT[id])
+      for _, t in ipairs(d and d.tabs or {}) do
+        local ok, err = pcall(restore_tab, w:mux_window(), t)
+        if not ok then wezterm.log_error('restore_tab: ' .. tostring(err)) end
+      end
+    end),
+  }, pane)
+end)
+
+-- Tự lưu mỗi phút, chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
+local last_autosave = 0
+local function autosave()
+  if os.time() - last_autosave < 60 then return end
+  last_autosave = os.time()
+  local n = 0
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(mw:tabs()) do n = n + #tab:panes() end
+  end
+  if n >= 2 then write_layout(LAYOUT.auto) end
+end
+
+-- Khi WezTerm vừa mở: tạo thư mục cần thiết, chuyển bản tự lưu của lần trước thành "Phiên trước",
+-- xoá trạng thái cũ (số ô sẽ đánh lại từ đầu)
+wezterm.on('gui-startup', function()
+  wezterm.background_child_process { 'cmd.exe', '/c', 'mkdir', ALERTS, STATE }
+  local s = read_file(LAYOUT.auto)
+  if s and s ~= '' then
+    local f = io.open(LAYOUT.prev, 'wb')
+    if f then f:write(s) f:close() end
+    os.remove(LAYOUT.auto)
+    wezterm.GLOBAL.hint_restore = true
+  end
+  for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do os.remove(path) end
+end)
 
 -- Nhiên liệu: hạn mức 5 giờ / tuần đã dùng của Claude (statusline.js ghi) và Codex (file phiên gần nhất)
 local fuel_cache = { at = 0, cells = nil }
@@ -457,6 +678,12 @@ wezterm.on('update-status', function(window, pane)
   if not oka then wezterm.log_error('process_alerts: ' .. tostring(erra)) end
   local oko, erro = pcall(process_open, window)
   if not oko then wezterm.log_error('process_open: ' .. tostring(erro)) end
+  local oks, errs = pcall(autosave)
+  if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
+  if wezterm.GLOBAL.hint_restore then
+    wezterm.GLOBAL.hint_restore = false
+    window:toast_notification('WezTerm · đội AI', '⏮ Có bố cục của phiên trước. Bấm Ctrl+Shift+O để mở lại.', nil, 8000)
+  end
   local info = {
     current_working_dir = pane:get_current_working_dir(),
     foreground_process_name = pane:get_foreground_process_name(),

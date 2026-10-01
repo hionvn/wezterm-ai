@@ -1,0 +1,4 @@
+# Phần cấu hình Codex mà bộ đội-AI cần (khoi-phuc.ps1 gộp vào ~\.codex\config.toml).
+# run-state trên tiêu đề ô → ~/.wezterm.lua đoán Codex đang làm / xong / chờ duyệt để báo động.
+[tui]
+terminal_title = ["project-name", "run-state", "thread-title"]

@@ -3,7 +3,8 @@
 # tự vẽ lại khi một trong các file đó thay đổi. Chỉ để đọc, không sửa gì.
 # -File <đường dẫn>: chỉ hiện đúng một tài liệu (dùng khi AI tự bật tài liệu vừa làm xong).
 param([string]$File)
-$AIRoot = 'E:\AI'
+$AIRoot = 'E:\AI'   # mặc định; máy khác ổ đĩa thì lấy từ ~\.wez-ai.json (khoi-phuc.ps1 tạo)
+if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.aiRoot) { $AIRoot = $c.aiRoot } }
 $canDuyet = Join-Path $AIRoot '_Hub\can-duyet.md'
 $tmp = Join-Path $env:TEMP 'ban-lam-viec-tong-quan.md'
 $glow = Get-Command glow -ErrorAction SilentlyContinue
