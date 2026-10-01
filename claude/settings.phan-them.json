@@ -1,0 +1,28 @@
+{
+    "statusLine":  {
+                       "type":  "command",
+                       "command":  "node \"C:/Users/Hion/.claude/statusline.js\""
+                   },
+    "hooks":  {
+                  "Notification":  [
+                                       {
+                                           "hooks":  [
+                                                         {
+                                                             "type":  "command",
+                                                             "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" need"
+                                                         }
+                                                     ]
+                                       }
+                                   ],
+                  "Stop":  [
+                               {
+                                   "hooks":  [
+                                                 {
+                                                     "type":  "command",
+                                                     "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" done"
+                                                 }
+                                             ]
+                               }
+                           ]
+              }
+}

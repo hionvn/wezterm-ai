@@ -1,0 +1,162 @@
+// Dòng trạng thái Claude Code
+//   Dòng 1: dự án (màu riêng) › thư mục con, model, mức suy nghĩ, tên phiên, git (nhánh, file sửa, commit chưa push, stash)
+//   Dòng 2: context, hạn mức 5 giờ / 7 ngày (+ giờ reset, dự báo hết), số dòng sửa, thời gian phiên, cache còn ấm, giờ
+//   Dòng 3: chỉ hiện khi có cảnh báo (AGENTS.md vừa bị sửa, lâu chưa commit, cache nguội)
+// Bản cũ: statusline.js.bak-2026-10-01b
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+let input = '';
+process.stdin.on('data', (c) => (input += c));
+process.stdin.on('end', () => {
+  let data = {};
+  try { data = JSON.parse(input.replace(/^﻿/, '')); } catch {}
+
+  const R = '\x1b[0m', dim = '\x1b[2m', bold = '\x1b[1m';
+  const yellow = '\x1b[1;33m', cyan = '\x1b[36m', green = '\x1b[32m', red = '\x1b[1;31m',
+    magenta = '\x1b[35m', blue = '\x1b[1;34m', orange = '\x1b[38;5;208m';
+  const color = (p) => (p >= 80 ? red : p >= 50 ? yellow : green);
+  const now = Date.now() / 1000;
+  const pad = (n) => String(n).padStart(2, '0');
+  const hhmm = (sec) => { const d = new Date(sec * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const weekday = (sec) => ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][new Date(sec * 1000).getDay()];
+  const kilo = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : Math.round(n / 1000) + 'k');
+  const dur = (sec) => {
+    sec = Math.max(0, Math.round(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    if (h >= 24) return `${Math.floor(h / 24)} ngày${h % 24 ? ' ' + (h % 24) + 'h' : ''}`;
+    return h ? `${h}h${m ? pad(m) : ''}` : `${m}m`;
+  };
+
+  // ---- Dự án & thư mục ----
+  const ws = data.workspace || {};
+  const dir = ws.current_dir || data.cwd || process.cwd();
+  const projDir = ws.project_dir || dir;
+  const project = projDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  const projColors = { _hub: yellow, sino: red, coolguy: blue, chatbot: magenta };
+  const palette = [cyan, green, orange, magenta, blue];
+  let pc = projColors[project.toLowerCase()];
+  if (!pc) { let h = 0; for (const ch of project) h = (h * 31 + ch.charCodeAt(0)) >>> 0; pc = palette[h % palette.length]; }
+  // Nhãn chức vụ theo sơ đồ tổ chức: _Hub = Chief of Staff, thư mục dự án = Manager dự án đó
+  const role = project.toLowerCase() === '_hub' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  let where = `${pc}${bold}${role}${R}  📁 ${pc}${bold}${project}${R}`;
+  const rel = path.relative(projDir, dir);
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) where += `${dim} › ${rel.replace(/\\/g, '/')}${R}`;
+
+  const line1 = [where];
+  const model = (data.model && data.model.display_name) || '?';
+  line1.push(`🤖 ${cyan}${model}${R}` + (data.fast_mode ? ` ${yellow}⚡${R}` : ''));
+  if (data.effort && data.effort.level) line1.push(`💭 ${magenta}${data.effort.level}${R}`);
+  if (data.session_name) line1.push(`💬 ${dim}${data.session_name}${R}`);
+  if (data.output_style && data.output_style.name && data.output_style.name !== 'default') {
+    line1.push(`🎨 ${data.output_style.name}`);
+  }
+
+  // ---- Git (vài lệnh nhẹ, mỗi lệnh tối đa 1,5 giây) ----
+  const alerts = [];
+  const git = (args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let gitRoot = null;
+  try {
+    const st = git(['status', '--porcelain=v2', '--branch']).split('\n');
+    let branch = 'detached', ahead = 0, changed = 0;
+    for (const l of st) {
+      if (l.startsWith('# branch.head ')) branch = l.slice(14);
+      else if (l.startsWith('# branch.ab ')) ahead = parseInt(l.split(' ')[2], 10) || 0;
+      else if (l && !l.startsWith('#')) changed++;
+    }
+    let g = `🌿 ${green}${branch}${R}`;
+    g += changed ? ` ${yellow}✎${changed}${R}` : ` ${dim}✓${R}`;
+    if (ahead) g += ` ${cyan}↑${ahead}${R}`;
+    try { const s = git(['stash', 'list']).split('\n').filter(Boolean).length; if (s) g += ` ${dim}📦${s}${R}`; } catch {}
+    line1.push(g);
+    try { gitRoot = git(['rev-parse', '--show-toplevel']); } catch {}
+
+    // Có thay đổi chưa commit mà commit cuối đã lâu → nhắc
+    if (changed) {
+      try {
+        const last = parseInt(git(['log', '-1', '--format=%ct']), 10);
+        if (last && now - last > 3 * 3600) alerts.push(`${orange}⏰ ${changed} file chưa commit, commit cuối ${dur(now - last)} trước${R}`);
+      } catch {}
+    }
+  } catch {}
+
+  // ---- Dòng 2 ----
+  const line2 = [];
+  const cw = data.context_window;
+  if (cw && cw.used_percentage != null) {
+    const p = Math.round(cw.used_percentage);
+    const size = cw.context_window_size || 200000;
+    const filled = Math.min(10, Math.round(p / 10));
+    const bar = '▓'.repeat(filled) + '░'.repeat(10 - filled);
+    let s = `🧠 ${color(p)}${bar} ${kilo((size * p) / 100)}/${kilo(size)} (${p}%)${R}`;
+    if (p >= 80) s += ` ${red}⚠ /compact${R}`;
+    line2.push(s);
+  }
+
+  const rl = data.rate_limits || {};
+  // Ghi hạn mức ra file cho đồng hồ "nhiên liệu" trên thanh WezTerm (~/.wezterm.lua đọc)
+  if (rl.five_hour || rl.seven_day) {
+    try {
+      const fdir = path.join(process.env.LOCALAPPDATA || '', 'wez-ai');
+      fs.mkdirSync(fdir, { recursive: true });
+      fs.writeFileSync(path.join(fdir, 'fuel-claude.json'), JSON.stringify({
+        five: rl.five_hour && rl.five_hour.used_percentage, five_reset: rl.five_hour && rl.five_hour.resets_at,
+        week: rl.seven_day && rl.seven_day.used_percentage, week_reset: rl.seven_day && rl.seven_day.resets_at,
+        t: Math.floor(now),
+      }));
+    } catch {}
+  }
+  if (rl.five_hour && rl.five_hour.used_percentage != null) {
+    const p = Math.round(rl.five_hour.used_percentage);
+    const ra = rl.five_hour.resets_at;
+    let s = `⏱ 5h: ${color(p)}${p}%${R}`;
+    if (ra) {
+      s += `${dim} (reset ${hhmm(ra)})${R}`;
+      // Dự báo: với tốc độ hiện tại, có hết hạn mức trước giờ reset không?
+      const left = ra - now, elapsed = 5 * 3600 - left;
+      if (p >= 50 && p < 100 && elapsed > 600) {
+        const eta = ((100 - p) * elapsed) / p;
+        if (eta < left) s += ` ${red}🔥 hết sau ~${dur(eta)}${R}`;
+      }
+    }
+    line2.push(s);
+  }
+  if (rl.seven_day && rl.seven_day.used_percentage != null) {
+    const p = Math.round(rl.seven_day.used_percentage);
+    const ra = rl.seven_day.resets_at;
+    line2.push(`📅 7 ngày: ${color(p)}${p}%${R}` + (ra ? `${dim} (reset ${weekday(ra)} ${hhmm(ra)})${R}` : ''));
+  }
+
+  const cost = data.cost || {};
+  const add = cost.total_lines_added || 0, del = cost.total_lines_removed || 0;
+  if (add || del) line2.push(`✏️ ${green}+${add}${R} ${red}−${del}${R}`);
+  if (cost.total_duration_ms >= 60000) line2.push(`${dim}⏳ ${dur(cost.total_duration_ms / 1000)}${R}`);
+
+  // Cache còn ấm bao lâu (hết hạn thì tin nhắn sau tốn hạn mức hơn)
+  const pc2 = data.prompt_cache || {};
+  if (pc2.expires_at && pc2.expires_at > now) {
+    const left = pc2.expires_at - now;
+    line2.push(`♨️ ${left < 600 ? yellow : dim}cache ${dur(left)}${R}`);
+  }
+  line2.push(`${dim}🕐 ${hhmm(now)}${R}`);
+
+  // ---- Cảnh báo (dòng 3, chỉ hiện khi có) ----
+  // AGENTS.md là file chung của 3 AI: báo khi vừa bị sửa trong 15 phút
+  try {
+    const f = path.join(gitRoot || projDir, 'AGENTS.md');
+    const age = now - fs.statSync(f).mtimeMs / 1000;
+    if (age < 15 * 60) alerts.push(`${yellow}👀 AGENTS.md vừa đổi ${dur(age)} trước — kiểm tra trước khi sửa${R}`);
+  } catch {}
+
+  // Cache nguội: tin nhắn tiếp theo phải đọc lại toàn bộ hội thoại → tốn hạn mức hơn
+  const pcache = data.prompt_cache || {};
+  if (pcache.expires_at && now > pcache.expires_at && (pcache.recache_tokens_if_cold || 0) > 50000) {
+    alerts.push(`${cyan}🧊 cache nguội (${kilo(pcache.recache_tokens_if_cold)} token đọc lại) — việc mới thì nên /clear${R}`);
+  }
+
+  const out = [line1.join('  |  ')];
+  if (line2.length) out.push(line2.join('  |  '));
+  if (alerts.length) out.push(alerts.join('  |  '));
+  process.stdout.write(out.join('\n'));
+});
