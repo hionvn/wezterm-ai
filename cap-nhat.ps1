@@ -24,12 +24,12 @@ foreach ($f in Get-ChildItem "$here\scripts" -File) {
 $moi = Get-ChildItem $caiDat -File | Where-Object { $_.Name -notmatch '\.bak-' -and -not (Test-Path (Join-Path "$here\scripts" $_.Name)) }
 foreach ($m in $moi) { Write-Host "  ℹ️  $caiDat\$($m.Name) chưa có trong repo (muốn sao lưu thì chép vào scripts\)" -ForegroundColor DarkCyan }
 
-# Quy tắc chung: 1 file gốc (bản của Claude), cảnh báo nếu bản Codex / Gemini đã bị sửa khác đi
+# Quy tắc chung: 1 file gốc (bản của Claude), cảnh báo nếu bản Codex đã bị sửa khác đi
 $rule = "$HOME\.claude\CLAUDE.md"
 $text = [IO.File]::ReadAllText($rule, [Text.Encoding]::UTF8)
 if ($AIRoot -ne 'E:\AI') { $text = $text.Replace("$AIRoot\", 'E:\AI\') }   # repo luôn ghi E:\AI, khoi-phuc.ps1 đổi theo máy
 [IO.File]::WriteAllText((Join-Path $here 'quy-tac\chung.md'), $text, $utf8); Write-Host '  ✓ quy-tac\chung.md'
-foreach ($o in "$HOME\.codex\AGENTS.md", "$HOME\.gemini\GEMINI.md") {
+foreach ($o in @("$HOME\.codex\AGENTS.md")) {
     if ((Get-FileHash $o).Hash -ne (Get-FileHash $rule).Hash) {
         Write-Host "  ⚠️  $o khác ~\.claude\CLAUDE.md → repo chỉ lưu bản của Claude. Chép đè cho giống nhau nếu cần." -ForegroundColor Yellow
     }
@@ -42,15 +42,12 @@ $json = ($part | ConvertTo-Json -Depth 20).Replace(($caiDat -replace '\\', '/'),
 [IO.File]::WriteAllText((Join-Path $here 'claude\settings.phan-them.json'), $json, $utf8)
 Write-Host '  ✓ claude\settings.phan-them.json'
 
-# Codex / Gemini: chỉ lấy dòng tiêu đề động (phần còn lại có thông tin đăng nhập, đường dẫn riêng máy)
+# Codex: chỉ lấy dòng tiêu đề động (phần còn lại có thông tin đăng nhập, đường dẫn riêng máy)
 $tt = Select-String -Path "$HOME\.codex\config.toml" -Pattern '^\s*terminal_title\s*=' | Select-Object -First 1
 if ($tt) {
     $f = Join-Path $here 'codex\config.phan-them.toml'
     $lines = Get-Content $f -Encoding UTF8 | ForEach-Object { if ($_ -match '^\s*terminal_title\s*=') { $tt.Line.Trim() } else { $_ } }
     [IO.File]::WriteAllLines($f, [string[]]$lines, $utf8); Write-Host '  ✓ codex\config.phan-them.toml'
-}
-if (-not (Select-String -Path "$HOME\.gemini\settings.json" -Pattern '"dynamicWindowTitle"\s*:\s*true' -Quiet)) {
-    Write-Host '  ⚠️  Gemini đang tắt dynamicWindowTitle → không có báo động cho Gemini' -ForegroundColor Yellow
 }
 
 Write-Host "`nQuét khoá bí mật:" -ForegroundColor Cyan

@@ -9,7 +9,7 @@
 ## Môi trường
 - Windows 11, terminal là Windows Terminal + PowerShell 5.1 (không dùng cú pháp bash cho lệnh người dùng tự gõ).
 - Thư mục dự án nằm trong E:\AI\<ten-du-an>, mỗi dự án có AGENTS.md riêng.
-- Người dùng chạy song song 3 AI: Claude Code, Codex (GPT), Gemini CLI — trên cùng thư mục dự án.
+- Người dùng chạy song song 2 AI: Claude Code, Codex (GPT) — trên cùng thư mục dự án. (Đã bỏ Gemini CLI từ 02/10/2026, đừng đề xuất dùng lại.)
   Tránh sửa cùng một file mà AI khác có thể đang sửa; ghi thông tin cần chia sẻ vào AGENTS.md của dự án.
 
 ## An toàn
@@ -25,5 +25,6 @@
 - Làm xong một tài liệu người dùng cần đọc hoặc duyệt (báo cáo, spec, kế hoạch, bài tập…) → bật nó lên màn hình: `node E:\AI\_Hub\cai-dat\mo-tai-lieu.js <đường dẫn file>`.
 - Việc cần người dùng quyết → ghi thêm 1 dòng vào `E:\AI\_Hub\can-duyet.md` (mục "Đang chờ", ghi rõ [tên dự án]).
 - Điều khiển ô khác: `E:\AI\_Hub\cai-dat\wez.ps1` (list · send · cho · read · nen = đẩy ô ra tab nền · chinh = kéo ô về · mo = bật tài liệu). Luôn `list` trước để chắc đúng ô.
-  Giao việc cho ô khác: `send <id> "câu"` rồi `cho <id>` (đợi ô đó làm xong và in kết quả) thay vì `read` nhiều lần. `send` từ chối khi ô đang bận / chờ duyệt — đợi, đừng thêm `-Ep` nếu chưa chắc.
-- Khoá file (tránh 2 AI sửa chồng một file): Claude được tự khoá qua hooks. Codex / Gemini trước khi sửa file thì chạy `node E:\AI\_Hub\cai-dat\khoa.js giu <file> --ai codex` (hoặc `--ai gemini`); báo "đang bị giữ" thì không sửa, báo người dùng. Sửa xong: `khoa.js tha <file>`. Xem khoá: `khoa.js xem`.
+  Giao việc cho ô khác: `send <id> "câu"` rồi `cho <id>` (đợi ô đó làm xong và in kết quả) thay vì `read` nhiều lần.
+  Cần AI mới ở dự án khác: `giao <dự án> <claude|codex> "việc"` (mở tab nền, in PANEID); thêm `-Cho -Ra <file>` để đợi xong và lưu kết quả. Giao song song: gọi `giao` nhiều lần rồi `cho 12,13`. `send` từ chối khi ô đang bận / chờ duyệt — đợi, đừng thêm `-Ep` nếu chưa chắc.
+- Khoá file (tránh 2 AI sửa chồng một file): Claude được tự khoá qua hooks. Codex trước khi sửa file thì chạy `node E:\AI\_Hub\cai-dat\khoa.js giu <file> --ai codex`; báo "đang bị giữ" thì không sửa, báo người dùng. Sửa xong: `khoa.js tha <file>`. Xem khoá: `khoa.js xem`.

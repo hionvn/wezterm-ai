@@ -38,7 +38,7 @@ foreach ($p in @(@('node', 'OpenJS.NodeJS.LTS', 'bắt buộc: hooks, khoá file
     elseif ($p[0] -eq 'glow') { Warn "Chưa có glow ($($p[2]))" "winget install $($p[1])" }
     else { Bad "Chưa có $($p[0]) ($($p[2]))" "winget install $($p[1])" }
 }
-foreach ($a in @(@('claude', '@anthropic-ai/claude-code'), @('codex', '@openai/codex'), @('gemini', '@google/gemini-cli'))) {
+foreach ($a in @(@('claude', '@anthropic-ai/claude-code'), @('codex', '@openai/codex'))) {
     if (Has $a[0]) { Ok "$($a[0]) đã cài" } else { Warn "Chưa cài $($a[0])" "npm install -g $($a[1])" }
 }
 
@@ -60,22 +60,17 @@ if (Test-Path $ct) {
     if ($line -and $line.Line -match 'run-state') { Ok 'Codex: tiêu đề có run-state (WezTerm đoán được đang làm / xong)' }
     else { Bad 'Codex chưa bật run-state trên tiêu đề → không có báo động cho Codex' $repoFix }
 } else { Warn 'Chưa có ~\.codex\config.toml' 'chạy codex một lần rồi chạy lại khoi-phuc.ps1' }
-$gs = "$HOME\.gemini\settings.json"
-if ((Test-Path $gs) -and (Select-String -Path $gs -Pattern '"dynamicWindowTitle"\s*:\s*true' -Quiet)) { Ok 'Gemini: tiêu đề động (✦ ✋ ◇)' }
-else { Bad 'Gemini chưa bật dynamicWindowTitle → không có báo động cho Gemini' $repoFix }
-if ($env:GEMINI_API_KEY -or [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User')) { Ok 'Có biến môi trường GEMINI_API_KEY' }
-else { Warn 'Chưa thấy GEMINI_API_KEY (bỏ qua nếu Gemini đăng nhập cách khác)' "đặt: [Environment]::SetEnvironmentVariable('GEMINI_API_KEY','<khoá>','User')" }
 
 Write-Host "`n[4] Quy tắc chung + lệnh tắt" -ForegroundColor Cyan
-$rules = "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md", "$HOME\.gemini\GEMINI.md"
+$rules = "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md"
 $missing = $rules | Where-Object { -not (Test-Path $_) }
 if ($missing) { Bad "Thiếu file quy tắc: $($missing -join ', ')" $repoFix }
 else {
     $h = $rules | ForEach-Object { (Get-FileHash $_).Hash } | Select-Object -Unique
-    if (@($h).Count -eq 1) { Ok '3 file quy tắc (Claude / Codex / Gemini) giống nhau' }
-    else { Warn '3 file quy tắc đang khác nhau' 'sửa ~\.claude\CLAUDE.md rồi chép đè sang 2 file kia (hoặc chạy cap-nhat.ps1 để xem file nào khác)' }
+    if (@($h).Count -eq 1) { Ok '2 file quy tắc (Claude / Codex) giống nhau' }
+    else { Warn '2 file quy tắc đang khác nhau' 'sửa ~\.claude\CLAUDE.md rồi chép đè sang ~\.codex\AGENTS.md' }
 }
-if ((Test-Path $PROFILE) -and (Select-String -Path $PROFILE -Pattern 'function ai\b' -Quiet)) { Ok 'Lệnh tắt PowerShell (ai, ai3, hub...)' }
+if ((Test-Path $PROFILE) -and (Select-String -Path $PROFILE -Pattern 'function ai\b' -Quiet)) { Ok 'Lệnh tắt PowerShell (ai, ai2, hub...)' }
 else { Bad 'Profile PowerShell chưa có lệnh ai / hub...' $repoFix }
 $pol = Get-ExecutionPolicy -Scope CurrentUser
 if ($pol -in 'Restricted', 'AllSigned') { Warn "ExecutionPolicy = $pol → profile không chạy" 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned' } else { Ok "ExecutionPolicy = $pol" }

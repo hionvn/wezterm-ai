@@ -17,6 +17,7 @@ do
     if ok and type(v) == 'table' then machine = v end
   end
 end
+wezterm.add_to_config_reload_watch_list(HOME .. '\\.wez-ai.json') -- sửa file này là WezTerm tự nạp lại
 local AI_ROOT = (machine.aiRoot or 'E:\\AI'):gsub('[\\/]+$', '')
 local HUB = AI_ROOT .. '\\_Hub'
 local AIDIR = (os.getenv('LOCALAPPDATA') or (HOME .. '\\AppData\\Local')) .. '\\wez-ai'
@@ -170,7 +171,7 @@ local open_desk = wezterm.action_callback(function(window, _)
 end)
 
 -- Ctrl+Shift+A: chọn dự án + AI từ danh sách, rồi chọn mở ở ô phải / ô dưới / tab mới
-local AIS = { { '🤖 Claude', 'claudeRC' }, { '🧩 Codex', 'codex' }, { '💎 Gemini', 'gemini' } }
+local AIS = { { '🤖 Claude', 'claudeRC' }, { '🧩 Codex', 'codex' } } -- Gemini đã bỏ (02/10/2026)
 local function projects()
   local t = {}
   for _, path in ipairs(wezterm.read_dir(AI_ROOT)) do
@@ -300,7 +301,6 @@ end
 local function which_ai(p)
   local s = ((p.foreground_process_name or '') .. ' ' .. (p.title or '')):lower()
   if s:find('codex') then return '🧩', 'Codex' end
-  if s:find('gemini') or s:find('◇') or s:find('✦') or s:find('✋') then return '💎', 'Gemini' end
   if s:find('claude') or s:find('✳') or s:find('◐') or s:find('◓') or s:find('◑') or s:find('◒') then return '🤖', 'Claude' end
   if s:find('powershell') or s:find('pwsh') then return '⌨️', 'PowerShell' end
   return '▪️', nil
@@ -342,7 +342,7 @@ local function read_json(path)
   return ok and v or nil
 end
 
--- Báo động: Claude ghi file qua hooks (cai-dat\wez-alert.js); Codex, Gemini thì đoán từ tiêu đề ô.
+-- Báo động: Claude ghi file qua hooks (cai-dat\wez-alert.js); Codex thì đoán từ tiêu đề ô.
 -- File: %LOCALAPPDATA%\wez-ai\alerts\<PANEID>.json = { kind = 'need' | 'done', text, t }
 -- Trạng thái (cho wez.ps1 send / cho): wez-ai\state\<PANEID>.json = { state = 'work' | 'idle' | 'need', ai, t }
 local ALERTS = AIDIR .. '\\alerts'
@@ -380,12 +380,9 @@ local function fix_claude_state(id, title)
   if f then f:write(wezterm.json_encode(cur)) f:close() end
 end
 
--- Trạng thái Codex / Gemini đọc từ tiêu đề: 'work' đang làm, 'idle' rảnh, 'need' cần duyệt
+-- Trạng thái Codex đọc từ tiêu đề: 'work' đang làm, 'idle' rảnh, 'need' cần duyệt
 local function title_state(p)
   local title = p:get_title() or ''
-  if title:find('✋') then return 'need', '💎 Gemini' end
-  if title:find('✦') then return 'work', '💎 Gemini' end
-  if title:find('◇') then return 'idle', '💎 Gemini' end
   local proc = (p:get_foreground_process_name() or ''):lower()
   if proc:find('codex') then
     local low = title:lower()
@@ -393,6 +390,21 @@ local function title_state(p)
     if title:find('Ready') then return 'idle', '🧩 Codex' end
     return 'work', '🧩 Codex'
   end
+end
+
+-- Báo sang điện thoại (ntfy) khi một ô cần duyệt mà bạn chưa bấm vào sau N phút.
+-- Bật / tắt: wez.ps1 dienthoai bat | tat | thu  → ghi vào ~\.wez-ai.json mục "dienThoai".
+local PHONE = machine.dienThoai
+if PHONE and not PHONE.ntfy then PHONE = nil end
+local phoned = {}
+local function send_phone(text)
+  local body = AIDIR .. '\\ntfy-' .. os.time() .. '.txt' -- nội dung qua file: giữ đúng tiếng Việt
+  local f = io.open(body, 'wb')
+  if not f then return end
+  f:write(text)
+  f:close()
+  wezterm.background_child_process { 'cmd.exe', '/c', 'curl.exe', '-s', '-m', '15', '-H', 'Title: WezTerm AI', '-H', 'Tags: bell',
+    '-H', 'Priority: high', '--data-binary', '@' .. body, (PHONE.server or 'https://ntfy.sh') .. '/' .. PHONE.ntfy, '&', 'del', body }
 end
 
 local function process_alerts(window)
@@ -411,7 +423,7 @@ local function process_alerts(window)
           last_state[id] = state
           if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
           elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
-          sync_state(id, state, who:find('Codex', 1, true) and 'codex' or 'gemini')
+          sync_state(id, state, 'codex')
         else
           fix_claude_state(id, p:get_title() or '')
         end
@@ -434,6 +446,13 @@ local function process_alerts(window)
             toasted[id] = v.t
             window:toast_notification('WezTerm · đội AI', v.text or 'AI cần bạn', nil, 6000)
           end
+          -- Chưa bấm vào ô sau N phút → báo sang điện thoại (mỗi lần báo động chỉ gửi 1 lần)
+          local key = id .. ':' .. tostring(v.t)
+          if PHONE and not phoned[key] and (v.kind == 'need' or (v.kind == 'done' and PHONE.baoXong))
+            and os.time() - (v.t or 0) >= (PHONE.sauPhut or 5) * 60 then
+            phoned[key] = true
+            send_phone((v.text or 'AI cần bạn') .. ' (chờ ' .. math.floor((os.time() - v.t) / 60) .. ' phút)')
+          end
         end
       end
     end
@@ -448,7 +467,7 @@ end
 -- ===== Lưu / khôi phục bố cục (thêm 02/10/2026) =====
 -- Ctrl+Shift+S lưu tay · tự lưu mỗi phút (khi có từ 2 ô) · Ctrl+Shift+O chọn bản để mở lại.
 -- Mở lại: Claude tiếp tục đúng phiên cũ (session lấy từ file trạng thái), Codex `resume --last`,
--- Gemini `--resume latest`, ô 📋 / 📄 mở lại tài liệu. Bố cục dựng lại theo cột rồi theo hàng
+-- ô 📋 / 📄 mở lại tài liệu. Bố cục dựng lại theo cột rồi theo hàng
 -- (khớp kiểu chia ô thường dùng; kiểu chia lồng nhau phức tạp sẽ gần đúng).
 local LAYOUT = { saved = AIDIR .. '\\bo-cuc-luu.json', auto = AIDIR .. '\\bo-cuc-tu-luu.json', prev = AIDIR .. '\\bo-cuc-phien-truoc.json' }
 
@@ -457,7 +476,7 @@ local function pane_kind(p)
   if title:find('Cần duyệt', 1, true) then return 'canduyet' end
   if title:find('📄', 1, true) then return 'doc' end
   local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = title }
-  return ({ Claude = 'claude', Codex = 'codex', Gemini = 'gemini' })[ai] or 'shell'
+  return ({ Claude = 'claude', Codex = 'codex' })[ai] or 'shell'
 end
 
 local function capture_layout()
@@ -495,7 +514,6 @@ end
 local function restore_args(it)
   if it.kind == 'claude' then return PS(it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue') end
   if it.kind == 'codex' then return PS('codex resume --last') end
-  if it.kind == 'gemini' then return PS('gemini --resume latest') end
   if it.kind == 'canduyet' then return VIEWER end
   if it.kind == 'doc' and it.path then return DOCVIEW(it.path) end
   return { 'powershell.exe', '-NoLogo' }

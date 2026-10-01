@@ -5,13 +5,19 @@
 #   .\wez.ps1 send 3 "Tìm giá Botcake mới nhất"     # gõ câu vào ô 3 và nhấn Enter (ô đang bận / chờ duyệt thì từ chối)
 #   .\wez.ps1 send 3 "câu" -Ep                      # vẫn gửi dù ô đang bận (vd. trạng thái bị kẹt)
 #   .\wez.ps1 cho 3 [số giây]                       # đợi ô 3 làm xong (mặc định tối đa 1800 giây) rồi in 40 dòng cuối
+#   .\wez.ps1 cho 3,5,7                             # đợi nhiều ô cùng lúc (giao việc song song)
+#   .\wez.ps1 giao Sino codex "Viết bài đăng FB…"    # mở Codex mới ở E:\AI\Sino (tab nền) với việc đó, in PANEID
+#   .\wez.ps1 giao Sino claude "…" -Cho -Ra E:\AI\_Hub\ket-qua.txt   # … rồi đợi xong và lưu kết quả
 #   .\wez.ps1 read 3 40                             # đọc 40 dòng cuối của ô 3
 #   .\wez.ps1 nen 3                                 # đẩy ô 3 ra tab nền
 #   .\wez.ps1 chinh 3                               # kéo ô 3 về cạnh ô đang gọi lệnh
 #   .\wez.ps1 mo E:\AI\Chatbot\tien-do-chatbot.md   # bật tài liệu lên cho người dùng xem
+#   .\wez.ps1 dienthoai bat                         # báo sang điện thoại (app ntfy) khi ô cần duyệt quá 5 phút · tat · thu
 #   .\wez.ps1 cli <lệnh wezterm cli bất kỳ>
 # Mã thoát của `cho`: 0 = xong · 1 = ô đang chờ bạn duyệt · 2 = hết giờ chờ · 3 = send bị từ chối vì ô bận
-param([Parameter(Position = 0)][string]$Cmd = 'list', [switch]$Ep, [Parameter(ValueFromRemainingArguments)]$Rest)
+param([Parameter(Position = 0)][string]$Cmd = 'list', [switch]$Ep, [switch]$Cho, [string]$Ra, [switch]$Canh,
+    [Parameter(ValueFromRemainingArguments)]$Rest)
+if (-not $Rest) { $Rest = @() }
 
 # Cấu hình chung của máy (khoi-phuc.ps1 tạo): ~\.wez-ai.json = { aiRoot, wezterm }
 $cfg = $null
@@ -26,7 +32,7 @@ $sock = Get-ChildItem "$HOME\.local\share\wezterm\gui-sock-*" -ErrorAction Silen
 if (-not $sock) { Write-Error 'Chưa mở WezTerm.'; exit 1 }
 $env:WEZTERM_UNIX_SOCKET = $sock.FullName
 
-# Trạng thái một ô: Claude ghi qua hooks (wez-alert.js), Codex/Gemini do ~/.wezterm.lua đoán từ tiêu đề
+# Trạng thái một ô: Claude ghi qua hooks (wez-alert.js), Codex do ~/.wezterm.lua đoán từ tiêu đề
 function Get-PaneState($id) {
     $f = Join-Path $stateDir "$id.json"
     if (-not (Test-Path $f)) { return $null }
@@ -41,6 +47,35 @@ function Set-PaneState($id, $state) {
 }
 $label = @{ work = '⏳ đang làm'; idle = '🟢 rảnh'; need = '🔔 cần duyệt' }
 function Read-Pane($id, $n) { & $exe cli get-text --pane-id $id | Where-Object { $_.Trim() } | Select-Object -Last $n }
+
+# Đợi các ô hết 'work'. Trả về: 0 = tất cả xong · 1 = có ô chờ duyệt / đã đóng · 2 = hết giờ
+function Wait-Panes($ids, $max) {
+    $left = [Collections.Generic.List[string]]@($ids | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $code = 0; $sw = [Diagnostics.Stopwatch]::StartNew(); $nextCheck = 30
+    while ($left.Count) {
+        foreach ($id in @($left)) {
+            $s = Get-PaneState $id
+            if ($s -and $s.state -eq 'work') { continue }
+            $left.Remove($id) | Out-Null
+            if (-not $s) { Write-Host "── Ô ${id}: chưa có trạng thái (không phải ô AI?) ──" }
+            else { Write-Host "── Ô ${id}: $($label[$s.state]) sau $([int]$sw.Elapsed.TotalSeconds) giây ──" }
+            Read-Pane $id 40 | Out-Host
+            if ($s -and $s.state -eq 'need') { $code = [Math]::Max($code, 1) }
+        }
+        if (-not $left.Count) { break }
+        if ($sw.Elapsed.TotalSeconds -ge $max) {
+            foreach ($id in $left) { Write-Host "⌛ Hết $max giây, ô $id vẫn đang làm."; Read-Pane $id 20 | Out-Host }
+            return 2
+        }
+        if ($sw.Elapsed.TotalSeconds -ge $nextCheck) {   # thỉnh thoảng xem ô còn mở không
+            $nextCheck += 30
+            $alive = @((& $exe cli list --format json | Out-String | ConvertFrom-Json) | ForEach-Object { "$($_.pane_id)" })
+            foreach ($id in @($left)) { if ($id -notin $alive) { Write-Host "❌ Ô $id đã đóng."; $left.Remove($id) | Out-Null; $code = [Math]::Max($code, 1) } }
+        }
+        Start-Sleep -Seconds 2
+    }
+    return $code
+}
 
 switch ($Cmd) {
     'list' {
@@ -71,24 +106,50 @@ switch ($Cmd) {
         & $exe cli send-text --pane-id $id --no-paste "`r"   # nhấn Enter
         Set-PaneState $id 'work'   # để `cho` biết là vừa giao việc
     }
+    # cho <id>[,<id>...] [giây]: đợi một hoặc nhiều ô làm xong (ô nào xong trước in trước)
     'cho' {
-        $id = $Rest[0]; $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
-        $alive = { (& $exe cli list --format json | Out-String | ConvertFrom-Json) | Where-Object { "$($_.pane_id)" -eq "$id" } }
-        $sw = [Diagnostics.Stopwatch]::StartNew(); $nextCheck = 30
-        while ($true) {
-            $s = Get-PaneState $id
-            if (-not $s) { Write-Host "Ô $id chưa có trạng thái (không phải ô AI, hoặc AI chưa chạy lần nào)."; Read-Pane $id 40; exit 0 }
-            if ($s.state -ne 'work') { break }
-            if ($sw.Elapsed.TotalSeconds -ge $max) { Write-Host "⌛ Hết $max giây, ô $id vẫn đang làm."; Read-Pane $id 20; exit 2 }
-            if ($sw.Elapsed.TotalSeconds -ge $nextCheck) {   # thỉnh thoảng xem ô còn mở không
-                $nextCheck += 30
-                if (-not (& $alive)) { Write-Error "Ô $id đã đóng."; exit 1 }
-            }
-            Start-Sleep -Seconds 2
+        $ids = "$($Rest[0])" -split ','; $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
+        exit (Wait-Panes $ids $max)
+    }
+    # giao <dự án> <claude|codex> "việc" [-Cho] [-Ra <file>] [-Canh]
+    #   mở AI mới ở thư mục dự án (tab nền; -Canh = ô bên phải ô đang gọi) với câu giao việc làm lời nhắn đầu tiên.
+    #   In PANEID của ô mới. -Cho: đợi xong rồi in kết quả. -Ra <file>: lưu 300 dòng cuối của ô vào file (kèm -Cho).
+    #   Giao song song: gọi giao nhiều lần (không -Cho), rồi `cho 12,13,14`.
+    'giao' {
+        if ($Rest.Count -lt 3) { Write-Error 'Cách dùng: wez.ps1 giao <dự án> <claude|codex> "việc" [-Cho] [-Ra <file>] [-Canh]'; exit 1 }
+        $projName = $Rest[0]; $ai = "$($Rest[1])".ToLower(); $task = ($Rest[2..($Rest.Count - 1)] -join ' ')
+        $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
+        $proj = Get-ChildItem $aiRoot -Directory | Where-Object { $_.Name -eq $projName } | Select-Object -First 1
+        if (-not $proj) { $proj = @(Get-ChildItem $aiRoot -Directory | Where-Object { $_.Name -like "$projName*" }) | Select-Object -First 1 }
+        if (-not $proj) { Write-Error "Không thấy dự án '$projName' trong $aiRoot"; exit 1 }
+        $start = @{ claude = 'claudeRC'; codex = 'codex' }[$ai]
+        if (-not $start) { Write-Error "AI '$ai' không có (dùng claude hoặc codex)"; exit 1 }
+        # Câu giao việc để trong file tạm rồi đọc lại: tránh lỗi dấu ngoặc kép / tiếng Việt khi truyền qua nhiều lớp lệnh
+        $taskDir = Join-Path $env:LOCALAPPDATA 'wez-ai\giao'
+        New-Item -ItemType Directory -Force -Path $taskDir | Out-Null
+        $taskFile = Join-Path $taskDir ("{0}-{1}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $proj.Name)
+        [IO.File]::WriteAllText($taskFile, $task, (New-Object Text.UTF8Encoding $false))
+        $psCmd = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; $start (Get-Content -Raw -Encoding UTF8 '$taskFile')"
+        if ($Canh -and $env:WEZTERM_PANE) {
+            $new = & $exe cli split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
+        } else {
+            $new = & $exe cli spawn --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
+            if ($new) { & $exe cli set-tab-title --pane-id $new.Trim() "$($proj.Name) · việc giao" }
         }
-        Write-Host "── Ô ${id}: $($label[$s.state]) sau $([int]$sw.Elapsed.TotalSeconds) giây ──"
-        Read-Pane $id 40
-        if ($s.state -eq 'need') { exit 1 } else { exit 0 }
+        if (-not $new) { Write-Error 'Không mở được ô mới.'; exit 1 }
+        $new = $new.Trim()
+        if ($env:WEZTERM_PANE) { & $exe cli activate-pane --pane-id $env:WEZTERM_PANE }   # giữ màn hình ở ô đang làm
+        Set-PaneState $new 'work'
+        Write-Host "📨 Đã giao cho $ai ở $($proj.Name) → ô $new" -ForegroundColor Cyan
+        Write-Output $new
+        if ($Cho) {
+            $code = Wait-Panes @($new) 1800
+            if ($Ra) {
+                & $exe cli get-text --pane-id $new --start-line -300 | Out-File -FilePath $Ra -Encoding utf8
+                Write-Host "💾 Đã lưu kết quả vào $Ra"
+            }
+            exit $code
+        }
     }
     'read' {
         $id = $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
@@ -105,5 +166,40 @@ switch ($Cmd) {
     }
     # mo <file>: bật tài liệu lên ô "📄" bên phải tab người dùng đang xem
     'mo' { node "$PSScriptRoot\mo-tai-lieu.js" $Rest[0] }
-    default { Write-Error "Lệnh không rõ: $Cmd (dùng list | send | cho | read | nen | chinh | mo | cli)" }
+    # dienthoai bat [kênh] [số phút] | tat | thu : báo sang điện thoại qua app ntfy khi ô cần duyệt mà bạn vắng máy
+    #   bat: lưu kênh vào ~\.wez-ai.json (không đưa kênh thì tự tạo kênh bí mật ngẫu nhiên); mặc định chờ 5 phút mới báo
+    'dienthoai' {
+        $cfgFile = "$HOME\.wez-ai.json"
+        $c = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { New-Object PSObject }
+        $save = { [IO.File]::WriteAllText($cfgFile, ($c | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false)) }
+        switch ("$($Rest[0])") {
+            'bat' {
+                $kenh = if ($Rest.Count -gt 1 -and $Rest[1] -notmatch '^\d+$') { $Rest[1] } else { 'wezai-' + ([guid]::NewGuid().ToString('N').Substring(0, 16)) }
+                $phut = ($Rest | Where-Object { "$_" -match '^\d+$' } | Select-Object -First 1); if (-not $phut) { $phut = 5 }
+                $c | Add-Member -NotePropertyName dienThoai -NotePropertyValue ([pscustomobject]@{ ntfy = $kenh; server = 'https://ntfy.sh'; sauPhut = [int]$phut; baoXong = $false }) -Force
+                & $save
+                Write-Host "📱 Đã bật. Kênh: $kenh  ·  báo khi ô cần duyệt quá $phut phút mà chưa bấm vào." -ForegroundColor Green
+                Write-Host '   1. Cài app "ntfy" trên điện thoại (Android / iPhone, miễn phí).'
+                Write-Host "   2. Trong app bấm + → Subscribe to topic (Theo dõi kênh) → gõ: $kenh"
+                Write-Host '   3. Thử: wez.ps1 dienthoai thu'
+                Write-Host '   ⚠️  Ai biết tên kênh đều đọc được tin → đừng chia sẻ tên kênh.' -ForegroundColor Yellow
+            }
+            'tat' {
+                $c.PSObject.Properties.Remove('dienThoai'); & $save
+                Write-Host '📵 Đã tắt báo sang điện thoại.'
+            }
+            'thu' {
+                if (-not $c.dienThoai) { Write-Error 'Chưa bật. Chạy: wez.ps1 dienthoai bat'; exit 1 }
+                $url = "$($c.dienThoai.server)/$($c.dienThoai.ntfy)"
+                $body = [Text.Encoding]::UTF8.GetBytes('✅ Thử báo động từ WezTerm · đội AI')
+                Invoke-RestMethod -Method Post -Uri $url -Body $body -Headers @{ Title = 'WezTerm AI'; Tags = 'bell' } -TimeoutSec 15 | Out-Null
+                Write-Host '📨 Đã gửi tin thử. Điện thoại chưa nhận được thì xem lại tên kênh trong app ntfy.'
+            }
+            default {
+                if ($c.dienThoai) { Write-Host "📱 Đang bật · kênh $($c.dienThoai.ntfy) · báo sau $($c.dienThoai.sauPhut) phút" }
+                else { Write-Host '📵 Đang tắt. Bật: wez.ps1 dienthoai bat [kênh] [số phút]' }
+            }
+        }
+    }
+    default { Write-Error "Lệnh không rõ: $Cmd (dùng list | send | cho | giao | read | nen | chinh | mo | dienthoai | cli)" }
 }

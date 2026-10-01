@@ -1,11 +1,12 @@
 ﻿# khoi-phuc.ps1 — cài lại toàn bộ "đội AI trên WezTerm" lên một máy Windows mới.
 # Chạy trong PowerShell, đứng ở thư mục repo này:
 #   powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1                     # cài cấu hình (dự án ở E:\AI)
-#   powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI              # cài thêm Claude Code, Codex, Gemini CLI
+#   powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI              # cài thêm Claude Code, Codex
 #   powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -AIRoot D:\AI       # máy không có ổ E: → để dự án ở chỗ khác
 # File nào đã có trên máy đều được sao lưu thành <tên>.bak-<ngày giờ> trước khi ghi đè.
-# Không chứa API key / mật khẩu: sau khi chạy, tự đăng nhập từng AI (claude, codex, gemini).
-param([switch]$CaiAI, [string]$AIRoot)
+# Không chứa API key / mật khẩu: sau khi chạy, tự đăng nhập từng AI (claude, codex).
+#   -BoQuaPhanMem : không chạy winget (đã tự cài WezTerm, Node, Git, glow; hoặc chạy thử trong máy ảo)
+param([switch]$CaiAI, [string]$AIRoot, [switch]$BoQuaPhanMem)
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -31,12 +32,21 @@ function Copy-Safe($src, $dst) {
 function Backup($f) { if (Test-Path $f) { Copy-Item $f "$f.bak-$stamp" } }
 
 Write-Host "`n[1/8] Cài phần mềm (winget)" -ForegroundColor Cyan
-foreach ($id in 'wez.wezterm', 'charmbracelet.glow', 'OpenJS.NodeJS.LTS', 'Git.Git') {
-    winget install --id $id -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
-    Write-Host "  ✓ $id"
+if ($BoQuaPhanMem) { Write-Host '  - bỏ qua (-BoQuaPhanMem)' }
+elseif (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host '  ⚠️  Máy không có winget → tự cài tay: WezTerm, Node.js LTS, Git, glow (rồi chạy lại script này)' -ForegroundColor Yellow
+} else {
+    foreach ($id in 'wez.wezterm', 'charmbracelet.glow', 'OpenJS.NodeJS.LTS', 'Git.Git') {
+        winget install --id $id -e --silent --accept-source-agreements --accept-package-agreements | Out-Null
+        # 0 = cài xong; -1978335189 = đã có sẵn, không cần cập nhật
+        if ($LASTEXITCODE -in 0, -1978335189) { Write-Host "  ✓ $id" } else { Write-Host "  ⚠️  ${id}: winget báo lỗi $LASTEXITCODE (cài tay nếu kiem-tra.ps1 báo thiếu)" -ForegroundColor Yellow }
+    }
 }
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($CaiAI) { npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli }
+if ($CaiAI) {
+    if (Get-Command npm -ErrorAction SilentlyContinue) { npm install -g @anthropic-ai/claude-code @openai/codex }
+    else { Write-Host '  ⚠️  Chưa có npm (Node.js) → chưa cài được Claude Code, Codex' -ForegroundColor Yellow }
+}
 
 Write-Host "`n[2/8] Cấu hình chung của máy (~\.wez-ai.json)" -ForegroundColor Cyan
 $wezExe = 'C:\Program Files\WezTerm\wezterm.exe'
@@ -66,7 +76,7 @@ $cur | Add-Member -NotePropertyName hooks -NotePropertyValue $add.hooks -Force
 [IO.File]::WriteAllText($setPath, ($cur | ConvertTo-Json -Depth 20), $utf8)
 Write-Host "  ✓ $setPath (giữ nguyên các cài đặt khác)" -ForegroundColor Green
 
-Write-Host "`n[6/8] Codex + Gemini: bật tiêu đề động để WezTerm báo động được" -ForegroundColor Cyan
+Write-Host "`n[6/8] Codex: bật run-state trên tiêu đề để WezTerm báo động được" -ForegroundColor Cyan
 $ct = "$HOME\.codex\config.toml"
 $want = (Get-Content "$here\codex\config.phan-them.toml" -Encoding UTF8 | Where-Object { $_ -match '^\s*terminal_title\s*=' } | Select-Object -First 1)
 New-Item -ItemType Directory -Force -Path "$HOME\.codex" | Out-Null
@@ -84,31 +94,25 @@ else {
     [IO.File]::WriteAllLines($ct, [string[]]$lines, $utf8)
     Write-Host "  ✓ $ct" -ForegroundColor Green
 }
-$gs = "$HOME\.gemini\settings.json"
-New-Item -ItemType Directory -Force -Path "$HOME\.gemini" | Out-Null
-$g = if (Test-Path $gs) { Backup $gs; Get-Content $gs -Raw -Encoding UTF8 | ConvertFrom-Json } else { New-Object PSObject }
-if (-not $g.ui) { $g | Add-Member -NotePropertyName ui -NotePropertyValue (New-Object PSObject) -Force }
-$g.ui | Add-Member -NotePropertyName dynamicWindowTitle -NotePropertyValue $true -Force
-[IO.File]::WriteAllText($gs, ($g | ConvertTo-Json -Depth 20), $utf8)
-Write-Host "  ✓ $gs" -ForegroundColor Green
 
-Write-Host "`n[7/8] Lệnh tắt PowerShell (ai, hub, bot...) + quy tắc chung của 3 AI" -ForegroundColor Cyan
+Write-Host "`n[7/8] Lệnh tắt PowerShell (ai, ai2, hub, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
 Copy-Safe "$here\powershell\Microsoft.PowerShell_profile.ps1" $PROFILE
 $rules = (Get-Content "$here\quy-tac\chung.md" -Raw -Encoding UTF8).Replace('E:\AI\', "$AIRoot\")
-foreach ($dst in "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md", "$HOME\.gemini\GEMINI.md") {
+foreach ($dst in "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md") {
     Backup $dst
     [IO.File]::WriteAllText($dst, $rules, $utf8)
     Write-Host "  ✓ $dst" -ForegroundColor Green
 }
 
 Write-Host "`n[8/8] Repo: bật kiểm tra khoá bí mật trước mỗi commit" -ForegroundColor Cyan
-git -C $here config core.hooksPath .githooks
-Write-Host '  ✓ git hook pre-commit → quet-bi-mat.ps1' -ForegroundColor Green
+if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path "$here\.git")) {
+    git -C $here config core.hooksPath .githooks
+    Write-Host '  ✓ git hook pre-commit → quet-bi-mat.ps1' -ForegroundColor Green
+} else { Write-Host '  - bỏ qua (chưa có git hoặc thư mục này không phải bản clone git)' }
 
 Write-Host "`nKiểm tra lại toàn bộ:" -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $hubScripts 'kiem-tra.ps1')
 
 Write-Host "`nXong. Việc còn lại:" -ForegroundColor Yellow
 Write-Host "  1. Clone các dự án về $AIRoot (gh repo clone hionvn/ai-hub $AIRoot\_Hub ...)."
-Write-Host "  2. Mở WezTerm. Đăng nhập từng AI: gõ claude, codex, gemini và làm theo hướng dẫn."
-Write-Host "  3. Gemini cần API key: đặt trong biến môi trường, không ghi vào file trong dự án."
+Write-Host "  2. Mở WezTerm. Đăng nhập từng AI: gõ claude, codex và làm theo hướng dẫn."

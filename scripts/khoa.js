@@ -1,8 +1,8 @@
-// khoa.js — "khoá file" để Claude, Codex, Gemini không sửa chồng lên cùng một file.
+// khoa.js — "khoá file" để Claude và Codex không sửa chồng lên cùng một file.
 // Khoá lưu ở %LOCALAPPDATA%\wez-ai\khoa.json, mỗi khoá tự hết hạn sau 30 phút không đụng tới.
 // Chủ khoá = ô WezTerm (WEZTERM_PANE); khoá của ô đã đóng coi như hết hiệu lực.
 //
-// AI tự gọi (Codex, Gemini — Claude được làm tự động qua hooks):
+// AI tự gọi (Codex — Claude được làm tự động qua hooks):
 //   node khoa.js giu <file> [--ai codex] [--ghi "đang sửa phần giá"]   giữ file trước khi sửa (bị người khác giữ → mã thoát 1)
 //   node khoa.js tha <file>                                            thả khi sửa xong
 //   node khoa.js tha-het                                               thả mọi khoá của ô này
