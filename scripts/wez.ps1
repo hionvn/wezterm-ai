@@ -21,7 +21,8 @@ switch ($Cmd) {
     'list' { & $exe cli list }
     'send' {
         $id = $Rest[0]; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')
-        & $exe cli send-text --pane-id $id -- $text   # dán nguyên câu (kể cả tiếng Việt)
+        # PowerShell 5.1 làm vỡ tham số có dấu ngoặc kép khi gọi chương trình ngoài → thêm \ trước mỗi "
+        & $exe cli send-text --pane-id $id -- ($text -replace '"', '\"')   # dán nguyên câu (kể cả tiếng Việt)
         Start-Sleep -Milliseconds 300
         & $exe cli send-text --pane-id $id --no-paste "`r"   # nhấn Enter
     }
