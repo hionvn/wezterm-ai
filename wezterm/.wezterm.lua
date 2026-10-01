@@ -659,18 +659,75 @@ local function fuel_cells()
   local files = wezterm.glob(home .. '/.codex/sessions/*/*/*/*.jsonl')
   table.sort(files)
   local s = files[#files] and read_file(files[#files], 262144)
+  local codex
   if s then
-    local p5, r5, pw
+    local p5, r5, pw, rw
     for u, r in s:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do p5, r5 = u, r end
-    for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do pw = u end
+    for u, r in s:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do pw, rw = u, r end
+    if not pw then for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do pw = u end end
     if p5 then
       table.insert(cells, { Foreground = { Color = '#5c6370' } })
       table.insert(cells, { Text = '  ·  ' })
       for _, it in ipairs(fuel_part('Codex', tonumber(p5), tonumber(r5), tonumber(pw))) do table.insert(cells, it) end
+      codex = { file = files[#files], five = tonumber(p5), five_reset = tonumber(r5), week = tonumber(pw), week_reset = tonumber(rw) }
     end
   end
-  fuel_cache = { at = os.time(), cells = cells }
+  fuel_cache = { at = os.time(), cells = cells, codex = codex }
   return cells
+end
+
+-- Cảnh báo Codex sắp hết hạn mức (5 giờ hoặc tuần) → nháy thông báo + điện thoại (nếu bật) để BẠN tự đổi: codextk <n>.
+-- KHÔNG tự đổi tài khoản (rủi ro điều khoản OpenAI — đã chốt 02/10/2026). Ngưỡng: ~\.wez-ai.json "codexCanhBao" (mặc định 90).
+-- Vừa đổi tài khoản thì số cũ trong file phiên là của tài khoản trước → chỉ tin phần file ghi thêm sau lúc đổi.
+local CODEX_WARN = tonumber(machine.codexCanhBao) or 90
+local function codex_warn(window)
+  local c = fuel_cache.codex
+  if not c then return end
+  local home = os.getenv('USERPROFILE') or 'C:\\Users\\Hion'
+  local acct = ((read_file(home .. '\\.codex\\tk-hien-tai.txt') or '?'):gsub('%s', ''))
+  local g = wezterm.GLOBAL
+  local f = io.open(c.file, 'rb')
+  local size = f and f:seek('end') or 0
+  if f then f:close() end
+  if g.codex_acct == nil then g.codex_acct = acct end
+  if g.codex_acct ~= acct then -- vừa đổi tài khoản: ghi mốc, chưa tin số liệu cũ
+    g.codex_acct, g.codex_mark = acct, { file = c.file, size = size }
+    return
+  end
+  local five, week = c.five, c.week
+  local mark = g.codex_mark
+  if mark and mark.file == c.file then
+    if size <= mark.size then return end
+    local s = read_file(c.file, size - mark.size) or ''
+    five, week = nil, nil
+    for u in s:gmatch('"primary":{"used_percent":([%d%.]+)') do five = tonumber(u) end
+    for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do week = tonumber(u) end
+  end
+  local now = os.time()
+  if five and c.five_reset and c.five_reset < now then five = 0 end
+  local which, pct, reset
+  if week and week >= CODEX_WARN then which, pct, reset = 'tuần', week, c.week_reset
+  elseif five and five >= CODEX_WARN then which, pct, reset = '5 giờ', five, c.five_reset end
+  if not which then return end
+  local key = acct .. ':' .. which .. ':' .. tostring(reset or os.date('%Y%m%d%H'))
+  g.codex_warned = g.codex_warned or {}
+  if g.codex_warned[key] then return end
+  g.codex_warned[key] = true
+  -- gợi ý tài khoản kế tiếp trong danh sách auth-<n>.json
+  local nums = {}
+  for _, p in ipairs(wezterm.glob(home:gsub('\\', '/') .. '/.codex/auth-*.json')) do
+    local n = p:match('auth%-(%w+)%.json$')
+    if n then table.insert(nums, n) end
+  end
+  table.sort(nums)
+  local nxt
+  for i, n in ipairs(nums) do if n == acct then nxt = nums[i % #nums + 1] end end
+  nxt = (nxt and nxt ~= acct) and nxt or (nums[1] ~= acct and nums[1]) or '<số>'
+  local msg = '⛽ Codex TK ' .. acct .. ' đã dùng ' .. math.floor(pct + 0.5) .. '% hạn mức ' .. which
+    .. (reset and (' (làm mới ' .. os.date('%H:%M %d/%m', reset) .. ')') or '')
+    .. '. Đóng hết ô Codex rồi gõ: codextk ' .. nxt
+  window:toast_notification('WezTerm · đội AI', msg, nil, 15000)
+  if PHONE then send_phone(msg) end
 end
 
 wezterm.on('format-tab-title', function(tab)
@@ -760,6 +817,8 @@ wezterm.on('update-status', function(window, pane)
   local okf, fc = pcall(fuel_cells)
   if not okf then wezterm.log_error('fuel_cells: ' .. tostring(fc)) end
   if okf and fc and #fc > 2 then add(fc) end
+  local okw, errw = pcall(codex_warn, window)
+  if not okw then wezterm.log_error('codex_warn: ' .. tostring(errw)) end
   if ai then add { { Foreground = { Color = '#56b6c2' } }, { Text = icon .. ' ' .. ai } } end
   local where = { { Foreground = { Color = proj_color(proj) } }, { Attribute = { Intensity = 'Bold' } }, { Text = '📁 ' .. proj } }
   table.insert(where, { Attribute = { Intensity = 'Normal' } })
