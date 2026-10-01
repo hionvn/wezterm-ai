@@ -35,7 +35,7 @@ process.stdin.on('end', () => {
     return;
   }
   const project = path.basename(data.cwd || process.cwd());
-  const who = project.toLowerCase() === '_hub' ? '👑 Tổng quản' : `🧭 Manager ${project}`;
+  const who = project.toLowerCase() === 'hion' ? '👑 Tổng quản' : `🧭 Manager ${project}`;
   let text;
   if (kind === 'done') text = `${who} đã trả lời xong`;
   else if (asksPermission) text = `${who} cần bạn cho phép`;

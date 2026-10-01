@@ -1,6 +1,6 @@
 ﻿# kiem-tra.ps1 — tự chẩn đoán bộ "đội AI trong WezTerm": thiếu gì, cài sai chỗ nào, sửa thế nào.
 # Chạy trong PowerShell:
-#   powershell -ExecutionPolicy Bypass -File E:\AI\_Hub\cai-dat\kiem-tra.ps1
+#   powershell -ExecutionPolicy Bypass -File E:\AI\Hion\cai-dat\kiem-tra.ps1
 # Chỉ đọc, không sửa gì trên máy. Mã thoát = số lỗi ❌.
 $loi = 0; $canhBao = 0
 function Ok($m) { Write-Host "  ✅ $m" -ForegroundColor Green }
@@ -18,10 +18,10 @@ if (Test-Path "$HOME\.wez-ai.json") {
         Ok "~\.wez-ai.json: thư mục dự án = $AIRoot"
     } catch { Bad '~\.wez-ai.json bị hỏng (không đọc được JSON)' $repoFix }
 } else { Warn "Chưa có ~\.wez-ai.json → dùng mặc định $AIRoot" 'chỉ cần nếu dự án không nằm ở E:\AI; khoi-phuc.ps1 -AIRoot <thư mục> sẽ tạo' }
-$Hub = Join-Path $AIRoot '_Hub'; $CaiDat = Join-Path $Hub 'cai-dat'
+$Hub = Join-Path $AIRoot 'Hion'; $CaiDat = Join-Path $Hub 'cai-dat'
 if (Test-Path $AIRoot) { Ok "Có thư mục dự án $AIRoot" } else { Bad "Không thấy $AIRoot" 'tạo thư mục hoặc sửa aiRoot trong ~\.wez-ai.json' }
 if (Test-Path $Hub) { Ok "Có $Hub (Tổng quản)" } else { Bad "Không thấy $Hub" "clone dự án Hub về: gh repo clone hionvn/ai-hub $Hub" }
-foreach ($f in 'wez.ps1', 'wez-alert.js', 'mo-tai-lieu.js', 'can-duyet-view.ps1', 'khoa.js') {
+foreach ($f in 'wez.ps1', 'wez-alert.js', 'mo-tai-lieu.js', 'can-duyet-view.ps1', 'khoa.js', 'duyet.js', 'bao-cao-sang.js') {
     if (-not (Test-Path (Join-Path $CaiDat $f))) { Bad "Thiếu script $CaiDat\$f" $repoFix }
 }
 if (Test-Path (Join-Path $CaiDat 'khoa.js')) { Ok "Đủ script trong $CaiDat" }
@@ -70,8 +70,8 @@ else {
     if (@($h).Count -eq 1) { Ok '2 file quy tắc (Claude / Codex) giống nhau' }
     else { Warn '2 file quy tắc đang khác nhau' 'sửa ~\.claude\CLAUDE.md rồi chép đè sang ~\.codex\AGENTS.md' }
 }
-if ((Test-Path $PROFILE) -and (Select-String -Path $PROFILE -Pattern 'function ai\b' -Quiet)) { Ok 'Lệnh tắt PowerShell (ai, ai2, hub...)' }
-else { Bad 'Profile PowerShell chưa có lệnh ai / hub...' $repoFix }
+if ((Test-Path $PROFILE) -and (Select-String -Path $PROFILE -Pattern 'function ai\b' -Quiet)) { Ok 'Lệnh tắt PowerShell (ai, ai2, hion...)' }
+else { Bad 'Profile PowerShell chưa có lệnh ai / hion...' $repoFix }
 $pol = Get-ExecutionPolicy -Scope CurrentUser
 if ($pol -in 'Restricted', 'AllSigned') { Warn "ExecutionPolicy = $pol → profile không chạy" 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned' } else { Ok "ExecutionPolicy = $pol" }
 

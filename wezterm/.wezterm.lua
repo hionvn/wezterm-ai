@@ -19,7 +19,7 @@ do
 end
 wezterm.add_to_config_reload_watch_list(HOME .. '\\.wez-ai.json') -- sửa file này là WezTerm tự nạp lại
 local AI_ROOT = (machine.aiRoot or 'E:\\AI'):gsub('[\\/]+$', '')
-local HUB = AI_ROOT .. '\\_Hub'
+local HUB = AI_ROOT .. '\\Hion'
 local AIDIR = (os.getenv('LOCALAPPDATA') or (HOME .. '\\AppData\\Local')) .. '\\wez-ai'
 
 -- Chạy một lệnh trong PowerShell (có nạp profile: ai, claudeRC, codex...).
@@ -29,7 +29,7 @@ local function PS(cmd)
     'Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; ' .. cmd }
 end
 
--- Mở lên là vào menu `ai` (chọn dự án rồi chọn AI), bắt đầu ở _Hub
+-- Mở lên là vào menu `ai` (chọn dự án rồi chọn AI), bắt đầu ở Hion
 config.default_prog = PS('ai')
 config.default_cwd = HUB
 
@@ -162,7 +162,7 @@ local pull_menu = wezterm.action_callback(function(window, pane)
   }, pane)
 end)
 
--- Ctrl+Shift+H: tab mới "Tổng quản" = Claude ở _Hub bên trái + ô tài liệu cần duyệt bên phải
+-- Ctrl+Shift+H: tab mới "Tổng quản" = Claude ở Hion bên trái + ô tài liệu cần duyệt bên phải
 local open_desk = wezterm.action_callback(function(window, _)
   local tab, p = window:mux_window():spawn_tab { cwd = HUB, args = PS('claudeRC') }
   p:split { direction = 'Right', size = 0.38, cwd = HUB, args = VIEWER }
@@ -267,7 +267,7 @@ config.use_fancy_tab_bar = false
 config.tab_max_width = 32
 config.status_update_interval = 2000
 
-local proj_colors = { _hub = '#e5c07b', sino = '#e06c75', coolguy = '#61afef', chatbot = '#c678dd' }
+local proj_colors = { hion = '#e5c07b', sino = '#e06c75', coolguy = '#61afef', chatbot = '#c678dd' }
 local palette = { '#56b6c2', '#98c379', '#d19a66', '#c678dd', '#61afef' }
 local function proj_color(name)
   local c = proj_colors[name:lower()]
@@ -691,7 +691,45 @@ wezterm.on('format-tab-title', function(tab)
   }
 end)
 
+-- Bàn duyệt: nút [✅ Duyệt] [✏️ Trả lời] [❌ Bỏ] trong ô 📋 là link wezai-duyet:<việc>/<mã>
+-- → chạy cai-dat\duyet.js (chuyển việc sang "Đã xử lý" + ghi quyet-dinh.md). Trả lời / Bỏ thì hỏi thêm một dòng.
+local DUYET = HUB .. '/cai-dat/duyet.js'
+local function run_duyet(window, args)
+  local okc, out, err = wezterm.run_child_process(args)
+  local msg = okc and (out or ''):gsub('%s+$', '') or ('❌ ' .. ((err or ''):gsub('%s+$', '')))
+  window:toast_notification('WezTerm · bàn duyệt', msg ~= '' and msg or 'Đã ghi.', nil, 4000)
+end
+wezterm.on('open-uri', function(window, pane, uri)
+  local verb, id = uri:match('^wezai%-duyet:(%a+)/(%w+)$')
+  if not verb then return end -- link thường: mở như mặc định
+  if verb == 'ok' then
+    run_duyet(window, { 'node', DUYET, 'ok', id })
+  else
+    window:perform_action(act.PromptInputLine {
+      description = verb == 'sua' and '✏️ Câu trả lời / yêu cầu của bạn (Enter = lưu · Esc = huỷ):'
+        or '❌ Lý do bỏ (có thể để trống · Enter = bỏ · Esc = huỷ):',
+      action = wezterm.action_callback(function(win, _, line)
+        if line == nil or (verb == 'sua' and line == '') then return end
+        run_duyet(win, { 'node', DUYET, verb, id, line })
+      end),
+    }, pane)
+  end
+  return false
+end)
+
+-- Báo cáo sáng: mỗi ngày từ 7 giờ, lần đầu WezTerm chạy thì Tổng quản gom tiến độ + việc chờ duyệt → Hion\bao-cao\<ngày>.md và bật lên
+local function morning_report()
+  local today = wezterm.strftime('%Y-%m-%d')
+  if wezterm.GLOBAL.bao_cao_ngay == today or tonumber(wezterm.strftime('%H')) < 7 then return end
+  wezterm.GLOBAL.bao_cao_ngay = today
+  local f = io.open(HUB .. '/bao-cao/' .. today .. '.md', 'rb')
+  if f then f:close() return end
+  wezterm.background_child_process { 'node', HUB .. '/cai-dat/bao-cao-sang.js', '--mo' }
+end
+
 wezterm.on('update-status', function(window, pane)
+  local okr, errr = pcall(morning_report)
+  if not okr then wezterm.log_error('morning_report: ' .. tostring(errr)) end
   local oka, erra = pcall(process_alerts, window)
   if not oka then wezterm.log_error('process_alerts: ' .. tostring(erra)) end
   local oko, erro = pcall(process_open, window)

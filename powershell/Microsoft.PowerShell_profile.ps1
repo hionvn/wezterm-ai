@@ -107,7 +107,7 @@ function Enter-AIProject {
     Set-Location $dir
     if ($All) { ai2 $dir } else { claudeRC }
 }
-function hub  { param([switch]$All) Enter-AIProject '_Hub'    -All:$All }
+function hion { param([switch]$All) Enter-AIProject 'Hion'    -All:$All }
 function sino { param([switch]$All) Enter-AIProject 'Sino'    -All:$All }
 function cool { param([switch]$All) Enter-AIProject 'Coolguy' -All:$All }
 function bot  { param([switch]$All) Enter-AIProject 'Chatbot' -All:$All }

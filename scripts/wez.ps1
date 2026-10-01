@@ -7,8 +7,9 @@
 #   .\wez.ps1 cho 3 [số giây]                       # đợi ô 3 làm xong (mặc định tối đa 1800 giây) rồi in 40 dòng cuối
 #   .\wez.ps1 cho 3,5,7                             # đợi nhiều ô cùng lúc (giao việc song song)
 #   .\wez.ps1 giao Sino codex "Viết bài đăng FB…"    # mở Codex mới ở E:\AI\Sino (tab nền) với việc đó, in PANEID
-#   .\wez.ps1 giao Sino claude "…" -Cho -Ra E:\AI\_Hub\ket-qua.txt   # … rồi đợi xong và lưu kết quả
-#   .\wez.ps1 read 3 40                             # đọc 40 dòng cuối của ô 3
+#   .\wez.ps1 giao Sino claude "…" -Cho -Ra E:\AI\Hion\ket-qua.txt   # … rồi đợi xong và lưu kết quả
+#   .\wez.ps1 review Chatbot [codex|claude]         # nhờ AI kia review chéo thay đổi chưa commit (kết quả bật lên)
+#   .\wez.ps1 read 3 40                            # đọc 40 dòng cuối của ô 3
 #   .\wez.ps1 nen 3                                 # đẩy ô 3 ra tab nền
 #   .\wez.ps1 chinh 3                               # kéo ô 3 về cạnh ô đang gọi lệnh
 #   .\wez.ps1 mo E:\AI\Chatbot\tien-do-chatbot.md   # bật tài liệu lên cho người dùng xem
@@ -151,6 +152,22 @@ switch ($Cmd) {
             exit $code
         }
     }
+    # review <dự án> [codex|claude] [-Cho]: nhờ AI kia review chéo thay đổi chưa commit (mặc định Codex review việc Claude làm).
+    #   Reviewer chỉ đọc, ghi kết quả vào Hion\bao-cao\review-<dự án>-<giờ>.md rồi bật lên.
+    'review' {
+        if ($Rest.Count -lt 1) { Write-Error 'Cách dùng: wez.ps1 review <dự án> [codex|claude] [-Cho]'; exit 1 }
+        $who = if ($Rest.Count -gt 1) { "$($Rest[1])".ToLower() } else { 'codex' }
+        $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
+        $outFile = Join-Path $aiRoot ("Hion\bao-cao\review-{0}-{1}.md" -f $Rest[0], (Get-Date -Format 'yyyyMMdd-HHmm'))
+        New-Item -ItemType Directory -Force -Path (Split-Path $outFile) | Out-Null
+        $task = "Bạn là agent REVIEW của dự án này: chỉ đọc, KHÔNG sửa file, KHÔNG commit. " +
+            "Xem thay đổi chưa commit (git status, git diff HEAD); nếu không có thì xem commit gần nhất (git show HEAD). " +
+            "Tìm lỗi thật: sai logic, hỏng chức năng đang chạy, lộ khoá bí mật/mật khẩu, trái quy ước trong AGENTS.md, việc chạm tiền/gửi tin khách mà không hỏi người dùng. " +
+            "Ghi kết quả bằng tiếng Việt vào file $outFile : mỗi lỗi gồm file:dòng, mức độ (cao/vừa/thấp), vì sao sai, cách sửa; không có lỗi thì ghi 'Không thấy lỗi'. " +
+            "Xong chạy: node $PSScriptRoot\mo-tai-lieu.js $outFile"
+        & $PSCommandPath giao $Rest[0] $who $task -Cho:$Cho
+        exit $LASTEXITCODE
+    }
     'read' {
         $id = $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
         Read-Pane $id $n
@@ -201,5 +218,5 @@ switch ($Cmd) {
             }
         }
     }
-    default { Write-Error "Lệnh không rõ: $Cmd (dùng list | send | cho | giao | read | nen | chinh | mo | dienthoai | cli)" }
+    default { Write-Error "Lệnh không rõ: $Cmd (dùng list | send | cho | giao | review | read | nen | chinh | mo | dienthoai | cli)" }
 }

@@ -9,7 +9,7 @@
                                            "hooks":  [
                                                          {
                                                              "type":  "command",
-                                                             "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" need"
+                                                             "command":  "node \"E:/AI/Hion/cai-dat/wez-alert.js\" need"
                                                          }
                                                      ]
                                        }
@@ -19,7 +19,7 @@
                                    "hooks":  [
                                                  {
                                                      "type":  "command",
-                                                     "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" done"
+                                                     "command":  "node \"E:/AI/Hion/cai-dat/wez-alert.js\" done"
                                                  }
                                              ]
                                }
@@ -29,7 +29,7 @@
                                                "hooks":  [
                                                              {
                                                                  "type":  "command",
-                                                                 "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" work"
+                                                                 "command":  "node \"E:/AI/Hion/cai-dat/wez-alert.js\" work"
                                                              }
                                                          ]
                                            }
@@ -40,7 +40,7 @@
                                          "hooks":  [
                                                        {
                                                            "type":  "command",
-                                                           "command":  "node \"E:/AI/_Hub/cai-dat/khoa.js\" hook-truoc"
+                                                           "command":  "node \"E:/AI/Hion/cai-dat/khoa.js\" hook-truoc"
                                                        }
                                                    ]
                                      }
@@ -51,7 +51,7 @@
                                           "hooks":  [
                                                         {
                                                             "type":  "command",
-                                                            "command":  "node \"E:/AI/_Hub/cai-dat/wez-alert.js\" work"
+                                                            "command":  "node \"E:/AI/Hion/cai-dat/wez-alert.js\" work"
                                                         }
                                                     ]
                                       },
@@ -60,7 +60,7 @@
                                           "hooks":  [
                                                         {
                                                             "type":  "command",
-                                                            "command":  "node \"E:/AI/_Hub/cai-dat/khoa.js\" hook-sau"
+                                                            "command":  "node \"E:/AI/Hion/cai-dat/khoa.js\" hook-sau"
                                                         }
                                                     ]
                                       }

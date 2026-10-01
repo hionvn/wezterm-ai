@@ -34,12 +34,12 @@ process.stdin.on('end', () => {
   const dir = ws.current_dir || data.cwd || process.cwd();
   const projDir = ws.project_dir || dir;
   const project = projDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
-  const projColors = { _hub: yellow, sino: red, coolguy: blue, chatbot: magenta };
+  const projColors = { hion: yellow, sino: red, coolguy: blue, chatbot: magenta };
   const palette = [cyan, green, orange, magenta, blue];
   let pc = projColors[project.toLowerCase()];
   if (!pc) { let h = 0; for (const ch of project) h = (h * 31 + ch.charCodeAt(0)) >>> 0; pc = palette[h % palette.length]; }
-  // Nhãn chức vụ theo sơ đồ tổ chức: _Hub = Chief of Staff, thư mục dự án = Manager dự án đó
-  const role = project.toLowerCase() === '_hub' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó
+  const role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
   let where = `${pc}${bold}${role}${R}  📁 ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);
   if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) where += `${dim} › ${rel.replace(/\\/g, '/')}${R}`;

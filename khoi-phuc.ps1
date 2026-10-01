@@ -19,7 +19,7 @@ if (-not (Test-Path (Split-Path $AIRoot -Qualifier))) {
     $AIRoot = Read-Host "Máy không có ổ $(Split-Path $AIRoot -Qualifier). Để các dự án AI ở thư mục nào? (vd. D:\AI)"
 }
 $AIRoot = $AIRoot.TrimEnd('\')
-$hubScripts = Join-Path $AIRoot '_Hub\cai-dat'
+$hubScripts = Join-Path $AIRoot 'Hion\cai-dat'
 $hubFwd = $hubScripts -replace '\\', '/'
 
 function Copy-Safe($src, $dst) {
@@ -51,7 +51,7 @@ if ($CaiAI) {
 Write-Host "`n[2/8] Cấu hình chung của máy (~\.wez-ai.json)" -ForegroundColor Cyan
 $wezExe = 'C:\Program Files\WezTerm\wezterm.exe'
 if (-not (Test-Path $wezExe)) { $c = Get-Command wezterm -ErrorAction SilentlyContinue; if ($c) { $wezExe = $c.Source } }
-New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot '_Hub'), "$env:LOCALAPPDATA\wez-ai\alerts", "$env:LOCALAPPDATA\wez-ai\state" | Out-Null
+New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot 'Hion'), "$env:LOCALAPPDATA\wez-ai\alerts", "$env:LOCALAPPDATA\wez-ai\state" | Out-Null
 [IO.File]::WriteAllText("$HOME\.wez-ai.json", ([ordered]@{ aiRoot = $AIRoot; wezterm = $wezExe } | ConvertTo-Json), $utf8)
 Write-Host "  ✓ dự án ở $AIRoot · WezTerm: $wezExe" -ForegroundColor Green
 
@@ -64,7 +64,7 @@ Get-ChildItem "$here\scripts" -File | ForEach-Object { Copy-Safe $_.FullName (Jo
 Write-Host "`n[5/8] Claude: thanh trạng thái + hooks (báo động, trạng thái, khoá file)" -ForegroundColor Cyan
 Copy-Safe "$here\claude\statusline.js" "$HOME\.claude\statusline.js"
 $setPath = "$HOME\.claude\settings.json"
-$addText = (Get-Content "$here\claude\settings.phan-them.json" -Raw -Encoding UTF8).Replace('E:/AI/_Hub/cai-dat', $hubFwd)
+$addText = (Get-Content "$here\claude\settings.phan-them.json" -Raw -Encoding UTF8).Replace('E:/AI/Hion/cai-dat', $hubFwd)
 $add = $addText | ConvertFrom-Json
 $add.statusLine.command = "node `"$($HOME -replace '\\','/')/.claude/statusline.js`""   # đúng thư mục người dùng máy mới
 if (Test-Path $setPath) {
@@ -95,7 +95,7 @@ else {
     Write-Host "  ✓ $ct" -ForegroundColor Green
 }
 
-Write-Host "`n[7/8] Lệnh tắt PowerShell (ai, ai2, hub, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
+Write-Host "`n[7/8] Lệnh tắt PowerShell (ai, ai2, hion, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
 Copy-Safe "$here\powershell\Microsoft.PowerShell_profile.ps1" $PROFILE
 $rules = (Get-Content "$here\quy-tac\chung.md" -Raw -Encoding UTF8).Replace('E:\AI\', "$AIRoot\")
 foreach ($dst in "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md") {
@@ -114,5 +114,5 @@ Write-Host "`nKiểm tra lại toàn bộ:" -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $hubScripts 'kiem-tra.ps1')
 
 Write-Host "`nXong. Việc còn lại:" -ForegroundColor Yellow
-Write-Host "  1. Clone các dự án về $AIRoot (gh repo clone hionvn/ai-hub $AIRoot\_Hub ...)."
+Write-Host "  1. Clone các dự án về $AIRoot (gh repo clone hionvn/ai-hub $AIRoot\Hion ...)."
 Write-Host "  2. Mở WezTerm. Đăng nhập từng AI: gõ claude, codex và làm theo hướng dẫn."

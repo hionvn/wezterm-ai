@@ -5,7 +5,7 @@
 $here = $PSScriptRoot
 $AIRoot = 'E:\AI'
 if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.aiRoot) { $AIRoot = $c.aiRoot } }
-$caiDat = Join-Path $AIRoot '_Hub\cai-dat'
+$caiDat = Join-Path $AIRoot 'Hion\cai-dat'
 $utf8 = New-Object Text.UTF8Encoding $false
 
 $copies = @(
@@ -38,7 +38,7 @@ foreach ($o in @("$HOME\.codex\AGENTS.md")) {
 # Claude: chỉ lấy phần statusLine + hooks của settings.json (phần còn lại là cài đặt riêng máy)
 $s = Get-Content "$HOME\.claude\settings.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $part = [ordered]@{ statusLine = $s.statusLine; hooks = $s.hooks }
-$json = ($part | ConvertTo-Json -Depth 20).Replace(($caiDat -replace '\\', '/'), 'E:/AI/_Hub/cai-dat')
+$json = ($part | ConvertTo-Json -Depth 20).Replace(($caiDat -replace '\\', '/'), 'E:/AI/Hion/cai-dat')
 [IO.File]::WriteAllText((Join-Path $here 'claude\settings.phan-them.json'), $json, $utf8)
 Write-Host '  ✓ claude\settings.phan-them.json'
 
