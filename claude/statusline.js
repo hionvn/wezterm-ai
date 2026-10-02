@@ -55,7 +55,7 @@ process.stdin.on('end', () => {
 
   const line1 = [where];
   const model = (data.model && data.model.display_name) || '?';
-  line1.push(`🤖 ${cyan}${model}${R}` + (data.fast_mode ? ` ${yellow}⚡${R}` : ''));
+  line1.push(`🤖 ${cyan}${model}${R}` + (data.fast_mode ? ` ${orange}${bold}⚡ FAST${R}` : ''));
   if (data.effort && data.effort.level) line1.push(`💭 ${magenta}${data.effort.level}${R}`);
   if (data.session_name) line1.push(`💬 ${dim}${data.session_name}${R}`);
   if (data.output_style && data.output_style.name && data.output_style.name !== 'default') {
