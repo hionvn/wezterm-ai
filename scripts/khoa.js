@@ -32,26 +32,55 @@ function save(locks) {
   fs.renameSync(tmp, FILE);
 }
 
+// Cửa sổ WezTerm đang chạy = file gui-sock-<pid> có tiến trình <pid> còn sống (mới nhất).
+// Số ô (PANEID) đánh lại từ 0 mỗi lần mở lại WezTerm → khoá ghi kèm tên cửa sổ; khác cửa sổ = khoá cũ, bỏ.
+function liveGui() {
+  const dir = path.join(process.env.USERPROFILE || '', '.local', 'share', 'wezterm');
+  let best = null;
+  try {
+    for (const n of fs.readdirSync(dir)) {
+      const m = /^gui-sock-(\d+)$/.exec(n);
+      if (!m) continue;
+      try { process.kill(Number(m[1]), 0); } catch { continue; } // tiến trình đã tắt
+      const full = path.join(dir, n), t = fs.statSync(full).mtimeMs;
+      if (!best || t > best.t) best = { full, name: n, t };
+    }
+  } catch {}
+  return best;
+}
+const GUI = liveGui();
+const myGui = process.env.WEZTERM_UNIX_SOCKET ? path.basename(process.env.WEZTERM_UNIX_SOCKET) : (GUI && GUI.name) || '';
+
 // Các ô WezTerm còn mở (chỉ hỏi khi thật sự có tranh chấp, vì gọi wezterm cli mất ~0.2 giây)
 let alivePanes;
 function paneAlive(id) {
   if (!/^\d+$/.test(String(id))) return true;
+  if (!GUI) return false; // WezTerm không chạy → không ô nào còn mở
   if (!alivePanes) {
     try {
       let exe = 'C:\\Program Files\\WezTerm\\wezterm.exe';
       try { exe = JSON.parse(fs.readFileSync(path.join(process.env.USERPROFILE || '', '.wez-ai.json'), 'utf8')).wezterm || exe; } catch {}
-      const out = execFileSync(exe, ['cli', 'list', '--format', 'json'], { encoding: 'utf8', timeout: 5000 });
+      // --no-auto-start: không tìm thấy WezTerm thì báo lỗi, KHÔNG tự bật wezterm-mux-server ngầm
+      const out = execFileSync(exe, ['cli', '--no-auto-start', 'list', '--format', 'json'],
+        { encoding: 'utf8', timeout: 3000, env: { ...process.env, WEZTERM_UNIX_SOCKET: GUI.full } });
       alivePanes = new Set(JSON.parse(out).map((p) => String(p.pane_id)));
     } catch { return true; } // không hỏi được thì coi như còn sống cho chắc
   }
   return alivePanes.has(String(id));
 }
 
+// Khoá của lần mở WezTerm trước (khác cửa sổ) hoặc ô đã đóng / quá hạn → coi như không còn
+function stale(l) {
+  if (now() - l.t > HAN) return true;
+  if (l.gui && GUI && l.gui !== GUI.name) return true;
+  return !paneAlive(l.pane);
+}
+
 // Khoá do ô khác giữ, còn hạn, ô đó còn mở → trả về khoá; không thì null
 function heldByOther(locks, k) {
   const l = locks[k];
-  if (!l || String(l.pane) === String(me)) return null;
-  if (now() - l.t > HAN || !paneAlive(l.pane)) { delete locks[k]; return null; }
+  if (!l || (String(l.pane) === String(me) && (!l.gui || l.gui === myGui))) return null;
+  if (stale(l)) { delete locks[k]; return null; }
   return l;
 }
 function describe(l) {
@@ -59,7 +88,7 @@ function describe(l) {
   return `${l.ai || 'AI'} ở ô ${l.pane} (${l.du_an || '?'})${l.ghi ? ' — ' + l.ghi : ''}, đụng tới ${phut} phút trước`;
 }
 function take(locks, file, ai, ghi) {
-  locks[key(file)] = { file: path.resolve(file), pane: me, ai, du_an: path.basename(process.cwd()), ghi: ghi || '', t: now() };
+  locks[key(file)] = { file: path.resolve(file), pane: me, gui: myGui, ai, du_an: path.basename(process.cwd()), ghi: ghi || '', t: now() };
 }
 function arg(name) {
   const i = process.argv.indexOf('--' + name);
@@ -100,7 +129,7 @@ if (cmd === 'hook-truoc' || cmd === 'hook-sau') {
 } else if (cmd === 'tha' && file) {
   const locks = load();
   const l = locks[key(file)];
-  if (l && String(l.pane) === String(me)) { delete locks[key(file)]; save(locks); console.log('🔓 Đã thả ' + l.file); }
+  if (l && (String(l.pane) === String(me) || stale(l))) { delete locks[key(file)]; save(locks); console.log('🔓 Đã thả ' + l.file); }
   else if (l) console.log('Khoá này không phải của ô bạn (' + describe(l) + ').');
   else console.log('File này không bị khoá.');
 } else if (cmd === 'tha-het') {
@@ -119,7 +148,7 @@ if (cmd === 'hook-truoc' || cmd === 'hook-sau') {
   let n = 0;
   for (const k of Object.keys(locks)) {
     const l = locks[k];
-    if (now() - l.t > HAN || !paneAlive(l.pane)) { delete locks[k]; continue; }
+    if (stale(l)) { delete locks[k]; continue; }
     console.log(`🔒 ${l.file}\n    ${describe(l)}${String(l.pane) === String(me) ? '  ← ô này' : ''}`);
     n++;
   }

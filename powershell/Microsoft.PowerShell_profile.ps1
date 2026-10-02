@@ -58,7 +58,7 @@ function ai2 {
     if ($env:WEZTERM_PANE) {
         # WezTerm: this pane becomes Claude, Codex opens as an equal column to its right
         Set-Location $p
-        & $WezExe cli split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd "$p" -- powershell -NoExit -Command $o | Out-Null
+        & $WezExe cli --no-auto-start split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd "$p" -- powershell -NoExit -Command $o | Out-Null
         Invoke-Expression $c
         return
     }
@@ -177,7 +177,7 @@ function aiall {
     foreach ($d in Get-ChildItem $AIRoot -Directory | Sort-Object Name) {
         if ($env:WEZTERM_PANE) {
             # WezTerm: one new tab per project, tab titled with the project name
-            $id = & $WezExe cli spawn --cwd "$($d.FullName)" -- powershell -NoExit -Command claudeRC
+            $id = & $WezExe cli --no-auto-start spawn --cwd "$($d.FullName)" -- powershell -NoExit -Command claudeRC
             & $WezExe cli set-tab-title --pane-id $id.Trim() $d.Name
             continue
         }

@@ -47,7 +47,7 @@ function Set-PaneState($id, $state) {
     [IO.File]::WriteAllText((Join-Path $stateDir "$id.json"), ($o | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
 }
 $label = @{ work = '⏳ đang làm'; idle = '🟢 rảnh'; need = '🔔 cần duyệt' }
-function Read-Pane($id, $n) { & $exe cli get-text --pane-id $id | Where-Object { $_.Trim() } | Select-Object -Last $n }
+function Read-Pane($id, $n) { & $exe cli --no-auto-start get-text --pane-id $id | Where-Object { $_.Trim() } | Select-Object -Last $n }
 
 # Đợi các ô hết 'work'. Trả về: 0 = tất cả xong · 1 = có ô chờ duyệt / đã đóng · 2 = hết giờ
 function Wait-Panes($ids, $max) {
@@ -70,7 +70,7 @@ function Wait-Panes($ids, $max) {
         }
         if ($sw.Elapsed.TotalSeconds -ge $nextCheck) {   # thỉnh thoảng xem ô còn mở không
             $nextCheck += 30
-            $alive = @((& $exe cli list --format json | Out-String | ConvertFrom-Json) | ForEach-Object { "$($_.pane_id)" })
+            $alive = @((& $exe cli --no-auto-start list --format json | Out-String | ConvertFrom-Json) | ForEach-Object { "$($_.pane_id)" })
             foreach ($id in @($left)) { if ($id -notin $alive) { Write-Host "❌ Ô $id đã đóng."; $left.Remove($id) | Out-Null; $code = [Math]::Max($code, 1) } }
         }
         Start-Sleep -Seconds 2
@@ -80,7 +80,7 @@ function Wait-Panes($ids, $max) {
 
 switch ($Cmd) {
     'list' {
-        $panes = & $exe cli list --format json | Out-String | ConvertFrom-Json
+        $panes = & $exe cli --no-auto-start list --format json | Out-String | ConvertFrom-Json
         $panes | ForEach-Object {
             $s = Get-PaneState $_.pane_id
             $dir = if ($_.cwd) { ([uri]$_.cwd).LocalPath.TrimEnd('\', '/') } else { '?' }
@@ -102,9 +102,9 @@ switch ($Cmd) {
             exit 3
         }
         # PowerShell 5.1 làm vỡ tham số có dấu ngoặc kép khi gọi chương trình ngoài → thêm \ trước mỗi "
-        & $exe cli send-text --pane-id $id -- ($text -replace '"', '\"')   # dán nguyên câu (kể cả tiếng Việt)
+        & $exe cli --no-auto-start send-text --pane-id $id -- ($text -replace '"', '\"')   # dán nguyên câu (kể cả tiếng Việt)
         Start-Sleep -Milliseconds 300
-        & $exe cli send-text --pane-id $id --no-paste "`r"   # nhấn Enter
+        & $exe cli --no-auto-start send-text --pane-id $id --no-paste "`r"   # nhấn Enter
         Set-PaneState $id 'work'   # để `cho` biết là vừa giao việc
     }
     # cho <id>[,<id>...] [giây]: đợi một hoặc nhiều ô làm xong (ô nào xong trước in trước)
@@ -141,22 +141,22 @@ switch ($Cmd) {
         }
         $psCmd = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; $codexHome$start (Get-Content -Raw -Encoding UTF8 '$taskFile')"
         if ($Canh -and $env:WEZTERM_PANE) {
-            $new = & $exe cli split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
+            $new = & $exe cli --no-auto-start split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
         } else {
-            $new = & $exe cli spawn --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
+            $new = & $exe cli --no-auto-start spawn --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
             $tieuDe = if ($tenTk) { "$tenTk · $($proj.Name)" } else { "$($proj.Name) · việc giao" }
-            if ($new) { & $exe cli set-tab-title --pane-id $new.Trim() $tieuDe }
+            if ($new) { & $exe cli --no-auto-start set-tab-title --pane-id $new.Trim() $tieuDe }
         }
         if (-not $new) { Write-Error 'Không mở được ô mới.'; exit 1 }
         $new = $new.Trim()
-        if ($env:WEZTERM_PANE) { & $exe cli activate-pane --pane-id $env:WEZTERM_PANE }   # giữ màn hình ở ô đang làm
+        if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }   # giữ màn hình ở ô đang làm
         Set-PaneState $new 'work'
         Write-Host "📨 Đã giao cho $ai ở $($proj.Name) → ô $new" -ForegroundColor Cyan
         Write-Output $new
         if ($Cho) {
             $code = Wait-Panes @($new) 1800
             if ($Ra) {
-                & $exe cli get-text --pane-id $new --start-line -300 | Out-File -FilePath $Ra -Encoding utf8
+                & $exe cli --no-auto-start get-text --pane-id $new --start-line -300 | Out-File -FilePath $Ra -Encoding utf8
                 Write-Host "💾 Đã lưu kết quả vào $Ra"
             }
             exit $code
@@ -182,14 +182,14 @@ switch ($Cmd) {
         $id = $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
         Read-Pane $id $n
     }
-    'cli' { & $exe cli @Rest }
+    'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
-    'nen' { & $exe cli move-pane-to-new-tab --pane-id $Rest[0] }
+    'nen' { & $exe cli --no-auto-start move-pane-to-new-tab --pane-id $Rest[0] }
     # chinh <id> [id-đích]: kéo ô về tab chính, đặt bên phải ô đích (mặc định: ô đang gọi lệnh)
     'chinh' {
         $dest = if ($Rest.Count -gt 1) { $Rest[1] } else { $env:WEZTERM_PANE }
-        & $exe cli split-pane --pane-id $dest --right --percent 50 --move-pane-id $Rest[0]
-        & $exe cli activate-pane --pane-id $dest
+        & $exe cli --no-auto-start split-pane --pane-id $dest --right --percent 50 --move-pane-id $Rest[0]
+        & $exe cli --no-auto-start activate-pane --pane-id $dest
     }
     # mo <file>: bật tài liệu lên ô "📄" bên phải tab người dùng đang xem
     'mo' { node "$PSScriptRoot\mo-tai-lieu.js" $Rest[0] }

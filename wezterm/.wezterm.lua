@@ -91,10 +91,17 @@ end
 local function is_doc(p) return (p:get_title() or ''):find('📄', 1, true) ~= nil end
 -- Ô tên 1 dòng trên đỉnh ô AI (cai-dat\ten-o.js). Sổ { [id ô tên] = id ô AI } lưu dạng JSON trong GLOBAL
 -- (GLOBAL tự đổi khoá "227" thành số 227 nên không lưu bảng trực tiếp được).
+-- Chỉ giải mã JSON khi sổ thay đổi (hàm vẽ tab gọi rất dày). Trả bảng dùng chung: ai muốn sửa thì sao chép trước.
+local HDR = { s = nil, m = {} }
 local function hdr_map()
-  local ok, m = pcall(wezterm.json_parse, wezterm.GLOBAL.ten_o_map or '{}')
-  return (ok and type(m) == 'table') and m or {}
+  local s = wezterm.GLOBAL.ten_o_map or '{}'
+  if s ~= HDR.s then
+    local ok, m = pcall(wezterm.json_parse, s)
+    HDR = { s = s, m = (ok and type(m) == 'table') and m or {} }
+  end
+  return HDR.m
 end
+local function hdr_copy() local c = {} for k, v in pairs(hdr_map()) do c[k] = v end return c end
 local function hdr_save(m) wezterm.GLOBAL.ten_o_map = next(m) and wezterm.json_encode(m) or '{}' end
 -- nhận Pane hoặc PaneInformation
 local function is_header(p)
@@ -174,7 +181,7 @@ local pull_menu = wezterm.action_callback(function(window, pane)
       if not id then return end
       if is_header(p) then p = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(p:pane_id())])) or p end
       wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-Command',
-        "$env:WEZTERM_UNIX_SOCKET='" .. SOCK .. "'; & '" .. WEZ_EXE .. "' cli split-pane --pane-id "
+        "$env:WEZTERM_UNIX_SOCKET='" .. SOCK .. "'; & '" .. WEZ_EXE .. "' cli --no-auto-start split-pane --pane-id "
           .. p:pane_id() .. ' --right --top-level --percent 30 --move-pane-id ' .. id }
       wezterm.time.call_after(1.5, function() wezterm.emit('chia-deu', window, p) end)
     end),
@@ -440,10 +447,30 @@ local function fix_claude_state(id, title)
   if f then f:write(wezterm.json_encode(cur)) f:close() end
 end
 
+-- Thông tin một ô (tiêu đề, tiến trình, thư mục, AI, dự án), hỏi Windows tối đa 1 lần mỗi giây cho mỗi ô.
+-- get_foreground_process_name / get_current_working_dir trên Windows khá chậm; trước đây báo động, thanh tên,
+-- thanh trạng thái, vẽ tab… mỗi chỗ hỏi lại riêng → GUI giật/treo khi thao tác nhanh. PANE_LAST giữ bản gần nhất
+-- để các hàm vẽ (format-tab-title, format-window-title — chạy rất dày) chỉ tra bảng, không hỏi Windows.
+local PANE_NOW, PANE_LAST = { t = -1, m = {} }, {}
+local function pinfo(p)
+  local now = os.time()
+  if PANE_NOW.t ~= now then PANE_NOW = { t = now, m = {} } end
+  local id = p:pane_id()
+  local x = PANE_NOW.m[id]
+  if x then return x end
+  x = { title = p:get_title() or '', proc = p:get_foreground_process_name() or '', cwd = p:get_current_working_dir() }
+  x.dir = pane_dir { current_working_dir = x.cwd }
+  x.proj, x.sub = split_project(x.dir)
+  x.icon, x.ai = which_ai { foreground_process_name = x.proc, title = x.title }
+  PANE_NOW.m[id], PANE_LAST[tostring(id)] = x, x
+  return x
+end
+
 -- Trạng thái Codex đọc từ tiêu đề: 'work' đang làm, 'idle' rảnh, 'need' cần duyệt
 local function title_state(p)
-  local title = p:get_title() or ''
-  local proc = (p:get_foreground_process_name() or ''):lower()
+  local x = pinfo(p)
+  local title = x.title
+  local proc = x.proc:lower()
   if proc:find('codex') then
     local low = title:lower()
     if low:find('approv') or low:find('waiting') then return 'need', '🧩 Codex' end
@@ -490,10 +517,8 @@ local function process_alerts(window)
       for _, p in ipairs(tab:panes()) do
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
-        local okp, proj = pcall(function()
-          return split_project(pane_dir { current_working_dir = p:get_current_working_dir(), foreground_process_name = '', title = p:get_title() })
-        end)
-        pane_proj[id] = (okp and proj ~= '?') and proj or nil
+        local okp, x = pcall(pinfo, p)
+        pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
         local state, who = title_state(p)
         if state then
           local prev = last_state[id]
@@ -502,7 +527,7 @@ local function process_alerts(window)
           elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
           sync_state(id, state, 'codex')
         else
-          fix_claude_state(id, p:get_title() or '')
+          fix_claude_state(id, okp and x.title or '')
         end
       end
     end
@@ -550,10 +575,10 @@ end
 local LAYOUT = { saved = AIDIR .. '\\bo-cuc-luu.json', auto = AIDIR .. '\\bo-cuc-tu-luu.json', prev = AIDIR .. '\\bo-cuc-phien-truoc.json' }
 
 local function pane_kind(p)
-  local title = p:get_title() or ''
+  local x = pinfo(p)
+  local title, ai = x.title, x.ai
   if title:find('Cần duyệt', 1, true) then return 'canduyet' end
   if title:find('📄', 1, true) then return 'doc' end
-  local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = title }
   return ({ Claude = 'claude', Codex = 'codex' })[ai] or 'shell'
 end
 
@@ -764,7 +789,11 @@ local function fuel_cells()
   local tks = (bang and bang.taiKhoan) or { { so = 0, ten = 'Codex', thuMuc = home .. '/.codex' } }
   local codex = {}
   for _, tk in ipairs(tks) do
-    local files = wezterm.glob((tk.thuMuc or ''):gsub('\\', '/') .. '/sessions/*/*/*/*.jsonl')
+    local files, root = {}, (tk.thuMuc or ''):gsub('\\', '/') .. '/sessions/'
+    for d = 0, 6 do -- thư mục sessions/YYYY/MM/DD: tìm ngày gần nhất có phiên (trước đây quét cả lịch sử → giật mỗi phút)
+      files = wezterm.glob(root .. os.date('%Y/%m/%d', os.time() - d * 86400) .. '/*.jsonl')
+      if #files > 0 then break end
+    end
     table.sort(files)
     local s = files[#files] and read_file(files[#files], 262144)
     if s then
@@ -817,14 +846,11 @@ end
 
 wezterm.on('format-tab-title', function(tab)
   local p = tab.active_pane
-  local tid = hdr_map()[tostring(p.pane_id)] -- đang đứng ở ô tên → lấy ô AI bên dưới
-  local tp = tid and wezterm.mux.get_pane(tonumber(tid))
-  if tp then
-    p = { current_working_dir = tp:get_current_working_dir(), foreground_process_name = tp:get_foreground_process_name(),
-      title = tp:get_title(), is_zoomed = p.is_zoomed }
-  end
-  local proj = split_project(pane_dir(p))
-  local icon = which_ai(p)
+  -- hàm này chạy rất dày → chỉ tra bảng PANE_LAST (update-status cập nhật mỗi 2 giây), không hỏi Windows
+  local id = tostring(hdr_map()[tostring(p.pane_id)] or p.pane_id) -- đang đứng ở ô tên → lấy ô AI bên dưới
+  local x = PANE_LAST[id]
+  local proj = x and x.proj or split_project(pane_dir(p))
+  local icon = x and x.icon or which_ai { title = p.title }
   local zoom = p.is_zoomed and ' 🔍' or ''
   local alert = tab_alert[tostring(tab.tab_id)]
   local bg = alert == 'need' and '#a8322d' or (alert == 'done' and '#2e6b3a' or (tab.is_active and '#3a3f4b' or '#1e2127'))
@@ -842,16 +868,15 @@ end)
 -- Tiêu đề cửa sổ (hiện trên thanh tác vụ Windows khi thu nhỏ): "🤖 Claude · Hion | 🧩 Codex · Chatbot"
 -- Ô đang chọn đứng đầu; bỏ qua ô xem tài liệu 📄/📋; có 🔔/✅ khi tab cần duyệt / vừa xong
 wezterm.on('format-window-title', function(tab, pane, tabs, panes)
+  -- chạy rất dày → chỉ tra bảng PANE_LAST, không hỏi Windows
   local function label(p)
-    local icon, ai = which_ai(p)
-    return icon .. ' ' .. (ai or 'Terminal') .. ' · ' .. split_project(pane_dir(p))
+    local x = PANE_LAST[tostring(p.pane_id)]
+    if x then return x.icon .. ' ' .. (x.ai or 'Terminal') .. ' · ' .. x.proj end
+    local icon, ai = which_ai { title = p.title }
+    return icon .. ' ' .. (ai or 'Terminal')
   end
   local tid = hdr_map()[tostring(pane.pane_id)]
-  local tp = tid and wezterm.mux.get_pane(tonumber(tid))
-  if tp then -- đang đứng ở ô tên → lấy ô AI bên dưới
-    pane = { pane_id = tp:pane_id(), title = tp:get_title(), foreground_process_name = tp:get_foreground_process_name(),
-      current_working_dir = tp:get_current_working_dir() }
-  end
+  if tid then pane = { pane_id = tonumber(tid), title = '' } end -- đang đứng ở ô tên → lấy ô AI bên dưới
   local parts, seen = { label(pane) }, {}
   seen[parts[1]] = true
   for _, p in ipairs(panes) do
@@ -910,7 +935,7 @@ local TEN_O_FILE = AIDIR .. '\\ten-o.json'
 local TEN_O_JS = HUB .. '\\cai-dat\\ten-o.js'
 
 local function close_headers(window, tab)
-  local map, n = hdr_map(), 0
+  local map, n = hdr_copy(), 0
   for _, p in ipairs(tab:panes()) do
     local id = tostring(p:pane_id())
     if map[id] then
@@ -923,9 +948,10 @@ local function close_headers(window, tab)
   return n
 end
 
+local HDR_FIX = {} -- lần cuối chỉnh cỡ từng ô tên (tránh giành kích thước khi bạn đang kéo ô)
 local function process_headers(window)
   local g = wezterm.GLOBAL
-  local map = hdr_map()
+  local map = hdr_copy()
   -- ô nào còn sống, nằm ở tab nào
   local alive = {}
   for _, mw in ipairs(wezterm.mux.all_windows()) do
@@ -947,7 +973,7 @@ local function process_headers(window)
         local p = info.pane
         local id = tostring(p:pane_id())
         if not map[id] and not has[id] and info.height > 4 then
-          local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = p:get_title() }
+          local ai = pinfo(p).ai
           if ai == 'Claude' or ai == 'Codex' then
             local ok, h = pcall(function()
               return p:split { direction = 'Top', size = 0.05, cwd = HUB, args = { 'node', TEN_O_JS } }
@@ -978,7 +1004,8 @@ local function process_headers(window)
       if hi and ti and hi.height <= 1 and (hi.left ~= ti.left or hi.top + hi.height + 1 ~= ti.top) then
         map[h] = nil
         window:perform_action(act.CloseCurrentPane { confirm = false }, hi.pane)
-      elseif hi and hi.height > 1 then
+      elseif hi and hi.height > 1 and not paused and os.time() - (HDR_FIX[h] or 0) >= 10 then
+        HDR_FIX[h] = os.time()
         window:perform_action(act.AdjustPaneSize { 'Up', hi.height - 1 }, hi.pane)
       end
     end
@@ -992,11 +1019,8 @@ local function process_headers(window)
   local out = { tat = g.ten_o_tat and true or false, o = {} }
   if not g.ten_o_tat then
     for h, t in pairs(map) do
-      local tp = alive[t].pane
-      local info = { current_working_dir = tp:get_current_working_dir(), foreground_process_name = tp:get_foreground_process_name(), title = tp:get_title() }
-      local proj, sub = split_project(pane_dir(info))
-      local icon, ai = which_ai(info)
-      out.o[h] = { icon = icon, ai = ai or 'Terminal', proj = proj, sub = sub, color = proj_color(proj), active = active_of[t] or false }
+      local x = pinfo(alive[t].pane)
+      out.o[h] = { icon = x.icon, ai = x.ai or 'Terminal', proj = x.proj, sub = x.sub, color = proj_color(x.proj), active = active_of[t] or false }
     end
   end
   local s = wezterm.json_encode(out)
@@ -1024,14 +1048,21 @@ wezterm.on('tach-o', function(window, pane)
   pane:move_to_new_window()
 end)
 
+-- Gộp lệnh: thêm ô / bấm Ctrl+Shift+E nhiều lần liên tiếp → chỉ chạy chia-deu.ps1 MỘT lần, 1,2 giây sau lần bấm cuối
+-- (trước đây mỗi lần bấm bật 1 bản, 4 bản giành nhau kéo đường ranh → WezTerm đứng hình). Script cũng tự chặn chạy chồng.
+local chia_deu_hen = { n = 0, pane = nil }
 wezterm.on('chia-deu', function(window, pane)
   local tab = window:active_tab()
   if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
   wezterm.GLOBAL.ten_o_hoan = os.time() + 20 -- chia xong mới dựng lại thanh tên
   close_headers(window, tab)
-  wezterm.time.call_after(0.3, function()
+  chia_deu_hen.n = chia_deu_hen.n + 1
+  chia_deu_hen.pane = pane:pane_id()
+  local my = chia_deu_hen.n
+  wezterm.time.call_after(1.2, function()
+    if my ~= chia_deu_hen.n then return end -- đã có lần bấm mới hơn, để lần đó chạy
     wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-      '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(pane:pane_id()) }
+      '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(chia_deu_hen.pane) }
   end)
 end)
 
@@ -1050,14 +1081,9 @@ wezterm.on('update-status', function(window, pane)
     wezterm.GLOBAL.hint_restore = false
     window:toast_notification('WezTerm · đội AI', '⏮ Có bố cục của phiên trước. Bấm Ctrl+Shift+O để mở lại.', nil, 8000)
   end
-  local info = {
-    current_working_dir = pane:get_current_working_dir(),
-    foreground_process_name = pane:get_foreground_process_name(),
-    title = pane:get_title(),
-  }
-  local dir = pane_dir(info)
-  local proj, sub = split_project(dir)
-  local icon, ai = which_ai(info)
+  local okx, x = pcall(pinfo, pane) -- ô có thể vừa đóng
+  if not okx then return end
+  local dir, proj, sub, icon, ai = x.dir, x.proj, x.sub, x.icon, x.ai
   local cells = {}
   local function add(items)
     if #cells > 0 then

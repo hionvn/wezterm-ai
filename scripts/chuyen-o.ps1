@@ -5,10 +5,18 @@ if (-not $id) { exit 1 }
 
 $WezExe = 'C:\Program Files\WezTerm\wezterm.exe'
 $cfg = Join-Path $HOME '.wez-ai.json'
-if (Test-Path $cfg) { try { $j = Get-Content $cfg -Raw | ConvertFrom-Json; if ($j.wezExe) { $WezExe = $j.wezExe } } catch {} }
+if (Test-Path $cfg) { try { $j = Get-Content $cfg -Raw | ConvertFrom-Json; if ($j.wezterm) { $WezExe = $j.wezterm } } catch {} }
 if (-not (Test-Path $WezExe)) { $WezExe = (Get-Command wezterm -ErrorAction SilentlyContinue).Source }
 
-& $WezExe cli activate-pane --pane-id $id 2>$null | Out-Null
+# Tìm đúng cửa sổ WezTerm đang chạy (gui-sock-<pid> còn sống). Không có thì thôi — KHÔNG để `wezterm cli`
+# tự bật máy chủ ngầm mới (trước đây sinh ra wezterm-mux-server mồ côi, các lệnh cli sau đó hỏi nhầm chỗ → treo).
+$sock = Get-ChildItem "$HOME\.local\share\wezterm\gui-sock-*" -ErrorAction SilentlyContinue |
+    Where-Object { Get-Process -Id ($_.Name -replace 'gui-sock-', '') -ErrorAction SilentlyContinue } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $sock) { exit 1 }
+$env:WEZTERM_UNIX_SOCKET = $sock.FullName
+
+& $WezExe cli --no-auto-start activate-pane --pane-id $id 2>$null | Out-Null
 
 Add-Type @'
 using System; using System.Runtime.InteropServices;
