@@ -132,7 +132,7 @@ switch ($Cmd) {
         [IO.File]::WriteAllText($taskFile, $task, (New-Object Text.UTF8Encoding $false))
         # Codex: mỗi dự án một tài khoản (CODEX_HOME riêng) theo codex-tai-khoan.json → chạy song song không giẫm nhau
         $codexHome = ''; $tenTk = ''
-        $bangTk = Join-Path $HOME '.doi-ca\cau-hinh.json'   # do `doi-ca cai` tạo (thuMuc, ten từng tài khoản + duAn)
+        $bangTk = Join-Path $HOME '.codex-tai-khoan.json'   # bảng tài khoản: thuMuc, ten, gmail từng tài khoản + duAn → số tài khoản
         if ($ai -eq 'codex' -and (Test-Path $bangTk)) {
             $bang = Get-Content -Raw -Encoding UTF8 $bangTk | ConvertFrom-Json
             $so = $bang.duAn.($proj.Name)

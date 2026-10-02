@@ -24,5 +24,5 @@
 - Điều khiển ô khác: `E:\AI\Hion\cai-dat\wez.ps1` (list · send · cho · read · giao · review · nen · chinh · mo). Luôn `list` trước. Giao việc: `send <id> "câu"` rồi `cho <id>`; cần AI mới ở dự án khác: `giao <dự án> <claude|codex> "việc"`.
 - Xong việc code lớn → nhờ AI kia review chéo: `wez.ps1 review <dự án>`.
 - Khoá file: Claude tự khoá qua hooks. Codex trước khi sửa file chạy `node E:\AI\Hion\cai-dat\khoa.js giu <file> --ai codex`, báo "đang bị giữ" thì không sửa; sửa xong `khoa.js tha <file>`.
-- Nhiều tài khoản Codex: mỗi dự án một tài khoản (`doi-ca tai-khoan`). Luôn ghi bàn giao vào file tiến độ (đang làm gì, tới bước nào, bước tiếp) để khi Codex hết lượt, Claude thay ca (`doi-ca bat`) làm tiếp được.
+- Nhiều tài khoản Codex: mỗi dự án một tài khoản (lệnh `codex` tự chọn theo thư mục dự án; `codextk` xem bảng). Luôn ghi bàn giao vào file tiến độ (đang làm gì, tới bước nào, bước tiếp) để AI khác làm tiếp được.
 <!-- wezterm-ai: het -->

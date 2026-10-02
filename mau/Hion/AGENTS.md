@@ -12,7 +12,7 @@ Khi bảng "Các dự án" còn dòng *(chưa điền)* hoặc người dùng n�
 3. Điền bảng "Các dự án" bên dưới.
 4. Dự án nào chưa có AGENTS.md có mục "Vai trò" → tạo từ mẫu `cai-dat\mau\du-an\AGENTS.md` và `tien-do.md` (thay `{{TEN}}` = tên thư mục, điền phần mô tả bằng câu trả lời của người dùng; file tiến độ đặt tên `tien-do-<tên-thư-mục-viết-thường>.md`). AGENTS.md đã có thì chỉ thêm mục "Vai trò", không ghi đè nội dung cũ.
 5. Điền mục "Đội của bạn" trong `doi-agent.md`.
-6. Hỏi người dùng có nhiều tài khoản ChatGPT dùng Codex không → nếu có, bảo họ tự gõ `doi-ca cai` trong một ô PowerShell (lệnh đó hỏi Gmail và mở trình duyệt đăng nhập).
+6. Hỏi người dùng có nhiều tài khoản ChatGPT dùng Codex không → nếu có: tạo `~\.codex-tai-khoan.json` (số, tên, Gmail, thư mục `~\.codex-tkN` từng tài khoản + dự án nào dùng tài khoản nào), rồi bảo họ tự gõ trong ô PowerShell: `cd E:\AI\<dự án>` → `codex login` (lệnh `codex` tự chọn tài khoản theo dự án; `codextk` xem bảng).
 7. Báo lại: đội gồm những ai, mỗi dự án làm gì, việc đầu tiên nên giao.
 
 ## Các dự án
@@ -23,7 +23,6 @@ Khi bảng "Các dự án" còn dòng *(chưa điền)* hoặc người dùng n�
 ## Nhịp làm việc
 - **Lần đầu người dùng nhắn trong ngày**: tóm tắt việc đang chờ duyệt, tiến độ từng dự án (đọc `tien-do-*.md`), đề xuất 1–3 việc nên làm hôm nay.
 - **"Tổng kết"** buổi tối: cập nhật tiến độ các dự án, commit; push nếu người dùng đã cho phép.
-- **Trước khi người dùng đi ngủ**: nếu có Codex chạy việc qua đêm, nhắc gõ `doi-ca bat` (Codex hết lượt thì Claude tự thay ca).
 
 ## Quy ước
 - Việc cần người dùng quyết → `node cai-dat\duyet.js them <dự án> "câu hỏi + gợi ý nên chọn gì"`. Trước khi làm tiếp việc đã hỏi, đọc dòng `[dự án]` trong `quyet-dinh.md`.

@@ -9,14 +9,40 @@ if (Test-Path "$HOME\.wez-ai.json") {
     if ($wezCfg.wezterm) { $WezExe = $wezCfg.wezterm }
 }
 
+# Codex accounts: one ChatGPT account per project (own CODEX_HOME), table in ~\.codex-tai-khoan.json.
+#   `codex` picks the account of the project you are in (E:\AI\<project>\...); other folders use the default ~\.codex.
+#   Log in an account: cd into its project, then `codex login`.
+function Get-CodexAccount {
+    $f = "$HOME\.codex-tai-khoan.json"
+    if (-not (Test-Path $f)) { return $null }
+    $cfg = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
+    $here = (Get-Location).Path
+    if (-not $here.StartsWith($AIRoot, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    $proj = ($here.Substring($AIRoot.Length).TrimStart('\') -split '\\')[0]
+    $so = $cfg.duAn.$proj
+    if (-not $so) { return $null }
+    $cfg.taiKhoan | Where-Object { $_.so -eq $so } | Select-Object -First 1
+}
 # Codex: run without background daemon so it also works in an Administrator terminal
-function codex { codex.cmd --no-daemon @args }
-
-# doi-ca <lenh>      : doi AI truc ca (nhieu tai khoan Codex chay song song, Codex het luot -> Claude lam tiep)
-#   doi-ca tai-khoan · dang-nhap <n> · codex <du an> · kiem-tra · mo-phong · bat · tat · xem   (go: doi-ca help)
-function doi-ca { & (Join-Path $AIRoot 'Hion\cai-dat\doi-ca.ps1') @args }
-# codextk: lenh cu (chep de auth.json) da bo tu 02/10/2026 vi lam vang dang nhap -> moi tai khoan mot CODEX_HOME rieng
-function codextk { Write-Host 'codextk da bo. Dung: doi-ca tai-khoan  /  doi-ca dang-nhap <so>' -ForegroundColor Yellow; doi-ca tai-khoan }
+function codex {
+    $tk = Get-CodexAccount
+    if (-not $tk) { codex.cmd --no-daemon @args; return }
+    $old = $env:CODEX_HOME
+    try { $env:CODEX_HOME = $tk.thuMuc; Write-Host "  Codex: $($tk.ten) ($($tk.gmail))" -ForegroundColor DarkGray; codex.cmd --no-daemon @args }
+    finally { $env:CODEX_HOME = $old }
+}
+# codextk : show the Codex account table (project -> account, logged in or not)
+function codextk {
+    $f = "$HOME\.codex-tai-khoan.json"
+    if (-not (Test-Path $f)) { Write-Host 'Chua co ~\.codex-tai-khoan.json' -ForegroundColor Yellow; return }
+    $cfg = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($t in $cfg.taiKhoan) {
+        $proj = ($cfg.duAn.PSObject.Properties | Where-Object { $_.Value -eq $t.so }).Name -join ', '
+        $ok = if (Test-Path (Join-Path $t.thuMuc 'auth.json')) { 'da dang nhap' } else { 'CHUA dang nhap' }
+        Write-Host ("  {0}) {1,-28} {2,-26} du an: {3,-10} {4}" -f $t.so, $t.ten, $t.gmail, $proj, $ok)
+    }
+    Write-Host '  Dang nhap lai: vao thu muc du an (vd cd E:\AI\Sino) roi go: codex login' -ForegroundColor DarkGray
+}
 
 # ai2 [path] [-Yolo] : open 2 side-by-side panes Claude | Codex in a folder  (ai3 = old name, still works)
 #   -Yolo : let both AIs run commands without asking for approval

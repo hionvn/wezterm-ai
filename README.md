@@ -21,15 +21,13 @@ Khác bản gốc chỉ chạy trên Mac, bản này chạy trên **Windows + Po
 | Báo sang điện thoại (app ntfy) khi ô cần duyệt quá N phút mà chưa bấm vào — mặc định tắt | `wez.ps1 dienthoai bat` · `thu` · `tat` |
 | Bàn duyệt bấm nút: mỗi việc trong ô 📋 có ✅ Duyệt · ✏️ Trả lời · ❌ Bỏ; quyết định ghi vào `quyet-dinh.md` | bấm chuột · `node scripts/duyet.js list/them/ok/sua/bo` |
 | Báo cáo sáng (việc chờ duyệt, quyết định mới, tiến độ + git từng dự án, hạn mức) tự bật lúc mở WezTerm lần đầu từ 7 giờ | tự động · `node scripts/bao-cao-sang.js --mo` |
-| **Nhiều tài khoản Codex chạy song song**: mỗi dự án một tài khoản (CODEX_HOME riêng), không văng đăng nhập; bảng tài khoản + Gmail để đăng nhập lại đúng | `doi-ca cai` · `tai-khoan` · `dang-nhap <số>` · `codex <dự án>` |
-| **Trực ca tự động**: Codex sắp hết lượt → nhắc ghi bàn giao; hết hẳn → Claude tự vào làm tiếp (ô Codex giữ nguyên, luật đêm: không nhắn khách/đăng bài/tiêu tiền/push); Codex có lượt lại → trả ca | `doi-ca bat` · `tat` · `xem` |
-| Tự kiểm chứng đổi ca trong 3 phút (Claude thật + Codex giả, in ✅/❌ từng bước) · soát máy | `doi-ca mo-phong` · `doi-ca kiem-tra` |
+| **Nhiều tài khoản Codex chạy song song**: mỗi dự án một tài khoản (CODEX_HOME riêng), không văng đăng nhập; lệnh `codex` tự chọn tài khoản theo thư mục dự án; cảnh báo khi một tài khoản dùng ≥ 90% | bảng `~\.codex-tai-khoan.json` · `codextk` · đăng nhập: `cd <dự án>` → `codex login` |
 | Review chéo: AI kia đọc thay đổi chưa commit, ghi lỗi ra file | `wez.ps1 review <dự án> [codex\|claude]` |
 | Khoá file: 2 AI không sửa chồng một file (Claude tự động, Codex theo quy tắc) | `node scripts/khoa.js giu · tha · kiem · xem` |
 | Lưu / mở lại bố cục (Claude tiếp tục đúng phiên cũ); tự lưu mỗi phút, có "Phiên trước" | `Ctrl+Shift+S` / `Ctrl+Shift+O` |
 | Tự chẩn đoán cài đặt (thiếu gì, sửa thế nào) | `scripts/kiem-tra.ps1` |
 | Chặn commit có khoá bí mật | tự động (git hook), hoặc `quet-bi-mat.ps1` |
-| Lệnh tắt PowerShell | `doi-ca`, `ai`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `hion` / `sino` / `cool` / `bot` [-All], `newproj` |
+| Lệnh tắt PowerShell | `ai`, `codextk`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `hion` / `sino` / `cool` / `bot` [-All], `newproj` |
 
 Sổ tay phím tắt + hướng dẫn theo tình huống: https://claude.ai/artifact/MXLJEZVUsnRzNN72AtFbo7
 
@@ -64,7 +62,7 @@ Mọi file cũ trên máy được sao lưu thành `*.bak-<ngày giờ>` trướ
 1. Mở WezTerm, đăng nhập `claude` và `codex`.
 2. Đặt các thư mục dự án vào thư mục AI (mặc định `E:\AI`, hoặc chỗ bạn chọn bằng `-AIRoot`). Tạo dự án mới: `newproj <tên>` — có sẵn vai 🧭 Manager và sổ tiến độ để bàn giao.
 3. Bấm `Ctrl+Shift+H` (tab Tổng quản) và nói **"khởi động đội"**: Tổng quản hỏi từng dự án làm gì, rồi tự điền vai cho cả đội (`Hion\AGENTS.md`, `doi-agent.md`, AGENTS.md từng dự án).
-4. Có nhiều tài khoản ChatGPT dùng Codex: `doi-ca cai` → mỗi dự án một tài khoản; tối trước khi ngủ `doi-ca bat` để Claude thay ca khi Codex hết lượt.
+4. Có nhiều tài khoản ChatGPT dùng Codex: tạo `~\.codex-tai-khoan.json` dạng `{ "taiKhoan": [{ "so": 1, "ten": "Codex-A", "gmail": "...", "thuMuc": "C:\\Users\\<bạn>\\.codex-tk1" }], "duAn": { "<Dự án>": 1 } }`, rồi vào từng thư mục dự án gõ `codex login`.
 
 Bộ cài tạo sẵn các file của Tổng quản (bàn duyệt, sổ quyết định, kho kiến thức, sơ đồ đội) từ thư mục `mau\` — **chỉ khi máy chưa có**, không ghi đè file của bạn. Quy tắc chung được thêm vào `~\.claude\CLAUDE.md` và `~\.codex\AGENTS.md` giữa hai dòng đánh dấu `wezterm-ai`; ghi chú riêng của bạn ngoài đoạn đó luôn được giữ.
 

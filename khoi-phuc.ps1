@@ -139,4 +139,4 @@ Write-Host "`nXong. Việc còn lại:" -ForegroundColor Yellow
 Write-Host "  1. Mở WezTerm. Đăng nhập từng AI: gõ claude, codex và làm theo hướng dẫn."
 Write-Host "  2. Đặt các thư mục dự án vào $AIRoot (tạo mới: gõ newproj <tên>)."
 Write-Host "  3. Bấm Ctrl+Shift+H (tab Tổng quản) rồi nói: khởi động đội — Tổng quản hỏi từng dự án và tự đặt vai cho cả đội."
-Write-Host "  4. Có nhiều tài khoản ChatGPT dùng Codex: gõ doi-ca cai (mỗi dự án một tài khoản, Codex hết lượt thì Claude thay ca)."
+Write-Host "  4. Có nhiều tài khoản ChatGPT dùng Codex: tạo ~\.codex-tai-khoan.json (xem README), rồi vào từng thư mục dự án gõ codex login. Xem bảng: codextk."

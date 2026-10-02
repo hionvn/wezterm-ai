@@ -699,79 +699,61 @@ local function fuel_cells()
   if c then
     for _, it in ipairs(fuel_part('Claude', c.five, c.five_reset, c.week)) do table.insert(cells, it) end
   end
+  -- Codex: mỗi dự án một tài khoản (~\.codex-tai-khoan.json, CODEX_HOME riêng) → đọc file phiên mới nhất của từng tài khoản
   local home = (os.getenv('USERPROFILE') or 'C:\\Users\\Hion'):gsub('\\', '/')
-  local files = wezterm.glob(home .. '/.codex/sessions/*/*/*/*.jsonl')
-  table.sort(files)
-  local s = files[#files] and read_file(files[#files], 262144)
-  local codex
-  if s then
-    local p5, r5, pw, rw
-    for u, r in s:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do p5, r5 = u, r end
-    for u, r in s:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do pw, rw = u, r end
-    if not pw then for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do pw = u end end
-    if p5 then
-      table.insert(cells, { Foreground = { Color = '#5c6370' } })
-      table.insert(cells, { Text = '  ·  ' })
-      for _, it in ipairs(fuel_part('Codex', tonumber(p5), tonumber(r5), tonumber(pw))) do table.insert(cells, it) end
-      codex = { file = files[#files], five = tonumber(p5), five_reset = tonumber(r5), week = tonumber(pw), week_reset = tonumber(rw) }
+  local bang = read_json(home .. '/.codex-tai-khoan.json')
+  local tks = (bang and bang.taiKhoan) or { { so = 0, ten = 'Codex', thuMuc = home .. '/.codex' } }
+  local codex = {}
+  for _, tk in ipairs(tks) do
+    local files = wezterm.glob((tk.thuMuc or ''):gsub('\\', '/') .. '/sessions/*/*/*/*.jsonl')
+    table.sort(files)
+    local s = files[#files] and read_file(files[#files], 262144)
+    if s then
+      local p5, r5, pw, rw
+      for u, r in s:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do p5, r5 = u, r end
+      for u, r in s:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do pw, rw = u, r end
+      if not pw then for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do pw = u end end
+      if p5 then
+        local du_an = {}
+        for k, v in pairs((bang and bang.duAn) or {}) do if v == tk.so then table.insert(du_an, k) end end
+        table.insert(codex, { so = tk.so, ten = tk.ten or 'Codex', icon = (tk.ten or 'Codex'):match('^(%S+)'), du_an = table.concat(du_an, ', '),
+          five = tonumber(p5), five_reset = tonumber(r5), week = tonumber(pw), week_reset = tonumber(rw) })
+      end
     end
+  end
+  for i, c in ipairs(codex) do
+    table.insert(cells, { Foreground = { Color = '#5c6370' } })
+    table.insert(cells, { Text = i == 1 and '  ·  ' or '  ' })
+    for _, it in ipairs(fuel_part(#codex > 1 and c.icon or 'Codex', c.five, c.five_reset, #codex > 1 and nil or c.week)) do table.insert(cells, it) end
   end
   fuel_cache = { at = os.time(), cells = cells, codex = codex }
   return cells
 end
 
--- Cảnh báo Codex sắp hết hạn mức (5 giờ hoặc tuần) → nháy thông báo + điện thoại (nếu bật) để BẠN tự đổi: codextk <n>.
--- KHÔNG tự đổi tài khoản (rủi ro điều khoản OpenAI — đã chốt 02/10/2026). Ngưỡng: ~\.wez-ai.json "codexCanhBao" (mặc định 90).
--- Vừa đổi tài khoản thì số cũ trong file phiên là của tài khoản trước → chỉ tin phần file ghi thêm sau lúc đổi.
+-- Cảnh báo một tài khoản Codex sắp hết hạn mức (5 giờ hoặc tuần) → thông báo + điện thoại (nếu bật). Mỗi mốc làm mới báo 1 lần.
+-- KHÔNG tự xoay tài khoản (rủi ro điều khoản OpenAI — đã chốt 02/10/2026). Ngưỡng: ~\.wez-ai.json "codexCanhBao" (mặc định 90).
 local CODEX_WARN = tonumber(machine.codexCanhBao) or 90
 local function codex_warn(window)
-  local c = fuel_cache.codex
-  if not c then return end
-  local home = os.getenv('USERPROFILE') or 'C:\\Users\\Hion'
-  local acct = ((read_file(home .. '\\.codex\\tk-hien-tai.txt') or '?'):gsub('%s', ''))
-  local g = wezterm.GLOBAL
-  local f = io.open(c.file, 'rb')
-  local size = f and f:seek('end') or 0
-  if f then f:close() end
-  if g.codex_acct == nil then g.codex_acct = acct end
-  if g.codex_acct ~= acct then -- vừa đổi tài khoản: ghi mốc, chưa tin số liệu cũ
-    g.codex_acct, g.codex_mark = acct, { file = c.file, size = size }
-    return
-  end
-  local five, week = c.five, c.week
-  local mark = g.codex_mark
-  if mark and mark.file == c.file then
-    if size <= mark.size then return end
-    local s = read_file(c.file, size - mark.size) or ''
-    five, week = nil, nil
-    for u in s:gmatch('"primary":{"used_percent":([%d%.]+)') do five = tonumber(u) end
-    for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do week = tonumber(u) end
-  end
   local now = os.time()
-  if five and c.five_reset and c.five_reset < now then five = 0 end
-  local which, pct, reset
-  if week and week >= CODEX_WARN then which, pct, reset = 'tuần', week, c.week_reset
-  elseif five and five >= CODEX_WARN then which, pct, reset = '5 giờ', five, c.five_reset end
-  if not which then return end
-  local key = acct .. ':' .. which .. ':' .. tostring(reset or os.date('%Y%m%d%H'))
+  local g = wezterm.GLOBAL
   g.codex_warned = g.codex_warned or {}
-  if g.codex_warned[key] then return end
-  g.codex_warned[key] = true
-  -- gợi ý tài khoản kế tiếp trong danh sách auth-<n>.json
-  local nums = {}
-  for _, p in ipairs(wezterm.glob(home:gsub('\\', '/') .. '/.codex/auth-*.json')) do
-    local n = p:match('auth%-(%w+)%.json$')
-    if n then table.insert(nums, n) end
+  for _, c in ipairs(fuel_cache.codex or {}) do
+    local five = (c.five_reset and c.five_reset < now) and 0 or c.five
+    local which, pct, reset
+    if c.week and c.week >= CODEX_WARN then which, pct, reset = 'tuần', c.week, c.week_reset
+    elseif five and five >= CODEX_WARN then which, pct, reset = '5 giờ', five, c.five_reset end
+    if which then
+      local key = tostring(c.so) .. ':' .. which .. ':' .. tostring(reset or os.date('%Y%m%d%H'))
+      if not g.codex_warned[key] then
+        g.codex_warned[key] = true
+        local msg = '⛽ ' .. c.ten .. (c.du_an ~= '' and (' (' .. c.du_an .. ')') or '') .. ' đã dùng ' .. math.floor(pct + 0.5) .. '% hạn mức ' .. which
+          .. (reset and (' · làm mới ' .. os.date('%H:%M %d/%m', reset)) or '')
+          .. '. Giao tạm việc dự án này cho Claude, hoặc chờ làm mới.'
+        window:toast_notification('WezTerm · đội AI', msg, nil, 15000)
+        if PHONE then send_phone(msg) end
+      end
+    end
   end
-  table.sort(nums)
-  local nxt
-  for i, n in ipairs(nums) do if n == acct then nxt = nums[i % #nums + 1] end end
-  nxt = (nxt and nxt ~= acct) and nxt or (nums[1] ~= acct and nums[1]) or '<số>'
-  local msg = '⛽ Codex TK ' .. acct .. ' đã dùng ' .. math.floor(pct + 0.5) .. '% hạn mức ' .. which
-    .. (reset and (' (làm mới ' .. os.date('%H:%M %d/%m', reset) .. ')') or '')
-    .. '. Bật trực ca để Claude tự thay khi hết: doi-ca bat · xem tài khoản: doi-ca tai-khoan'
-  window:toast_notification('WezTerm · đội AI', msg, nil, 15000)
-  if PHONE then send_phone(msg) end
 end
 
 wezterm.on('format-tab-title', function(tab)

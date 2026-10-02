@@ -20,7 +20,7 @@ if (Test-Path "$HOME\.wez-ai.json") {
 } else { Warn "Chưa có ~\.wez-ai.json → dùng mặc định $AIRoot" 'chỉ cần nếu dự án không nằm ở E:\AI; khoi-phuc.ps1 -AIRoot <thư mục> sẽ tạo' }
 $Hub = Join-Path $AIRoot 'Hion'; $CaiDat = Join-Path $Hub 'cai-dat'
 if (Test-Path $AIRoot) { Ok "Có thư mục dự án $AIRoot" } else { Bad "Không thấy $AIRoot" 'tạo thư mục hoặc sửa aiRoot trong ~\.wez-ai.json' }
-if (Test-Path $Hub) { Ok "Có $Hub (Tổng quản)" } else { Bad "Không thấy $Hub" "clone dự án Hub về: gh repo clone hionvn/ai-hub $Hub" }
+if (Test-Path $Hub) { Ok "Có $Hub (Tổng quản)" } else { Bad "Không thấy $Hub" "clone dự án Hub về: gh repo clone hionvn/hion $Hub" }
 foreach ($f in 'wez.ps1', 'wez-alert.js', 'mo-tai-lieu.js', 'can-duyet-view.ps1', 'khoa.js', 'duyet.js', 'bao-cao-sang.js') {
     if (-not (Test-Path (Join-Path $CaiDat $f))) { Bad "Thiếu script $CaiDat\$f" $repoFix }
 }

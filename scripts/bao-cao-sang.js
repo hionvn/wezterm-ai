@@ -87,7 +87,7 @@ function newestJsonl(dir, depth = 0) {
   } catch (_) { }
   return best;
 }
-const doiCa = readJson(path.join(HOME, '.doi-ca', 'cau-hinh.json'));
+const doiCa = readJson(path.join(HOME, '.codex-tai-khoan.json'));   // bảng tài khoản Codex theo dự án
 for (const tk of (doiCa && doiCa.taiKhoan) || [{ ten: 'Codex', thuMuc: path.join(HOME, '.codex') }]) {
   const f = newestJsonl(path.join(tk.thuMuc, 'sessions'));
   if (!f) continue;
