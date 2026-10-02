@@ -15,6 +15,10 @@
 #   .\wez.ps1 mo E:\AI\Chatbot\tien-do-chatbot.md   # bật tài liệu lên cho người dùng xem
 #   .\wez.ps1 dienthoai bat                         # báo sang điện thoại (app ntfy) khi ô cần duyệt quá 5 phút · tat · thu
 #   .\wez.ps1 cli <lệnh wezterm cli bất kỳ>
+#   .\wez.ps1 doi Chatbot                           # mở đội của dự án theo Hion\doi\Chatbot.json (Manager cạnh ô đang gọi + worker ở tab riêng);
+#                                                   #   ô nào đã mở thì giữ, chỉ mở ô còn thiếu; tự ghi số ô mới vào sổ đội · `doi Chatbot tat` = tắt cả đội
+#   Mọi lệnh nhận số ô cũng nhận TÊN VAI: send Chatbot.Engineer "việc" · cho Chatbot.Design,Chatbot.Marketing · read Chatbot.Manager
+#   (tra sổ đội %LOCALAPPDATA%\wez-ai\doi\<dự án>.json; số ô cũ chết thì tự tìm lại theo tên ô → không phải nhớ số ô)
 # Mã thoát của `cho`: 0 = xong · 1 = ô đang chờ bạn duyệt · 2 = hết giờ chờ · 3 = send bị từ chối vì ô bận
 param([Parameter(Position = 0)][string]$Cmd = 'list', [switch]$Ep, [switch]$Cho, [string]$Ra, [switch]$Canh,
     [Parameter(ValueFromRemainingArguments)]$Rest)
@@ -26,6 +30,41 @@ if (Test-Path "$HOME\.wez-ai.json") { $cfg = Get-Content "$HOME\.wez-ai.json" -R
 $exe = if ($cfg -and $cfg.wezterm) { $cfg.wezterm } else { 'C:\Program Files\WezTerm\wezterm.exe' }
 if (-not (Test-Path $exe)) { $c = Get-Command wezterm -ErrorAction SilentlyContinue; if ($c) { $exe = $c.Source } }
 $stateDir = Join-Path $env:LOCALAPPDATA 'wez-ai\state'
+$doiDir = Join-Path $env:LOCALAPPDATA 'wez-ai\doi'   # sổ đội lúc chạy: số ô của Manager + từng worker
+$utf8 = New-Object Text.UTF8Encoding $false
+
+# PowerShell 5.1: ConvertFrom-Json trả cả mảng thành 1 phần tử → foreach để trải ra từng ô
+function Get-Panes { $r = (& $exe cli --no-auto-start list --format json) -join "`n" | ConvertFrom-Json; foreach ($p in $r) { $p } }
+# Đọc sổ đội; ô nào đã chết thì tìm lại theo tên ô (dự án + vai trong tiêu đề, vd sau Ctrl+Shift+O mở lại bố cục) rồi ghi lại sổ
+function Sync-Doi($proj) {
+    $f = Join-Path $doiDir "$proj.json"
+    if (-not (Test-Path $f)) { return $null }
+    $d = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
+    $panes = @(Get-Panes)
+    $doi = $false
+    foreach ($m in @($d.manager) + @($d.worker)) {
+        if (-not $m -or -not $m.vai) { continue }
+        if ($m.o -and ($panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" })) { continue }
+        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and $_.title -match "\b$([regex]::Escape($m.vai))\b" -and $_.title -notmatch 'ten-o' } | Select-Object -First 1
+        $moi = if ($hit) { "$($hit.pane_id)" } else { '' }
+        if ("$($m.o)" -ne $moi) { $m.o = $moi; $doi = $true }
+    }
+    if ($doi) { [IO.File]::WriteAllText($f, ($d | ConvertTo-Json -Depth 5), $utf8) }
+    return $d
+}
+# "24" → 24 · "Chatbot.Engineer" / "chatbot/manager" → số ô theo sổ đội
+function Resolve-Id($s) {
+    $s = "$s"
+    if ($s -match '^\d+$') { return $s }
+    if ($s -notmatch '^([^./]+)[./](.+)$') { Write-Error "Không hiểu ô '$s' (dùng số ô hoặc DựÁn.Vai, vd Chatbot.Engineer)"; exit 1 }
+    $proj = $Matches[1]; $vai = $Matches[2]
+    $d = Sync-Doi $proj
+    if (-not $d) { Write-Error "Chưa có sổ đội $proj — mở đội: wez.ps1 doi $proj"; exit 1 }
+    $m = @($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai -eq $vai } | Select-Object -First 1
+    if (-not $m) { Write-Error "Đội $proj không có vai '$vai'"; exit 1 }
+    if (-not $m.o) { Write-Error "$proj.$vai đang tắt — mở lại: wez.ps1 doi $proj"; exit 1 }
+    return "$($m.o)"
+}
 
 $sock = Get-ChildItem "$HOME\.local\share\wezterm\gui-sock-*" -ErrorAction SilentlyContinue |
     Where-Object { Get-Process -Id ($_.Name -replace 'gui-sock-', '') -ErrorAction SilentlyContinue } |
@@ -94,7 +133,7 @@ switch ($Cmd) {
         } | Format-Table -AutoSize | Out-String -Width 200
     }
     'send' {
-        $id = $Rest[0]; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')
+        $id = Resolve-Id $Rest[0]; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')
         $s = Get-PaneState $id
         if (-not $Ep -and $s -and $s.state -in 'work', 'need') {
             Write-Host "Ô ${id}: $($label[$s.state]) → chưa gửi (tránh gõ chen vào giữa chừng)." -ForegroundColor Yellow
@@ -109,7 +148,7 @@ switch ($Cmd) {
     }
     # cho <id>[,<id>...] [giây]: đợi một hoặc nhiều ô làm xong (ô nào xong trước in trước)
     'cho' {
-        $ids = "$($Rest[0])" -split ','; $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
+        $ids = @("$($Rest[0])" -split ',' | ForEach-Object { Resolve-Id $_ }); $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
         exit (Wait-Panes $ids $max)
     }
     # giao <dự án> <claude|codex> "việc" [-Cho] [-Ra <file>] [-Canh]
@@ -179,16 +218,114 @@ switch ($Cmd) {
         exit $LASTEXITCODE
     }
     'read' {
-        $id = $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
+        $id = Resolve-Id $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
         Read-Pane $id $n
+    }
+    # doi <dự án> [tat]: mở / tắt đội agent theo Hion\doi\<dự án>.json — Manager cạnh ô đang gọi, worker đứng cạnh nhau ở tab riêng.
+    #   Ô nào của đội đang mở thì giữ nguyên, chỉ mở ô còn thiếu; số ô mới tự ghi vào sổ đội (thanh tên + statusline đọc sổ này).
+    'doi' {
+        $proj = "$($Rest[0])"
+        $defF = Join-Path (Split-Path $PSScriptRoot) "doi\$proj.json"
+        if (-not (Test-Path $defF)) { Write-Error "Chưa có định nghĩa đội: $defF"; exit 1 }
+        $def = Get-Content $defF -Raw -Encoding UTF8 | ConvertFrom-Json
+        $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
+        $projDir = Join-Path $aiRoot $def.du_an
+        New-Item -ItemType Directory -Force $doiDir | Out-Null
+        $soF = Join-Path $doiDir "$($def.du_an).json"
+        $cu = Sync-Doi $def.du_an
+        if ("$($Rest[1])" -eq 'tat') {
+            if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.o) { & $exe cli --no-auto-start kill-pane --pane-id $m.o } } }
+            Write-Host "🛑 Đã tắt đội $($def.du_an)"; break
+        }
+        $oCu = @{}
+        if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.o) { $oCu[$m.vai] = "$($m.o)" } } }
+        $launchDir = Join-Path $doiDir $def.du_an
+        New-Item -ItemType Directory -Force $launchDir | Out-Null
+        $bom = New-Object Text.UTF8Encoding $true
+        $ws = @($def.worker)
+        $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
+        # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
+        function Loi($m, $laManager) {
+            if ($laManager) {
+                return "Bạn là $($m.icon) $($m.vai) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (mỗi worker 1 ô ở tab '$($def.logo) $($def.du_an) · worker'). " +
+                    "Giao việc bằng TÊN, không dùng số ô: E:\AI\Hion\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
+                    "Việc chạm khách/tiền/giá/đăng bài → duyet.js them, không tự làm. Bây giờ: đọc AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo ngắn việc đang làm / kẹt / đề xuất giao gì cho từng worker. CHƯA giao việc khi người dùng chưa đồng ý."
+            }
+            return "Bạn là worker $($def.logo) $($def.du_an) · $($m.icon) $($m.vai). Phụ trách: $($m.viec). Manager của bạn: $($def.du_an).Manager. " +
+                "Luật: chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
+                "Bây giờ: đọc AGENTS.md + tien-do của dự án, trả lời 3 dòng (bạn là ai, việc đang chờ thuộc phần mình, sẵn sàng) rồi CHỜ việc. Chưa sửa file nào."
+        }
+        # Mở 1 ô; Claude đặt tên bằng -n (hiện trên statusline + tiêu đề ô), Codex đổi tên bằng /rename sau khi mở
+        function Mo($m, $laManager, $splitFrom, $huong, $pct) {
+            $ten = "$($def.logo) $($def.du_an) · $($m.icon) $($m.vai)"
+            $loiF = Join-Path $launchDir "$($m.vai).txt"
+            [IO.File]::WriteAllText($loiF, (Loi $m $laManager), $bom)
+            $l = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item`r`n"
+            if ($m.ai -eq 'codex') {
+                $bang = Join-Path $HOME '.codex-tai-khoan.json'
+                if (Test-Path $bang) {
+                    $b = Get-Content -Raw -Encoding UTF8 $bang | ConvertFrom-Json
+                    $tk = $b.taiKhoan | Where-Object { $_.so -eq $b.duAn.($def.du_an) } | Select-Object -First 1
+                    if ($tk) { $l += "`$env:CODEX_HOME = '$($tk.thuMuc)'`r`n" }
+                }
+                $l += "codex.cmd --no-daemon`r`n"
+            } else {
+                $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten' (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n"
+            }
+            $lf = Join-Path $launchDir "mo-$($m.vai).ps1"
+            [IO.File]::WriteAllText($lf, $l, $bom)
+            $a = @('powershell', '-NoLogo', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $lf)
+            $id = if ($splitFrom) { & $exe cli --no-auto-start split-pane --pane-id $splitFrom $huong --percent $pct --cwd $projDir -- @a }
+                  else { & $exe cli --no-auto-start spawn --cwd $projDir -- @a }
+            $id = "$id".Trim()
+            if ($m.ai -eq 'codex' -and $id) {
+                # đợi Codex sẵn sàng (bỏ qua hộp hỏi cập nhật bằng Esc) → /rename → gửi lời nhắn
+                for ($i = 0; $i -lt 40; $i++) {
+                    Start-Sleep -Milliseconds 750
+                    $t = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
+                    if ($t -match 'Update available|Skip until next') { & $exe cli --no-auto-start send-text --no-paste --pane-id $id ([string][char]27); continue }
+                    if ($t -match 'Ask Codex|for shortcuts') { break }
+                }
+                & $exe cli --no-auto-start send-text --no-paste --pane-id $id '/rename'; Start-Sleep -Milliseconds 600
+                & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"; Start-Sleep -Milliseconds 900
+                & $exe cli --no-auto-start send-text --pane-id $id $ten; Start-Sleep -Milliseconds 400
+                & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"; Start-Sleep -Milliseconds 900
+                & $exe cli --no-auto-start send-text --pane-id $id (Get-Content -Raw -Encoding UTF8 $loiF); Start-Sleep -Milliseconds 400
+                & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
+            }
+            return $id
+        }
+        $so = [ordered]@{ du_an = $def.du_an; logo = $def.logo; cap_nhat = (Get-Date -Format 'yyyy-MM-dd HH:mm'); manager = $null; worker = @() }
+        # Manager: cạnh ô đang gọi lệnh (tab chính)
+        $mg = $def.manager
+        $mo = if ($oCu[$mg.vai]) { $oCu[$mg.vai] } else { Mo $mg $true $env:WEZTERM_PANE '--right' 50 }
+        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
+        # Worker: đứng cạnh nhau ở tab riêng; ô còn sống thì giữ, ô thiếu thì tách bên phải ô worker cuối
+        $cuoi = $null; $n = $ws.Count; $k = 0; $moMoi = 0
+        foreach ($w in $ws) {
+            $id = $oCu[$w.vai]
+            if (-not $id) {
+                $pct = [int](100 * ($n - $k) / ($n - $k + 1))   # 4 worker: 75 · 67 · 50 → rộng bằng nhau
+                $id = if ($cuoi) { Mo $w $false $cuoi '--right' ([Math]::Max(20, $pct)) } else { Mo $w $false $null $null 0 }
+                $moMoi++
+            }
+            $so.worker += [ordered]@{ o = $id; vai = $w.vai; icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec }
+            $cuoi = $id; $k++
+        }
+        [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
+        $w0 = ($so.worker | Select-Object -First 1).o
+        if ($w0) { & $exe cli --no-auto-start set-tab-title --pane-id $w0 "$($def.logo) $($def.du_an) · worker ← Manager" }
+        if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }
+        Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " (mở mới $moMoi worker)") -ForegroundColor Cyan
+        Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).Engineer `"việc`""
     }
     'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
-    'nen' { & $exe cli --no-auto-start move-pane-to-new-tab --pane-id $Rest[0] }
+    'nen' { & $exe cli --no-auto-start move-pane-to-new-tab --pane-id (Resolve-Id $Rest[0]) }
     # chinh <id> [id-đích]: kéo ô về tab chính, đặt bên phải ô đích (mặc định: ô đang gọi lệnh)
     'chinh' {
-        $dest = if ($Rest.Count -gt 1) { $Rest[1] } else { $env:WEZTERM_PANE }
-        & $exe cli --no-auto-start split-pane --pane-id $dest --right --percent 50 --move-pane-id $Rest[0]
+        $dest = if ($Rest.Count -gt 1) { Resolve-Id $Rest[1] } else { $env:WEZTERM_PANE }
+        & $exe cli --no-auto-start split-pane --pane-id $dest --right --percent 50 --move-pane-id (Resolve-Id $Rest[0])
         & $exe cli --no-auto-start activate-pane --pane-id $dest
     }
     # mo <file>: bật tài liệu lên ô "📄" bên phải tab người dùng đang xem
