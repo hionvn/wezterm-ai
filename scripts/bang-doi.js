@@ -37,6 +37,44 @@ function shortTitle(t) {
   return t.length > 40 ? t.slice(0, 39) + '…' : t;
 }
 
+// ===== Checklist việc đã giao (03/10/2026) =====
+// Sổ wez-ai\viec.json do wez.ps1 send / giao ghi. Việc tự ☑ khi ô nhận việc chuyển sang rảnh SAU lúc giao
+// (trạng thái wez-ai\state\<ô>.json: Claude ghi qua hooks, Codex do WezTerm đoán từ tiêu đề) → ghi lại "xong" vào sổ.
+// Tự đánh dấu tay: wez.ps1 viec xong <số> · bỏ: wez.ps1 viec bo <số>
+const hhmm = (t) => new Date(t * 1000).toTimeString().slice(0, 5);
+function viecList(now) {
+  const file = path.join(WEZAI, 'viec.json');
+  let vs = readJson(file);
+  if (!Array.isArray(vs)) vs = vs ? [vs] : [];
+  let changed = false;
+  for (const v of vs) {
+    if (v.xong || v.bo) continue;
+    const st = readJson(path.join(WEZAI, 'state', String(v.o) + '.json'));
+    if (st && st.state === 'idle' && st.t >= v.t + 3) { v.xong = st.t; changed = true; }
+  }
+  if (changed) { try { fs.writeFileSync(file, JSON.stringify(vs, null, 2)); } catch {} }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t0 = Math.floor(today.getTime() / 1000);
+  const homNay = vs.filter((v) => v.t >= t0 && !v.bo);
+  const chua = vs.filter((v) => !v.xong && !v.bo);
+  const xong = homNay.filter((v) => v.xong);
+  if (!vs.length) return [`${B}📋 VIỆC ĐÃ GIAO${R} ${DIM}— chưa có (giao bằng wez.ps1 send Chatbot.Engineer "việc" thì hiện ở đây)${R}`, ''];
+  const lines = [`${B}📋 VIỆC ĐÃ GIAO${R}  hôm nay ${rgb('#98c379')}${B}${xong.length}/${homNay.length} xong${R}` + (chua.length ? `  ·  ${rgb('#e5c07b')}${chua.length} chưa xong${R}` : '')];
+  // chưa xong (mọi ngày) trước, rồi 8 việc xong gần nhất hôm nay; giữ đúng số thứ tự
+  const show = [...chua, ...xong.slice(-8)].sort((a, b) => a.so - b.so);
+  for (const v of show.slice(-18)) {
+    const box = v.xong ? `${rgb('#98c379')}${B}☑${R}` : `${rgb('#e5c07b')}☐${R}`;
+    const so = String(v.so).padStart(3);
+    const ai = pad(String(v.ai || 'ô ' + v.o).slice(0, 30), 30);
+    const viec = String(v.viec || '').slice(0, Math.max(20, (process.stdout.columns || 100) - 75));
+    const thoi = v.xong ? `${DIM}${hhmm(v.t)} → ${hhmm(v.xong)} (${ago(v.xong - v.t)})${R}` : `${rgb('#e5c07b')}từ ${hhmm(v.t)} · ${ago(now - v.t)}${R}`;
+    const text = v.xong ? `${DIM}${viec}${R}` : viec;
+    lines.push(' ' + box + ' ' + link(v.o, `${so}. ${ai}${pad(text, 4 + width(viec))}`) + thoi);
+  }
+  lines.push('');
+  return lines;
+}
+
 function draw() {
   let panes = [];
   try { panes = JSON.parse(execFileSync(EXE, ['cli', '--no-auto-start', 'list', '--format', 'json'], { encoding: 'utf8', timeout: 4000 })); } catch { return; }
@@ -77,6 +115,7 @@ function draw() {
   // vẽ
   const cols = process.stdout.columns || 100;
   const out = [];
+  const checklist = viecList(now);
   const fc = readJson(path.join(WEZAI, 'fuel-claude.json'));
   const fx = readJson(path.join(WEZAI, 'fuel-codex.json')) || [];
   const pc = (v) => (v == null ? '?' : `${Math.round(v)}%`);
@@ -86,7 +125,8 @@ function draw() {
   const time = new Date().toTimeString().slice(0, 5);
   out.push(`${B} 📊 TỔNG QUAN ĐỘI AI${R} ${DIM}· ${time}${R}    ${fuel}`);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  const order = [...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
+  for (const l of checklist) out.push(l);
+  const order =[...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
   let total = { work: 0, need: 0, idle: 0 };
   for (const name of order) {
     const g = groups[name]; if (!g) continue;

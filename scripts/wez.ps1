@@ -54,6 +54,27 @@ function Sync-Doi($proj) {
     if ($doi) { [IO.File]::WriteAllText($f, ($d | ConvertTo-Json -Depth 5), $utf8) }
     return $d
 }
+# Sổ việc đã giao (03/10/2026): %LOCALAPPDATA%\wez-ai\viec.json = [{ so, t, o, ai, viec, tu, xong, bo }]
+#   send / giao ghi thêm 1 việc; bảng tổng quan (bang-doi.js) tự đánh dấu xong khi ô nhận việc chuyển sang rảnh.
+$viecF = Join-Path $env:LOCALAPPDATA 'wez-ai\viec.json'
+function Read-Viec { if (Test-Path $viecF) { try { return @(Get-Content $viecF -Raw -Encoding UTF8 | ConvertFrom-Json) } catch {} }; return @() }
+function Save-Viec($vs) { [IO.File]::WriteAllText($viecF, (ConvertTo-Json @($vs | Select-Object -Last 300) -Depth 4), (New-Object Text.UTF8Encoding $false)) }
+function Add-Viec($id, $text) {
+    $vs = @(Read-Viec)
+    $so = if ($vs.Count) { [int](($vs | Measure-Object so -Maximum).Maximum) + 1 } else { 1 }
+    # tên người nhận: theo sổ đội (vd "💬 Chatbot · ⚙️ Engineer"), không thì dự án + số ô
+    $ai = "ô $id"
+    foreach ($f in Get-ChildItem $doiDir -Filter *.json -ErrorAction SilentlyContinue) {
+        $d = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($m in @($d.manager) + @($d.worker)) { if ($m -and "$($m.o)" -eq "$id") { $ai = "$($d.logo) $($d.du_an) · $($m.icon) $(if ($m.ten) { $m.ten } else { $m.vai })" } }
+    }
+    $mot = (($text -replace '\s+', ' ').Trim())
+    if ($mot.Length -gt 90) { $mot = $mot.Substring(0, 89) + '…' }
+    $vs += [pscustomobject]@{ so = $so; t = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); o = "$id"; ai = $ai; viec = $mot; tu = "$env:WEZTERM_PANE"; xong = $null; bo = $false }
+    Save-Viec $vs
+    Write-Host "📝 Việc số $so → $ai" -ForegroundColor DarkGray
+}
+
 # "24" → 24 · "Chatbot.Engineer" / "chatbot/manager" → số ô theo sổ đội
 function Resolve-Id($s) {
     $s = "$s"
@@ -147,6 +168,23 @@ switch ($Cmd) {
         Start-Sleep -Milliseconds 300
         & $exe cli --no-auto-start send-text --pane-id $id --no-paste "`r"   # nhấn Enter
         Set-PaneState $id 'work'   # để `cho` biết là vừa giao việc
+        Add-Viec $id $text
+    }
+    # viec: in checklist việc đã giao (☑ xong · ☐ chưa) · viec xong <số> : tự đánh dấu xong · viec bo <số> : bỏ việc
+    'viec' {
+        $vs = @(Read-Viec)
+        if ("$($Rest[0])" -in 'xong', 'bo') {
+            foreach ($so in ("$($Rest[1])" -split ',')) {
+                $v = $vs | Where-Object { "$($_.so)" -eq $so.Trim() } | Select-Object -First 1
+                if (-not $v) { Write-Host "Không có việc $so" -ForegroundColor Yellow; continue }
+                if ($Rest[0] -eq 'xong') { $v.xong = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } else { $v.bo = $true }
+            }
+            Save-Viec $vs; break
+        }
+        foreach ($v in $vs | Select-Object -Last 40) {
+            $o = if ($v.bo) { '✖' } elseif ($v.xong) { '☑' } else { '☐' }
+            Write-Host ("{0} {1,3}. {2} — {3}" -f $o, $v.so, $v.ai, $v.viec)
+        }
     }
     # cho <id>[,<id>...] [giây]: đợi một hoặc nhiều ô làm xong (ô nào xong trước in trước)
     'cho' {
@@ -192,6 +230,7 @@ switch ($Cmd) {
         $new = $new.Trim()
         if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }   # giữ màn hình ở ô đang làm
         Set-PaneState $new 'work'
+        Add-Viec $new $task
         Write-Host "📨 Đã giao cho $ai ở $($proj.Name) → ô $new" -ForegroundColor Cyan
         Write-Output $new
         if ($Cho) {
