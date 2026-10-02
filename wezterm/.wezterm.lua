@@ -922,6 +922,19 @@ local function codex_warn(window)
   end
 end
 
+-- Tên ngắn của phiên trong ô (bỏ dấu quay ✳◐… của Claude, bỏ "Dự án | Ready |" của Codex), tối đa n ký tự
+local SPIN = { ['✳'] = true, ['◐'] = true, ['◓'] = true, ['◑'] = true, ['◒'] = true, ['⠂'] = true, ['⠐'] = true }
+local function short_title(t, proj, n)
+  t = t or ''
+  local last = t:match('.*|%s*(.-)%s*$') -- Codex: "Chatbot | Ready | Chatbot · ⚙ Engineer" → phần sau dấu | cuối
+  if last then t = last end
+  local first, rest = t:match('^(%S+)%s+(.*)$')
+  if first and SPIN[first] then t = rest end
+  if t == '' or t:lower():find('powershell') or t:lower() == (proj or ''):lower() then return nil end
+  if utf8.len(t) and utf8.len(t) > n then t = t:sub(1, (utf8.offset(t, n + 1) or (#t + 1)) - 1) .. '…' end
+  return t
+end
+
 wezterm.on('format-tab-title', function(tab)
   local p = tab.active_pane
   -- hàm này chạy rất dày → chỉ tra bảng PANE_LAST (update-status cập nhật mỗi 2 giây), không hỏi Windows
@@ -939,7 +952,10 @@ wezterm.on('format-tab-title', function(tab)
     { Text = ' ' .. (tab.tab_index + 1) .. ' ' .. bell .. icon .. ' ' },
     { Foreground = { Color = alert and '#ffffff' or (tab.is_active and proj_color(proj) or '#7f848e') } },
     { Attribute = { Intensity = (tab.is_active or alert) and 'Bold' or 'Normal' } },
-    { Text = proj_logo(proj) .. ' ' .. proj .. zoom .. ' ' },
+    -- 03/10: 2 tab cùng dự án trước đây trông y hệt → tab có đặt tên (đội, 📄 tài liệu) thì ghi tên đó,
+    -- không thì ghi thêm tên phiên, vd "👑 Hion · Dự án AI phân tích…"
+    { Text = ((tab.tab_title or '') ~= '' and tab.tab_title
+      or (proj_logo(proj) .. ' ' .. proj .. ((function() local s = short_title(x and x.title or p.title, proj, 22) return s and (' · ' .. s) or '' end)()))) .. zoom .. ' ' },
   }
 end)
 

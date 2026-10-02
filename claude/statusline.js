@@ -55,6 +55,8 @@ process.stdin.on('end', () => {
     const doi = JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'doi', project + '.json'), 'utf8').replace(/^﻿/, ''));
     const w = pane && (doi.worker || []).find((x) => String(x.o) === pane);
     if (w) role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`;
+    // 03/10: dự án đã có đội mà ô này không phải Manager / worker (vd phiên review, phiên mở thêm) → không gắn nhãn Manager
+    else if (pane && doi.manager && String(doi.manager.o) !== pane) role = `🔹 PHIÊN PHỤ ${project.toUpperCase()}`;
   } catch {}
   let where = `${pc}${bold}${role}${R}  ${logo} ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);
