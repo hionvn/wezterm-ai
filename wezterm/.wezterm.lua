@@ -709,6 +709,8 @@ local function capture_layout()
           elseif it.kind == 'doc' then
             it.path = docs[id]
           end
+          -- tab bảng tổng quan: tiêu đề ô có khi chỉ là "node.exe" → nhận theo tên tab
+          if it.kind == 'shell' and (tab:get_title() or ''):find('📊', 1, true) then it.kind = 'board' end
           local d = doi[id]
           if d then for k, v in pairs(d) do it[k] = v end end
           table.insert(panes, it)
