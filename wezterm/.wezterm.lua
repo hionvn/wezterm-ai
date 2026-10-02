@@ -748,7 +748,7 @@ local function codex_warn(window)
   nxt = (nxt and nxt ~= acct) and nxt or (nums[1] ~= acct and nums[1]) or '<số>'
   local msg = '⛽ Codex TK ' .. acct .. ' đã dùng ' .. math.floor(pct + 0.5) .. '% hạn mức ' .. which
     .. (reset and (' (làm mới ' .. os.date('%H:%M %d/%m', reset) .. ')') or '')
-    .. '. Đóng hết ô Codex rồi gõ: codextk ' .. nxt
+    .. '. Bật trực ca để Claude tự thay khi hết: doi-ca bat · xem tài khoản: doi-ca tai-khoan'
   window:toast_notification('WezTerm · đội AI', msg, nil, 15000)
   if PHONE then send_phone(msg) end
 end

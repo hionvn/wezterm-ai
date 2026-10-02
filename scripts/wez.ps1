@@ -130,12 +130,22 @@ switch ($Cmd) {
         New-Item -ItemType Directory -Force -Path $taskDir | Out-Null
         $taskFile = Join-Path $taskDir ("{0}-{1}.txt" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $proj.Name)
         [IO.File]::WriteAllText($taskFile, $task, (New-Object Text.UTF8Encoding $false))
-        $psCmd = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; $start (Get-Content -Raw -Encoding UTF8 '$taskFile')"
+        # Codex: mỗi dự án một tài khoản (CODEX_HOME riêng) theo codex-tai-khoan.json → chạy song song không giẫm nhau
+        $codexHome = ''; $tenTk = ''
+        $bangTk = Join-Path $HOME '.doi-ca\cau-hinh.json'   # do `doi-ca cai` tạo (thuMuc, ten từng tài khoản + duAn)
+        if ($ai -eq 'codex' -and (Test-Path $bangTk)) {
+            $bang = Get-Content -Raw -Encoding UTF8 $bangTk | ConvertFrom-Json
+            $so = $bang.duAn.($proj.Name)
+            $tk = $bang.taiKhoan | Where-Object { $_.so -eq $so } | Select-Object -First 1
+            if ($tk) { $codexHome = "`$env:CODEX_HOME='$($tk.thuMuc)'; "; $tenTk = $tk.ten; Write-Host "🔑 $tenTk (tài khoản $so) cho $($proj.Name)" }
+        }
+        $psCmd = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; $codexHome$start (Get-Content -Raw -Encoding UTF8 '$taskFile')"
         if ($Canh -and $env:WEZTERM_PANE) {
             $new = & $exe cli split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
         } else {
             $new = & $exe cli spawn --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
-            if ($new) { & $exe cli set-tab-title --pane-id $new.Trim() "$($proj.Name) · việc giao" }
+            $tieuDe = if ($tenTk) { "$tenTk · $($proj.Name)" } else { "$($proj.Name) · việc giao" }
+            if ($new) { & $exe cli set-tab-title --pane-id $new.Trim() $tieuDe }
         }
         if (-not $new) { Write-Error 'Không mở được ô mới.'; exit 1 }
         $new = $new.Trim()

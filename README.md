@@ -21,12 +21,15 @@ Khác bản gốc chỉ chạy trên Mac, bản này chạy trên **Windows + Po
 | Báo sang điện thoại (app ntfy) khi ô cần duyệt quá N phút mà chưa bấm vào — mặc định tắt | `wez.ps1 dienthoai bat` · `thu` · `tat` |
 | Bàn duyệt bấm nút: mỗi việc trong ô 📋 có ✅ Duyệt · ✏️ Trả lời · ❌ Bỏ; quyết định ghi vào `quyet-dinh.md` | bấm chuột · `node scripts/duyet.js list/them/ok/sua/bo` |
 | Báo cáo sáng (việc chờ duyệt, quyết định mới, tiến độ + git từng dự án, hạn mức) tự bật lúc mở WezTerm lần đầu từ 7 giờ | tự động · `node scripts/bao-cao-sang.js --mo` |
+| **Nhiều tài khoản Codex chạy song song**: mỗi dự án một tài khoản (CODEX_HOME riêng), không văng đăng nhập; bảng tài khoản + Gmail để đăng nhập lại đúng | `doi-ca cai` · `tai-khoan` · `dang-nhap <số>` · `codex <dự án>` |
+| **Trực ca tự động**: Codex sắp hết lượt → nhắc ghi bàn giao; hết hẳn → Claude tự vào làm tiếp (ô Codex giữ nguyên, luật đêm: không nhắn khách/đăng bài/tiêu tiền/push); Codex có lượt lại → trả ca | `doi-ca bat` · `tat` · `xem` |
+| Tự kiểm chứng đổi ca trong 3 phút (Claude thật + Codex giả, in ✅/❌ từng bước) · soát máy | `doi-ca mo-phong` · `doi-ca kiem-tra` |
 | Review chéo: AI kia đọc thay đổi chưa commit, ghi lỗi ra file | `wez.ps1 review <dự án> [codex\|claude]` |
 | Khoá file: 2 AI không sửa chồng một file (Claude tự động, Codex theo quy tắc) | `node scripts/khoa.js giu · tha · kiem · xem` |
 | Lưu / mở lại bố cục (Claude tiếp tục đúng phiên cũ); tự lưu mỗi phút, có "Phiên trước" | `Ctrl+Shift+S` / `Ctrl+Shift+O` |
 | Tự chẩn đoán cài đặt (thiếu gì, sửa thế nào) | `scripts/kiem-tra.ps1` |
 | Chặn commit có khoá bí mật | tự động (git hook), hoặc `quet-bi-mat.ps1` |
-| Lệnh tắt PowerShell | `ai`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `hion` / `sino` / `cool` / `bot` [-All], `newproj` |
+| Lệnh tắt PowerShell | `doi-ca`, `ai`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `hion` / `sino` / `cool` / `bot` [-All], `newproj` |
 
 Sổ tay phím tắt + hướng dẫn theo tình huống: https://claude.ai/artifact/MXLJEZVUsnRzNN72AtFbo7
 

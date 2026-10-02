@@ -12,39 +12,11 @@ if (Test-Path "$HOME\.wez-ai.json") {
 # Codex: run without background daemon so it also works in an Administrator terminal
 function codex { codex.cmd --no-daemon @args }
 
-# codextk            : show which ChatGPT account Codex uses (saved logins: ~\.codex\auth-<n>.json)
-# codextk <n>        : switch to account n (close all Codex panes first)
-# codextk luu <n>    : save the current login (after 'codex login') as account n
-function codextk {
-    $d = "$HOME\.codex"; $cur = "$d\tk-hien-tai.txt"
-    $now = if (Test-Path $cur) { (Get-Content $cur -Raw).Trim() } else { '?' }
-    function _email($f) {
-        try {
-            $p = ((Get-Content $f -Raw | ConvertFrom-Json).tokens.id_token -split '\.')[1].Replace('-', '+').Replace('_', '/')
-            $p += '=' * ((4 - $p.Length % 4) % 4)
-            ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json).email
-        } catch { '(khong doc duoc)' }
-    }
-    if ($args.Count -eq 0) {
-        Write-Host "Dang dung: tai khoan $now - $(_email "$d\auth.json")" -ForegroundColor Green
-        Get-ChildItem "$d\auth-*.json" | Sort-Object Name | ForEach-Object {
-            $n = $_.BaseName -replace 'auth-', ''; Write-Host "  $n) $(_email $_.FullName)"
-        }
-        return
-    }
-    if ($args[0] -eq 'luu') {
-        $n = $args[1]; if (-not $n) { Write-Host 'Cu phap: codextk luu <so>' -ForegroundColor Yellow; return }
-        Copy-Item "$d\auth.json" "$d\auth-$n.json" -Force; Set-Content $cur $n -Encoding ascii
-        Write-Host "Da luu tai khoan $n - $(_email "$d\auth.json")" -ForegroundColor Green; return
-    }
-    $n = $args[0]
-    if (-not (Test-Path "$d\auth-$n.json")) { Write-Host "Chua co tai khoan $n. Dang nhap roi chay: codextk luu $n" -ForegroundColor Yellow; return }
-    if (Get-Process codex -ErrorAction SilentlyContinue) { Write-Host 'Con o Codex dang chay - dong het (/quit) roi doi tai khoan.' -ForegroundColor Yellow; return }
-    # keep the refreshed login of the account we leave, then switch
-    if ($now -ne '?' -and (Test-Path "$d\auth-$now.json")) { Copy-Item "$d\auth.json" "$d\auth-$now.json" -Force }
-    Copy-Item "$d\auth-$n.json" "$d\auth.json" -Force; Set-Content $cur $n -Encoding ascii
-    Write-Host "Da doi sang tai khoan $n - $(_email "$d\auth.json"). Mo lai: codex resume --last" -ForegroundColor Green
-}
+# doi-ca <lenh>      : doi AI truc ca (nhieu tai khoan Codex chay song song, Codex het luot -> Claude lam tiep)
+#   doi-ca tai-khoan · dang-nhap <n> · codex <du an> · kiem-tra · mo-phong · bat · tat · xem   (go: doi-ca help)
+function doi-ca { & (Join-Path $AIRoot 'Hion\cai-dat\doi-ca.ps1') @args }
+# codextk: lenh cu (chep de auth.json) da bo tu 02/10/2026 vi lam vang dang nhap -> moi tai khoan mot CODEX_HOME rieng
+function codextk { Write-Host 'codextk da bo. Dung: doi-ca tai-khoan  /  doi-ca dang-nhap <so>' -ForegroundColor Yellow; doi-ca tai-khoan }
 
 # ai2 [path] [-Yolo] : open 2 side-by-side panes Claude | Codex in a folder  (ai3 = old name, still works)
 #   -Yolo : let both AIs run commands without asking for approval
