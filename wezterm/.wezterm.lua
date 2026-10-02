@@ -141,6 +141,7 @@ local SOCK = HOME .. '\\.local\\share\\wezterm\\gui-sock-' .. wezterm.procinfo.p
 local push_bg = wezterm.action_callback(function(window, pane)
   local tab = window:active_tab()
   if #tab:panes() < 2 then return end -- tab chỉ còn 1 ô thì không đẩy
+  if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
   pane:move_to_new_tab()
   tab:activate()
 end)
@@ -148,16 +149,18 @@ end)
 -- Ctrl+Shift+G: chọn một ô ở tab khác rồi kéo về bên phải ô đang chọn
 local pull_menu = wezterm.action_callback(function(window, pane)
   local choices, cur_tab = {}, window:active_tab():tab_id()
-  for i, tab in ipairs(window:mux_window():tabs()) do
+  for wi, mw in ipairs(wezterm.mux.all_windows()) do
+  for i, tab in ipairs(mw:tabs()) do
     if tab:tab_id() ~= cur_tab then
-      for _, p in ipairs(tab:panes()) do
+      for _, p in ipairs(tab:panes()) do if not is_header(p) then
         local cwd = p:get_current_working_dir()
         local dir = cwd and (cwd.file_path or tostring(cwd)) or ''
         local proj = dir:gsub('[\\/]+$', ''):match('([^\\/]+)$') or '?'
         table.insert(choices, { id = tostring(p:pane_id()),
-          label = 'Tab ' .. i .. '  ·  ' .. proj .. '  ·  ' .. (p:get_title() or '') })
-      end
+          label = (mw:window_id() ~= window:window_id() and ('Cửa sổ ' .. wi .. ' · ') or '') .. 'Tab ' .. i .. '  ·  ' .. proj .. '  ·  ' .. (p:get_title() or '') })
+      end end
     end
+  end
   end
   if #choices == 0 then
     window:toast_notification('WezTerm', 'Không có ô nào ở tab khác để kéo về', nil, 3000)
@@ -169,9 +172,11 @@ local pull_menu = wezterm.action_callback(function(window, pane)
     fuzzy = true,
     action = wezterm.action_callback(function(_, p, id)
       if not id then return end
+      if is_header(p) then p = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(p:pane_id())])) or p end
       wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-Command',
         "$env:WEZTERM_UNIX_SOCKET='" .. SOCK .. "'; & '" .. WEZ_EXE .. "' cli split-pane --pane-id "
-          .. p:pane_id() .. ' --right --percent 50 --move-pane-id ' .. id }
+          .. p:pane_id() .. ' --right --top-level --percent 30 --move-pane-id ' .. id }
+      wezterm.time.call_after(1.5, function() wezterm.emit('chia-deu', window, p) end)
     end),
   }, pane)
 end)
@@ -241,7 +246,9 @@ local project_menu = wezterm.action_callback(function(window, pane)
             local t = w2:mux_window():spawn_tab { cwd = dir, args = PS(a[2]) }
             t:set_title(proj)
           else
-            p2:split { direction = where, cwd = dir, args = PS(a[2]) }
+            -- ô bên phải = cột mới ở mép phải cả tab (không lồng vào trong ô đang chọn), rồi chia đều
+            local np = p2:split { direction = where, top_level = where == 'Right', cwd = dir, args = PS(a[2]) }
+            if where == 'Right' then wezterm.emit('chia-deu', w2, np) end
           end
         end),
       }, p)
@@ -263,7 +270,15 @@ config.keys = {
   { key = 'S', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(w, p) w:perform_action(save_layout, p) end) },
   { key = 'O', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(w, p) w:perform_action(restore_menu, p) end) },
   -- Chia ô
-  { key = 'D', mods = 'ALT|SHIFT', action = act.SplitHorizontal { domain = 'CurrentPaneDomain' } },
+  -- Alt+Shift+D: thêm 1 cột ở mép phải cả tab rồi chia đều (không lồng ô mới vào trong ô đang chọn)
+  { key = 'D', mods = 'ALT|SHIFT', action = wezterm.action_callback(function(w, p)
+    local np = p:split { direction = 'Right', top_level = true, cwd = HUB, args = PS('ai') }
+    wezterm.emit('chia-deu', w, np)
+  end) },
+  -- Sắp xếp ô: Ctrl+Shift+X đổi chỗ (hiện chữ cái trên mỗi ô, bấm chữ của ô muốn đổi)
+  --            Ctrl+Shift+F tách ô đang chọn ra cửa sổ riêng (kéo thả tự do, Win+mũi tên để xếp)
+  { key = 'X', mods = 'CTRL|SHIFT', action = act.PaneSelect { mode = 'SwapWithActive', alphabet = 'asdfghjklqwertyuiop' } },
+  { key = 'F', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tach-o' },
   { key = '_', mods = 'ALT|SHIFT', action = act.SplitVertical { domain = 'CurrentPaneDomain' } },
   { key = '@', mods = 'ALT|SHIFT', action = cols(2) },
   { key = '#', mods = 'ALT|SHIFT', action = cols(3) },
@@ -950,15 +965,25 @@ local function process_headers(window)
       end
     end
   end
-  hdr_save(map)
-  -- giữ ô tên đúng 1 dòng (lúc tách, hoặc sau khi kéo / chia đều, ô tên có thể bị cao lên)
+  -- ô tên phải nằm ngay trên ô AI của nó (sau khi đổi chỗ ô thì không còn đúng) → đóng, vòng sau dựng lại đúng chỗ
+  -- và giữ ô tên đúng 1 dòng (lúc tách, hoặc sau khi kéo / chia đều, ô tên có thể bị cao lên)
+  local active_of = {}
   for _, t in ipairs(window:mux_window():tabs()) do
-    for _, info in ipairs(t:panes_with_info()) do
-      if map[tostring(info.pane:pane_id())] and info.height > 1 then
-        window:perform_action(act.AdjustPaneSize { 'Up', info.height - 1 }, info.pane)
+    local pos = {}
+    for _, info in ipairs(t:panes_with_info()) do pos[tostring(info.pane:pane_id())] = info end
+    local tap = t:active_pane()
+    if tap then active_of[tostring(tap:pane_id())] = true end
+    for h, tid in pairs(map) do
+      local hi, ti = pos[h], pos[tid]
+      if hi and ti and hi.height <= 1 and (hi.left ~= ti.left or hi.top + hi.height + 1 ~= ti.top) then
+        map[h] = nil
+        window:perform_action(act.CloseCurrentPane { confirm = false }, hi.pane)
+      elseif hi and hi.height > 1 then
+        window:perform_action(act.AdjustPaneSize { 'Up', hi.height - 1 }, hi.pane)
       end
     end
   end
+  hdr_save(map)
   -- bấm vào ô tên → chuyển sang ô AI bên dưới
   local ap = window:active_pane()
   local target = ap and map[tostring(ap:pane_id())]
@@ -971,7 +996,7 @@ local function process_headers(window)
       local info = { current_working_dir = tp:get_current_working_dir(), foreground_process_name = tp:get_foreground_process_name(), title = tp:get_title() }
       local proj, sub = split_project(pane_dir(info))
       local icon, ai = which_ai(info)
-      out.o[h] = { icon = icon, ai = ai or 'Terminal', proj = proj, sub = sub, color = proj_color(proj) }
+      out.o[h] = { icon = icon, ai = ai or 'Terminal', proj = proj, sub = sub, color = proj_color(proj), active = active_of[t] or false }
     end
   end
   local s = wezterm.json_encode(out)
@@ -990,6 +1015,13 @@ wezterm.on('ten-o-bat-tat', function(window, pane)
   end
   pcall(process_headers, window)
   window:toast_notification('WezTerm · đội AI', g.ten_o_tat and '🏷 Đã tắt thanh tên ô (Ctrl+Shift+D để bật lại)' or '🏷 Đã bật thanh tên ô', nil, 3000)
+end)
+
+-- Ctrl+Shift+F: tách ô đang chọn ra cửa sổ riêng (kéo thả tự do trên màn hình; Ctrl+Shift+G ở cửa sổ chính để kéo về)
+wezterm.on('tach-o', function(window, pane)
+  if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
+  if #window:active_tab():panes() < 2 then return end
+  pane:move_to_new_window()
 end)
 
 wezterm.on('chia-deu', function(window, pane)

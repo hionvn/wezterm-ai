@@ -30,8 +30,9 @@ function draw() {
   let text = '';
   let bg = [60, 66, 78];
   if (info) {
-    bg = hex(info.color);
-    text = ` ${info.icon || '▪️'} ${info.ai} · ${String(info.proj || '?').toUpperCase()}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
+    // ô đang chọn: nền màu dự án + dấu ▶ (nổi lên); ô khác: nền xám tối
+    bg = info.active ? hex(info.color) : [52, 56, 62];
+    text = ` ${info.active ? '▶' : ' '} ${info.icon || '▪️'} ${info.ai} · ${String(info.proj || '?').toUpperCase()}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
   }
   // cắt bớt nếu ô hẹp, rồi tô kín cả dòng
   while (width(text) > cols - 1 && text.length) text = [...text].slice(0, -1).join('');
