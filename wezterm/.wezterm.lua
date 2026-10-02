@@ -325,6 +325,10 @@ config.keys = {
   { key = 'U', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tong-quan' },   -- 📊 bảng tổng quan đội (03/10)
   { key = 'F4', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tat-du-an' },  -- đóng hẳn 1 dự án (mọi ô của nó), có hỏi lại (03/10)
   { key = 'w', mods = 'CTRL|ALT', action = act.EmitEvent 'tat-du-an' },     -- như trên; laptop hay cần Fn cho F4 nên thêm phím này
+  -- Ctrl+Shift+P: MENU GỌN của đội AI (03/10, người dùng thấy bảng lệnh gốc quá nhiều dòng thừa) · bảng gốc → Ctrl+Shift+Alt+P
+  { key = 'P', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
+  { key = 'p', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
+  { key = 'P', mods = 'CTRL|SHIFT|ALT', action = act.ActivateCommandPalette },
   { key = 'Space', mods = 'CTRL|SHIFT', action = act.EmitEvent 'nhay-o' }, -- nhảy tới ô theo tên (03/10)
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
@@ -1502,13 +1506,35 @@ end)
 
 -- Ctrl+Shift+F4: đóng hẳn 1 dự án — chọn dự án (thấy số ô, số ô đang làm) → hỏi lại → đóng mọi ô của dự án
 -- (đội, phiên phụ, tài liệu). Không bao giờ đóng ô Tổng quản + bảng 📊. Mở lại: wez.ps1 doi <dự án> hoặc Ctrl+Shift+O. (03/10/2026)
--- Bảng lệnh Ctrl+Shift+P: thêm mục cho các tính năng đội AI (gõ "đóng", "bảng", "nhảy"…) — dùng được cả khi phím tắt bị máy chiếm
-wezterm.on('augment-command-palette', function()
-  return {
-    { brief = '🛑 Đóng hẳn 1 dự án (mọi ô của nó)', action = act.EmitEvent 'tat-du-an' },
-    { brief = '📊 Bật/tắt bảng tổng quan + checklist', action = act.EmitEvent 'tong-quan' },
-    { brief = '🔎 Nhảy tới ô theo tên', action = act.EmitEvent 'nhay-o' },
-  }
+-- Ctrl+Shift+P: menu gọn của đội AI — mỗi dòng 1 việc hay dùng + phím tắt của nó (gõ để lọc, Enter chạy).
+-- Dùng được cả khi phím tắt bị máy chiếm (vd Ctrl+Shift+F4 trên laptop). Bảng lệnh gốc WezTerm: Ctrl+Shift+Alt+P.
+local MENU_DOI = {
+  { 'tong-quan', '📊  Bảng tổng quan + checklist', 'Ctrl+Shift+U' },
+  { 'nhay-o', '🔎  Nhảy tới ô theo tên', 'Ctrl+Shift+Space' },
+  { 'mo-du-an', '➕  Mở dự án / AI', 'Ctrl+Shift+A' },
+  { 'ban-duyet', '📋  Bàn duyệt (việc chờ bạn)', 'Ctrl+Shift+J' },
+  { 'tat-du-an', '🛑  Đóng hẳn 1 dự án', 'Ctrl+Alt+W' },
+  { 'luu', '💾  Lưu bố cục', 'Ctrl+Shift+S' },
+  { 'mo-lai', '⏮  Mở lại bố cục', 'Ctrl+Shift+O' },
+  { 'chia-deu', '⇔  Chia đều các ô', 'Ctrl+Shift+E' },
+  { 'ten-o', '🏷  Bật/tắt thanh tên ô', 'Ctrl+Shift+D' },
+  { 'goc', '⚙  Bảng lệnh gốc của WezTerm', 'Ctrl+Shift+Alt+P' },
+}
+wezterm.on('menu-doi', function(window, pane)
+  local choices = {}
+  for _, m in ipairs(MENU_DOI) do table.insert(choices, { id = m[1], label = m[2] .. '   ·   ' .. m[3] }) end
+  window:perform_action(act.InputSelector {
+    title = 'Đội AI — chọn việc  (gõ để lọc · Enter chạy · Esc thoát)', fuzzy = true, choices = choices,
+    action = wezterm.action_callback(function(w, p, id)
+      if not id then return end
+      local run = {
+        ['tong-quan'] = act.EmitEvent 'tong-quan', ['nhay-o'] = act.EmitEvent 'nhay-o', ['tat-du-an'] = act.EmitEvent 'tat-du-an',
+        ['mo-du-an'] = project_menu, ['ban-duyet'] = toggle_doc, ['luu'] = save_layout, ['mo-lai'] = restore_menu,
+        ['chia-deu'] = act.EmitEvent 'chia-deu', ['ten-o'] = act.EmitEvent 'ten-o-bat-tat', ['goc'] = act.ActivateCommandPalette,
+      }
+      if run[id] then w:perform_action(run[id], p) end
+    end),
+  }, pane)
 end)
 
 wezterm.on('tat-du-an', function(window, pane)
