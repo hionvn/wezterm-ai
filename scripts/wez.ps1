@@ -17,6 +17,7 @@
 #   .\wez.ps1 cli <lệnh wezterm cli bất kỳ>
 #   .\wez.ps1 doi Chatbot                           # mở đội của dự án theo Hion\doi\Chatbot.json (Manager cạnh ô đang gọi + worker ở tab riêng);
 #                                                   #   ô nào đã mở thì giữ, chỉ mở ô còn thiếu; tự ghi số ô mới vào sổ đội · `doi Chatbot tat` = tắt cả đội
+#   .\wez.ps1 doi Chatbot xep                      # xếp lại bố cục chuẩn khi bị lệch (giữ nguyên phiên các ô)
 #   Mọi lệnh nhận số ô cũng nhận TÊN VAI: send Chatbot.Engineer "việc" · cho Chatbot.Design,Chatbot.Marketing · read Chatbot.Manager
 #   (tra sổ đội %LOCALAPPDATA%\wez-ai\doi\<dự án>.json; số ô cũ chết thì tự tìm lại theo tên ô → không phải nhớ số ô)
 # Mã thoát của `cho`: 0 = xong · 1 = ô đang chờ bạn duyệt · 2 = hết giờ chờ · 3 = send bị từ chối vì ô bận
@@ -310,6 +311,7 @@ switch ($Cmd) {
         $mg = $def.manager
         $idsCu = @($oCu[$mg.vai]) + @($ws | ForEach-Object { $oCu[$_.vai] })
         $chungTab = ($idsCu | Where-Object { -not $_ }).Count -eq 0 -and (@($idsCu | ForEach-Object { $tabOf[$_] } | Select-Object -Unique)).Count -eq 1
+        if ("$($Rest[1])" -eq 'xep') { $chungTab = $false }   # doi <dự án> xep: ép xếp lại bố cục chuẩn (vd sau khi bị lệch)
         $moMoi = 0
         # Đặt 1 vai vào chỗ: tách từ ô $from theo $huong; ô cũ còn sống thì chuyển nó vào (--move-pane-id), không thì mở mới
         function Dat($m, $laManager, $from, $huong, $pct) {

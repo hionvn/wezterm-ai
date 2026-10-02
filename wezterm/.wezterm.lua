@@ -126,25 +126,40 @@ local function process_open(window)
   os.remove(req_path)
   local ok, req = pcall(wezterm.json_parse, s)
   if not ok or not req or not req.path then return end
+  local name = req.path:match('([^\\/]+)$') or req.path
   local tab, cur = window:active_tab(), window:active_pane()
-  for _, p in ipairs(tab:panes()) do
-    if is_doc(p) then
-      if p:pane_id() == cur:pane_id() then cur = nil end
-      kill_pane(p)
+  -- Thay ô 📄 cũ: đóng mọi ô tài liệu trong cửa sổ (ở tab đang xem hoặc ở tab 📄 riêng)
+  for _, t in ipairs(window:mux_window():tabs()) do
+    for _, p in ipairs(t:panes()) do
+      if is_doc(p) then
+        if p:pane_id() == cur:pane_id() then cur = nil end
+        kill_pane(p)
+      end
     end
   end
-  if not cur then
-    for _, p in ipairs(tab:panes()) do if not is_doc(p) and not is_header(p) then cur = p break end end
-  end
+  local real = {}
+  for _, p in ipairs(tab:panes()) do if not is_doc(p) and not is_header(p) then table.insert(real, p) end end
+  if not cur then cur = real[1] end
   if not cur then return end
   if is_header(cur) then cur = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(cur:pane_id())])) or cur end
-  -- top_level: ô 📄 chiếm trọn mép phải tab, không chen vào dưới thanh tên của ô AI
-  local doc = cur:split { direction = 'Right', size = 0.42, top_level = true, cwd = HUB, args = DOCVIEW(req.path) }
+  local doc
+  if #real >= 2 then
+    -- 03/10: tab đã có từ 2 ô (vd tab đội Manager + 4 worker) → mở tài liệu ở TAB RIÊNG, không chia ô:
+    -- chia ô làm các worker bị bóp hẹp, mất chữ, đóng tài liệu xong bố cục không về như cũ.
+    local dtab
+    dtab, doc = window:mux_window():spawn_tab { cwd = HUB, args = DOCVIEW(req.path) }
+    dtab:set_title('📄 ' .. name)
+    tab:activate() -- vẫn ở tab đang xem; tài liệu chờ ở tab 📄
+    window:toast_notification('WezTerm · đội AI', '📄 Tài liệu mới ở tab "📄 ' .. name .. '" (Ctrl+Tab để xem · đọc xong Ctrl+Shift+W)', nil, 8000)
+  else
+    -- tab chỉ 1 ô: mở bên phải như cũ; đóng tài liệu thì ô cũ tự trở lại đầy đủ
+    doc = cur:split { direction = 'Right', size = 0.42, top_level = true, cwd = HUB, args = DOCVIEW(req.path) }
+    cur:activate() -- giữ con trỏ ở ô bạn đang gõ
+    window:toast_notification('WezTerm · đội AI', '📄 Đã mở tài liệu: ' .. name, nil, 5000)
+  end
   local docs = wezterm.GLOBAL.docs or {} -- nhớ ô 📄 nào xem file nào (để lưu / khôi phục bố cục)
   docs[tostring(doc:pane_id())] = req.path
   wezterm.GLOBAL.docs = docs
-  cur:activate() -- giữ con trỏ ở ô bạn đang gõ
-  window:toast_notification('WezTerm · đội AI', '📄 Đã mở tài liệu: ' .. (req.path:match('([^\\/]+)$') or req.path), nil, 5000)
 end
 
 -- Chuyển ô giữa tab chính và tab nền (giống anh Sơn đẩy agent ra tab phụ)
