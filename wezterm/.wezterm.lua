@@ -414,6 +414,8 @@ end
 local function which_ai(p)
   local s = ((p.foreground_process_name or '') .. ' ' .. (p.title or '')):lower()
   if s:find('codex') then return '🧩', 'Codex' end
+  -- tiêu đề Codex kiểu "Chatbot | Ready | tên phiên" / "| Working |" không có chữ codex (03/10: mở lại bị nhận nhầm là PowerShell)
+  if s:find('| ready |', 1, true) or s:find('| working |', 1, true) or s:find('| waiting', 1, true) then return '🧩', 'Codex' end
   if s:find('claude') or s:find('✳') or s:find('◐') or s:find('◓') or s:find('◑') or s:find('◒') then return '🤖', 'Claude' end
   if s:find('powershell') or s:find('pwsh') then return '⌨️', 'PowerShell' end
   return '▪️', nil
@@ -678,7 +680,7 @@ local function doi_map()
       if def.manager then chan[def.manager.vai or 'Manager'] = def.manager.chan end
       local function add(x)
         if x and x.o and tostring(x.o) ~= '' then
-          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai] }
+          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai], doi_ai = tostring(x.ai or ''):lower() }
         end
       end
       add(r.manager)
@@ -707,12 +709,20 @@ local function capture_layout()
           elseif it.kind == 'codex' then
             it.state = title_state(p)
           elseif it.kind == 'doc' then
-            it.path = docs[id]
+            -- sổ docs nhớ theo số ô; số ô có thể đã bị dùng lại → chỉ tin khi tên file khớp tiêu đề ô
+            local pth = docs[id]
+            local nm = pth and pth:match('([^\\/]+)$')
+            if nm and (pinfo(p).title or ''):find(nm, 1, true) then it.path = pth end
           end
           -- tab bảng tổng quan: tiêu đề ô có khi chỉ là "node.exe" → nhận theo tên tab
           if it.kind == 'shell' and (tab:get_title() or ''):find('📊', 1, true) then it.kind = 'board' end
           local d = doi[id]
-          if d then for k, v in pairs(d) do it[k] = v end end
+          if d then
+            for k, v in pairs(d) do it[k] = v end
+            -- ô trong đội: loại AI theo sổ đội (tiêu đề / tiến trình có lúc không nhận ra)
+            if d.doi_ai == 'codex' and it.kind == 'shell' then it.kind = 'codex'; it.state = it.state or title_state(p) end
+            if d.doi_ai == 'claude' and it.kind == 'shell' then it.kind = 'claude' end
+          end
           table.insert(panes, it)
           n = n + 1
         end

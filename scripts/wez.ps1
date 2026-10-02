@@ -60,7 +60,7 @@ $viecF = Join-Path $env:LOCALAPPDATA 'wez-ai\viec.json'
 function Read-Viec { if (Test-Path $viecF) { try { return @(Get-Content $viecF -Raw -Encoding UTF8 | ConvertFrom-Json) } catch {} }; return @() }
 function Save-Viec($vs) { [IO.File]::WriteAllText($viecF, (ConvertTo-Json @($vs | Select-Object -Last 300) -Depth 4), (New-Object Text.UTF8Encoding $false)) }
 function Add-Viec($id, $text) {
-    $vs = @(Read-Viec)
+    $vs = @(Read-Viec | Where-Object { $_ -and $_.so })
     $so = if ($vs.Count) { [int](($vs | Measure-Object so -Maximum).Maximum) + 1 } else { 1 }
     # tên người nhận: theo sổ đội (vd "💬 Chatbot · ⚙️ Engineer"), không thì dự án + số ô
     $ai = "ô $id"
@@ -438,6 +438,34 @@ switch ($Cmd) {
         Write-Host '🧹 Tab có thể đóng (đội, ô đang làm và ô của bạn không bao giờ có trong danh sách):' -ForegroundColor Cyan
         foreach ($m in $ds) { Write-Host ("  {0}. {1}" -f $m.so, $m.ten) }
         Write-Host "Đóng: wez.ps1 don dong 1,2   (chọn số; không chạy thì không đóng gì)" -ForegroundColor DarkGray
+    }
+    # khoidonglai: khởi động lại toàn bộ WezTerm rồi tự mở lại mọi phiên (03/10/2026).
+    #   Đợi bản tự lưu mới (≤ 35 giây) → chép làm bản lưu tay dự phòng → nhờ Task Scheduler (không thuộc WezTerm nên không bị tắt theo)
+    #   tắt CẢ CÂY tiến trình WezTerm (taskkill /T: gồm Claude/Codex bên trong, tránh phiên cũ chạy mồ côi) → mở lại WezTerm.
+    #   Lần 03/10 dùng Stop-Process: WezTerm cũ (chạy quyền admin) không tắt được → 2 WezTerm + 14 phiên AI cũ chạy song song.
+    'khoidonglai' {
+        $f = Join-Path $env:LOCALAPPDATA 'wez-ai\bo-cuc-tu-luu.json'
+        $start = Get-Date
+        while ((-not (Test-Path $f) -or (Get-Item $f).LastWriteTime -lt $start.AddSeconds(2)) -and ((Get-Date) - $start).TotalSeconds -lt 40) { Start-Sleep 2 }
+        Copy-Item $f (Join-Path $env:LOCALAPPDATA 'wez-ai\bo-cuc-luu.json') -Force
+        $dir = Join-Path $env:LOCALAPPDATA 'wez-ai\khoi-dong-lai'; New-Item -ItemType Directory -Force $dir | Out-Null
+        $gui = Join-Path (Split-Path $exe) 'wezterm-gui.exe'
+        $s = @"
+`$log = '$dir\nhat-ky.txt'
+"`$(Get-Date -Format 'HH:mm:ss') bắt đầu" | Out-File `$log -Encoding utf8
+Start-Sleep 3
+taskkill /IM wezterm-gui.exe /T /F 2>&1 | Out-File `$log -Append -Encoding utf8
+Start-Sleep 3
+`$con = @(Get-Process wezterm-gui -ErrorAction SilentlyContinue)
+if (`$con.Count) { "`$(Get-Date -Format 'HH:mm:ss') ⚠️ còn `$(`$con.Count) WezTerm không tắt được (chạy quyền admin?) — không mở thêm bản mới" | Out-File `$log -Append -Encoding utf8; exit 1 }
+Start-Process '$gui'
+"`$(Get-Date -Format 'HH:mm:ss') đã mở lại WezTerm" | Out-File `$log -Append -Encoding utf8
+"@
+        [IO.File]::WriteAllText("$dir\chay.ps1", $s, (New-Object Text.UTF8Encoding $true))
+        $st = (Get-Date).AddMinutes(5).ToString('HH:mm')
+        schtasks /create /tn 'WezAI-KhoiDongLai' /sc once /st $st /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\chay.ps1`"" /f | Out-Null
+        Write-Host "🔄 Bản lưu $((Get-Item $f).LastWriteTime.ToString('HH:mm:ss')) · khởi động lại sau ~3 giây; mở lên sẽ tự mở lại mọi phiên. Nhật ký: $dir\nhat-ky.txt" -ForegroundColor Cyan
+        schtasks /run /tn 'WezAI-KhoiDongLai' | Out-Null
     }
     'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
