@@ -779,6 +779,27 @@ wezterm.on('format-tab-title', function(tab)
   }
 end)
 
+-- Tiêu đề cửa sổ (hiện trên thanh tác vụ Windows khi thu nhỏ): "🤖 Claude · Hion | 🧩 Codex · Chatbot"
+-- Ô đang chọn đứng đầu; bỏ qua ô xem tài liệu 📄/📋; có 🔔/✅ khi tab cần duyệt / vừa xong
+wezterm.on('format-window-title', function(tab, pane, tabs, panes)
+  local function label(p)
+    local icon, ai = which_ai(p)
+    return icon .. ' ' .. (ai or 'Terminal') .. ' · ' .. split_project(pane_dir(p))
+  end
+  local parts, seen = { label(pane) }, {}
+  seen[parts[1]] = true
+  for _, p in ipairs(panes) do
+    local t = p.title or ''
+    if p.pane_id ~= pane.pane_id and not t:find('📄', 1, true) and not t:find('📋', 1, true) then
+      local l = label(p)
+      if not seen[l] then seen[l] = true; parts[#parts + 1] = l end
+    end
+  end
+  local alert = tab_alert[tostring(tab.tab_id)]
+  local bell = alert == 'need' and '🔔 ' or (alert == 'done' and '✅ ' or '')
+  return bell .. table.concat(parts, ' | ')
+end)
+
 -- Bàn duyệt: nút [✅ Duyệt] [✏️ Trả lời] [❌ Bỏ] trong ô 📋 là link wezai-duyet:<việc>/<mã>
 -- → chạy cai-dat\duyet.js (chuyển việc sang "Đã xử lý" + ghi quyet-dinh.md). Trả lời / Bỏ thì hỏi thêm một dòng.
 local DUYET = HUB .. '/cai-dat/duyet.js'
