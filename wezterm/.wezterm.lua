@@ -353,7 +353,10 @@ config.mouse_bindings = {
 -- Tên tab: số · biểu tượng AI · dự án (màu theo dự án, giống thanh trạng thái Claude)
 -- Góc phải: AI · dự án › thư mục con · 🌿 nhánh git · số ô · giờ, ngày
 config.use_fancy_tab_bar = false
-config.tab_max_width = 32
+config.tab_max_width = 28
+config.show_new_tab_button_in_tab_bar = false -- bỏ nút "+" cho thanh tab gọn (mở tab: Ctrl+Shift+T)
+config.colors = config.colors or {}
+config.colors.tab_bar = { background = '#15181c' } -- nền thanh tab tối hẳn để các khối màu dự án nổi lên
 config.status_update_interval = 2000
 
 -- Màu + logo riêng từng dự án: lấy từ Hion\cay-du-an.json (trường "mau", "logo"); dự án lạ → màu theo tên, logo 📁
@@ -935,54 +938,77 @@ local function short_title(t, proj, n)
   return t
 end
 
-wezterm.on('format-tab-title', function(tab)
+-- Dự án + nhãn ngắn của một tab (dùng chung cho thanh tab và tiêu đề cửa sổ)
+local function tab_info(tab)
   local p = tab.active_pane
-  -- hàm này chạy rất dày → chỉ tra bảng PANE_LAST (update-status cập nhật mỗi 2 giây), không hỏi Windows
   local id = tostring(hdr_map()[tostring(p.pane_id)] or p.pane_id) -- đang đứng ở ô tên → lấy ô AI bên dưới
   local x = PANE_LAST[id]
   local proj = x and x.proj or split_project(pane_dir(p))
-  local icon = x and x.icon or which_ai { title = p.title }
-  local zoom = p.is_zoomed and ' 🔍' or ''
+  local title = tab.tab_title or ''
+  local logo = proj_logo(proj)
+  if title ~= '' then
+    if title:sub(1, 4) == '📄' then logo = '📄' end
+    -- "💬 Chatbot · đội" → bỏ logo đầu (đã vẽ riêng); tài liệu "📄 ten-file.html" → bỏ đuôi
+    title = title:gsub('^%S+%s+', '', 1):gsub('%.html?$', ''):gsub('%.md$', '')
+  end
+  return proj, logo, title, x
+end
+
+-- 03/10 làm lại cho dễ nhìn: mỗi tab là 1 khối màu riêng của dự án.
+--   Tab đang xem: nền màu dự án, chữ đậm tối · tab khác: vạch màu dự án ▌ + chữ xám
+--   🔔 nền đỏ = cần duyệt · ✅ nền xanh dương = vừa xong · bỏ biểu tượng AI 🤖/🧩 cho đỡ rối
+--   Tên: tab có đặt tên (đội, 📄 tài liệu) thì ghi tên đó; 2 tab cùng dự án mà không đặt tên thì thêm tên phiên ngắn
+wezterm.on('format-tab-title', function(tab, tabs)
+  -- chạy rất dày → chỉ tra bảng PANE_LAST (update-status cập nhật mỗi 2 giây), không hỏi Windows
+  local proj, logo, title, x = tab_info(tab)
+  local label = title
+  if label == '' then
+    label = proj
+    local trung = 0
+    for _, t in ipairs(tabs or {}) do if select(1, tab_info(t)) == proj and (t.tab_title or '') == '' then trung = trung + 1 end end
+    if trung > 1 then
+      local s = short_title(x and x.title or tab.active_pane.title, proj, 14)
+      if s then label = proj .. ' · ' .. s end
+    end
+  end
+  if tab.active_pane.is_zoomed then label = label .. ' 🔍' end
   local alert = tab_alert[tostring(tab.tab_id)]
-  local bg = alert == 'need' and '#a8322d' or (alert == 'done' and '#1f5fb4' or (tab.is_active and '#3a3f4b' or '#1e2127')) -- xong việc = nền xanh dương (03/10, người dùng chọn), cần duyệt = đỏ
-  local bell = alert == 'need' and '🔔 ' or (alert == 'done' and '✅ ' or '')
+  local color = proj_color(proj)
+  local n = tostring(tab.tab_index + 1)
+  if alert then
+    local bg = alert == 'need' and '#a8322d' or '#1f5fb4' -- cần duyệt = đỏ · xong việc = xanh dương (người dùng chọn 03/10)
+    return {
+      { Background = { Color = bg } }, { Foreground = { Color = '#ffffff' } }, { Attribute = { Intensity = 'Bold' } },
+      { Text = ' ' .. n .. ' ' .. (alert == 'need' and '🔔' or '✅') .. ' ' .. logo .. ' ' .. label .. ' ' },
+      { Background = { Color = '#15181c' } }, { Text = ' ' },
+    }
+  end
+  if tab.is_active then
+    return {
+      { Background = { Color = color } }, { Foreground = { Color = '#15181c' } }, { Attribute = { Intensity = 'Bold' } },
+      { Text = ' ' .. n .. ' ' .. logo .. ' ' .. label .. ' ' },
+      { Background = { Color = '#15181c' } }, { Text = ' ' },
+    }
+  end
   return {
-    { Background = { Color = bg } },
-    { Foreground = { Color = (tab.is_active or alert) and '#ffffff' or '#7f848e' } },
-    { Text = ' ' .. (tab.tab_index + 1) .. ' ' .. bell .. icon .. ' ' },
-    { Foreground = { Color = alert and '#ffffff' or (tab.is_active and proj_color(proj) or '#7f848e') } },
-    { Attribute = { Intensity = (tab.is_active or alert) and 'Bold' or 'Normal' } },
-    -- 03/10: 2 tab cùng dự án trước đây trông y hệt → tab có đặt tên (đội, 📄 tài liệu) thì ghi tên đó,
-    -- không thì ghi thêm tên phiên, vd "👑 Hion · Dự án AI phân tích…"
-    { Text = ((tab.tab_title or '') ~= '' and tab.tab_title
-      or (proj_logo(proj) .. ' ' .. proj .. ((function() local s = short_title(x and x.title or p.title, proj, 22) return s and (' · ' .. s) or '' end)()))) .. zoom .. ' ' },
+    { Background = { Color = '#23272e' } }, { Foreground = { Color = color } }, { Text = '▌' },
+    { Foreground = { Color = '#7f848e' } }, { Text = n .. ' ' },
+    { Foreground = { Color = '#c8ccd4' } }, { Text = logo .. ' ' .. label .. ' ' },
+    { Background = { Color = '#15181c' } }, { Text = ' ' },
   }
 end)
 
--- Tiêu đề cửa sổ (hiện trên thanh tác vụ Windows khi thu nhỏ): "🤖 Claude · Hion | 🧩 Codex · Chatbot"
--- Ô đang chọn đứng đầu; bỏ qua ô xem tài liệu 📄/📋; có 🔔/✅ khi tab cần duyệt / vừa xong
+-- Tiêu đề cửa sổ (thanh trên cùng + thanh tác vụ Windows) — 03/10 làm gọn: chỉ ghi tab đang xem + tổng báo động,
+-- vd "💬 Chatbot · đội  —  🔔 1 cần duyệt · ✅ 2 xong" (trước đây liệt kê mọi AI trong tab → dài, rối)
 wezterm.on('format-window-title', function(tab, pane, tabs, panes)
-  -- chạy rất dày → chỉ tra bảng PANE_LAST, không hỏi Windows
-  local function label(p)
-    local x = PANE_LAST[tostring(p.pane_id)]
-    if x then return x.icon .. ' ' .. (x.ai or 'Terminal') .. ' · ' .. proj_logo(x.proj) .. ' ' .. x.proj end
-    local icon, ai = which_ai { title = p.title }
-    return icon .. ' ' .. (ai or 'Terminal')
-  end
-  local tid = hdr_map()[tostring(pane.pane_id)]
-  if tid then pane = { pane_id = tonumber(tid), title = '' } end -- đang đứng ở ô tên → lấy ô AI bên dưới
-  local parts, seen = { label(pane) }, {}
-  seen[parts[1]] = true
-  for _, p in ipairs(panes) do
-    local t = p.title or ''
-    if p.pane_id ~= pane.pane_id and not t:find('📄', 1, true) and not t:find('📋', 1, true) and not is_header(p) then
-      local l = label(p)
-      if not seen[l] then seen[l] = true; parts[#parts + 1] = l end
-    end
-  end
-  local alert = tab_alert[tostring(tab.tab_id)]
-  local bell = alert == 'need' and '🔔 ' or (alert == 'done' and '✅ ' or '')
-  return bell .. table.concat(parts, ' | ')
+  local proj, logo, title = tab_info(tab)
+  local s = logo .. ' ' .. proj .. ((title ~= '' and title ~= proj) and (' · ' .. title) or '')
+  local need, done = 0, 0
+  for _, a in pairs(tab_alert) do if a == 'need' then need = need + 1 elseif a == 'done' then done = done + 1 end end
+  local tail = {}
+  if need > 0 then tail[#tail + 1] = '🔔 ' .. need .. ' cần duyệt' end
+  if done > 0 then tail[#tail + 1] = '✅ ' .. done .. ' xong' end
+  return s .. (#tail > 0 and ('   —   ' .. table.concat(tail, ' · ')) or '')
 end)
 
 -- Bàn duyệt: nút [✅ Duyệt] [✏️ Trả lời] [❌ Bỏ] trong ô 📋 là link wezai-duyet:<việc>/<mã>
