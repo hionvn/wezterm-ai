@@ -236,6 +236,11 @@ config.keys = {
   { key = '2', mods = 'ALT|SHIFT', action = cols(2) },
   { key = '3', mods = 'ALT|SHIFT', action = cols(3) },
   { key = '4', mods = 'ALT|SHIFT', action = cols(4) },
+  -- Chia đều mọi ô trong tab đang xem (bao nhiêu ô cũng được): cột rộng bằng nhau, ô xếp chồng cao bằng nhau
+  { key = 'E', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(_, p)
+    wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
+      '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(p:pane_id()) }
+  end) },
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
   { key = 'RightArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Right' },
