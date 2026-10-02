@@ -1391,6 +1391,7 @@ end
 local function open_board(beside, auto)
   local nb = beside:split { direction = 'Right', size = 0.45, top_level = true, cwd = HUB, args = BOARD } -- top_level: bảng chiếm trọn mép phải, không bóp 1 ô
   wezterm.GLOBAL.board_o, wezterm.GLOBAL.board_auto = tostring(nb:pane_id()), auto
+  BOARD_MEMO.mo_luc = os.time()
   beside:activate() -- giữ con trỏ ở ô bạn đang gõ
   return nb
 end
@@ -1416,7 +1417,8 @@ local function auto_board()
   local b = board_pane()
   if busy then
     BOARD_MEMO.ranh_tu = nil
-    if not b then open_board(tq, true) end
+    -- phanh chống nháy (03/10): bảng vừa mở < 60 giây mà đã mất (lỗi / bạn tự đóng) → không mở lại ngay
+    if not b and os.time() - (BOARD_MEMO.mo_luc or 0) >= 60 then open_board(tq, true) end
   elseif b and wezterm.GLOBAL.board_auto then
     BOARD_MEMO.ranh_tu = BOARD_MEMO.ranh_tu or now
     if now - BOARD_MEMO.ranh_tu >= 180 then kill_pane(b); wezterm.GLOBAL.board_o = nil; BOARD_MEMO.ranh_tu = nil end
@@ -1439,19 +1441,34 @@ wezterm.on('update-status', function(window, pane)
   if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
   if wezterm.GLOBAL.hint_restore then
     wezterm.GLOBAL.hint_restore = false
-    -- 03/10: mở WezTerm lên (vd sau khi cập nhật / khởi động lại máy) → TỰ mở lại mọi tab của phiên trước;
-    -- ô Claude/Codex nào đang làm dở thì tự làm tiếp. Tắt: "tuMoLai": false trong ~\.wez-ai.json.
+    -- 03/10 (người dùng yêu cầu): mở WezTerm lên → HỎI "Resume phiên trước" hay "Mở mới", không tự mở lại nữa.
+    -- Resume: mở lại mọi tab, ô đang làm dở tự làm tiếp · Mở mới: ở lại menu `ai` (sau vẫn mở lại được bằng Ctrl+Shift+O).
+    -- "tuMoLai": true trong ~\.wez-ai.json = tự Resume không hỏi · false = không hỏi, không mở lại.
     local mw = window:mux_window()
     local fresh = #mw:tabs() == 1 and #mw:tabs()[1]:panes() == 1
     local d = read_json(LAYOUT.prev)
-    if machine.tuMoLai ~= false and fresh and d and d.tabs and #d.tabs > 0 then
+    if fresh and d and d.tabs and #d.tabs > 0 and machine.tuMoLai ~= false then
       local menu = pane
-      local n = restore_layout(window, d)
-      kill_pane(menu) -- đóng ô menu `ai` lúc mở
-      window:toast_notification('WezTerm · đội AI', '⏮ Đã tự mở lại ' .. n .. ' tab của phiên trước. Ô nào đang làm dở sẽ tự làm tiếp.', nil, 8000)
+      local so_o = 0
+      for _, t in ipairs(d.tabs) do so_o = so_o + #(t.panes or {}) end
+      local function resume(w)
+        local n = restore_layout(w, d)
+        kill_pane(menu) -- đóng ô menu `ai` lúc mở
+        w:toast_notification('WezTerm · đội AI', '⏮ Đã mở lại ' .. n .. ' tab của phiên trước. Ô nào đang làm dở sẽ tự làm tiếp.', nil, 8000)
+      end
+      if machine.tuMoLai == true then resume(window) return end
+      window:perform_action(act.InputSelector {
+        title = 'Mở WezTerm: làm tiếp phiên trước hay mở mới?  (Enter chọn · Esc = mở mới)',
+        choices = {
+          { id = 'resume', label = '⏮  Resume — mở lại ' .. #d.tabs .. ' tab, ' .. so_o .. ' ô của phiên trước (lưu lúc ' .. os.date('%H:%M %d/%m', d.t or 0) .. '), ô đang làm dở tự làm tiếp' },
+          { id = 'moi', label = '🆕  Mở mới — bắt đầu từ menu chọn dự án (vẫn mở lại được sau bằng Ctrl+Shift+O)' },
+        },
+        action = wezterm.action_callback(function(w, _, id)
+          if id == 'resume' then resume(w) end
+        end),
+      }, pane)
       return
     end
-    window:toast_notification('WezTerm · đội AI', '⏮ Có bố cục của phiên trước. Bấm Ctrl+Shift+O để mở lại.', nil, 8000)
   end
   -- 03/10: BỎ phần thông tin bên phải thanh tab (⛽ hạn mức, AI, dự án, nhánh, số ô, giờ) để các tab có thêm chỗ
   -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).

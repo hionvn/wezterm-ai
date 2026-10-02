@@ -45,8 +45,7 @@ function shortTitle(t) {
 const hhmm = (t) => new Date(t * 1000).toTimeString().slice(0, 5);
 function viecList(now) {
   const file = path.join(WEZAI, 'viec.json');
-  let vs = readJson(file);
-  if (!Array.isArray(vs)) vs = vs ? [vs] : [];
+  let vs = arr(readJson(file));
   let changed = false;
   for (const v of vs) {
     if (v.xong || v.bo) continue;
@@ -76,7 +75,14 @@ function viecList(now) {
   return lines;
 }
 
+// mảng rỗng có lúc bị ghi thành {} (Lua json_encode) → luôn đổi về mảng
+const arr = (x) => Array.isArray(x) ? x : (x && typeof x === 'object' ? Object.values(x) : []);
+
+// vẽ an toàn: lỗi thì in lỗi lên bảng, KHÔNG thoát (thoát → WezTerm mở lại liên tục → nháy, 03/10)
 function draw() {
+  try { drawRaw(); } catch (e) { const s = '[H[2J📊 Bảng tạm lỗi, thử lại sau 3 giây: ' + String(e && e.message || e).slice(0, 200); if (s !== draw.last) { draw.last = s; process.stdout.write(s); } }
+}
+function drawRaw() {
   let panes = [];
   try { panes = JSON.parse(execFileSync(EXE, ['cli', '--no-auto-start', 'list', '--format', 'json'], { encoding: 'utf8', timeout: 4000 })); } catch { return; }
   const now = Math.floor(Date.now() / 1000);
@@ -87,7 +93,7 @@ function draw() {
   for (const f of (() => { try { return fs.readdirSync(path.join(WEZAI, 'doi')).filter((x) => x.endsWith('.json')); } catch { return []; } })()) {
     const d = readJson(path.join(WEZAI, 'doi', f)); if (!d) continue;
     const add = (x, laManager) => { if (x && x.o) role[String(x.o)] = { du_an: d.du_an, icon: x.icon || (laManager ? '🧭' : '•'), ten: x.ten || x.vai, manager: laManager }; };
-    add(d.manager, true); (d.worker || []).forEach((w) => add(w, false));
+    add(d.manager, true); arr(d.worker).forEach((w) => add(w, false));
   }
   // gom ô theo dự án
   const groups = {}, docs = [];
@@ -157,3 +163,6 @@ process.stdout.write(`${E}]0;📊 Tổng quan${'\x07'}${E}[?25l`); // tiêu đ�
 process.stdout.on('resize', () => { draw.last = ''; draw(); });
 draw();
 setInterval(draw, 3000);
+
+// không bao giờ thoát vì lỗi lạ (thoát → ô đóng → WezTerm mở lại → nháy)
+process.on('uncaughtException', (e) => { try { process.stdout.write('[H[2J📊 Bảng tạm lỗi: ' + String(e && e.message || e).slice(0, 200)); } catch {} });
