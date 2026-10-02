@@ -1,6 +1,6 @@
 // Thanh tên 1 dòng trên đỉnh mỗi ô AI trong WezTerm: "🤖 Claude · Chatbot › thư-mục-con", nền màu dự án, giãn theo bề ngang ô.
 // WezTerm (~\.wezterm.lua, hàm process_headers) tự tách ô này phía trên ô AI và ghi thông tin vào %LOCALAPPDATA%\wez-ai\ten-o.json:
-//   { "tat": false, "o": { "<id ô tên>": { "icon": "🤖", "ai": "Claude", "proj": "Chatbot", "sub": "...", "color": "#c678dd" } } }
+//   { "tat": false, "o": { "<id ô tên>": { "icon": "🤖", "ai": "Claude", "proj": "Chatbot", "logo": "💬", "sub": "...", "color": "#c678dd" } } }
 // Ô tên tự đóng khi không còn trong file (ô AI bên dưới đã đóng, chuyển tab, hoặc tắt bằng Ctrl+Shift+T).
 const fs = require('fs');
 const path = require('path');
@@ -32,7 +32,7 @@ function draw() {
   if (info) {
     // ô đang chọn: nền màu dự án + dấu ▶ (nổi lên); ô khác: nền xám tối
     bg = info.active ? hex(info.color) : [52, 56, 62];
-    text = ` ${info.active ? '▶' : ' '} ${info.icon || '▪️'} ${info.ai} · ${String(info.proj || '?').toUpperCase()}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
+    text = ` ${info.active ? '▶' : ' '} ${info.icon || '▪️'} ${info.ai} · ${info.logo ? info.logo + ' ' : ''}${String(info.proj || '?').toUpperCase()}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
   }
   // cắt bớt nếu ô hẹp, rồi tô kín cả dòng
   while (width(text) > cols - 1 && text.length) text = [...text].slice(0, -1).join('');

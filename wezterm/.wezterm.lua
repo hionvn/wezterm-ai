@@ -334,9 +334,26 @@ config.use_fancy_tab_bar = false
 config.tab_max_width = 32
 config.status_update_interval = 2000
 
+-- Màu + logo riêng từng dự án: lấy từ Hion\cay-du-an.json (trường "mau", "logo"); dự án lạ → màu theo tên, logo 📁
 local proj_colors = { hion = '#e5c07b', sino = '#e06c75', coolguy = '#61afef', chatbot = '#c678dd' }
+local proj_logos = {}
+do
+  local f = io.open(HUB .. '\\cay-du-an.json', 'rb')
+  if f then
+    local ok, v = pcall(wezterm.json_parse, (f:read('*a'):gsub('^\239\187\191', '')))
+    f:close()
+    if ok and v and v.cay then
+      for _, n in ipairs(v.cay) do
+        if n.mau then proj_colors[n.ten:lower()] = n.mau end
+        if n.logo then proj_logos[n.ten:lower()] = n.logo end
+      end
+    end
+  end
+end
+local function proj_logo(name) return proj_logos[(name or ''):lower()] or '📁' end
 local palette = { '#56b6c2', '#98c379', '#d19a66', '#c678dd', '#61afef' }
 local function proj_color(name)
+  name = name or '?'
   local c = proj_colors[name:lower()]
   if c then return c end
   local h = 0
@@ -861,7 +878,7 @@ wezterm.on('format-tab-title', function(tab)
     { Text = ' ' .. (tab.tab_index + 1) .. ' ' .. bell .. icon .. ' ' },
     { Foreground = { Color = alert and '#ffffff' or (tab.is_active and proj_color(proj) or '#7f848e') } },
     { Attribute = { Intensity = (tab.is_active or alert) and 'Bold' or 'Normal' } },
-    { Text = proj .. zoom .. ' ' },
+    { Text = proj_logo(proj) .. ' ' .. proj .. zoom .. ' ' },
   }
 end)
 
@@ -871,7 +888,7 @@ wezterm.on('format-window-title', function(tab, pane, tabs, panes)
   -- chạy rất dày → chỉ tra bảng PANE_LAST, không hỏi Windows
   local function label(p)
     local x = PANE_LAST[tostring(p.pane_id)]
-    if x then return x.icon .. ' ' .. (x.ai or 'Terminal') .. ' · ' .. x.proj end
+    if x then return x.icon .. ' ' .. (x.ai or 'Terminal') .. ' · ' .. proj_logo(x.proj) .. ' ' .. x.proj end
     local icon, ai = which_ai { title = p.title }
     return icon .. ' ' .. (ai or 'Terminal')
   end
@@ -1020,7 +1037,7 @@ local function process_headers(window)
   if not g.ten_o_tat then
     for h, t in pairs(map) do
       local x = pinfo(alive[t].pane)
-      out.o[h] = { icon = x.icon, ai = x.ai or 'Terminal', proj = x.proj, sub = x.sub, color = proj_color(x.proj), active = active_of[t] or false }
+      out.o[h] = { icon = x.icon, ai = x.ai or 'Terminal', proj = x.proj, logo = proj_logo(x.proj), sub = x.sub, color = proj_color(x.proj), active = active_of[t] or false }
     end
   end
   local s = wezterm.json_encode(out)
@@ -1067,7 +1084,8 @@ wezterm.on('chia-deu', function(window, pane)
 end)
 
 wezterm.on('update-status', function(window, pane)
-  local okh, errh = pcall(process_headers, window)
+  local okh, errh = true, nil -- TẠM TẮT thanh tên (18:18 02/10): đang tạo ô liên tục, bóp nhỏ các ô
+  -- local okh, errh = pcall(process_headers, window)
   if not okh then wezterm.log_error('process_headers: ' .. tostring(errh)) end
   local okr, errr = pcall(morning_report)
   if not okr then wezterm.log_error('morning_report: ' .. tostring(errr)) end
@@ -1099,7 +1117,7 @@ wezterm.on('update-status', function(window, pane)
   local okw, errw = pcall(codex_warn, window)
   if not okw then wezterm.log_error('codex_warn: ' .. tostring(errw)) end
   if ai then add { { Foreground = { Color = '#56b6c2' } }, { Text = icon .. ' ' .. ai } } end
-  local where = { { Foreground = { Color = proj_color(proj) } }, { Attribute = { Intensity = 'Bold' } }, { Text = '📁 ' .. proj } }
+  local where = { { Foreground = { Color = proj_color(proj) } }, { Attribute = { Intensity = 'Bold' } }, { Text = proj_logo(proj) .. ' ' .. proj } }
   table.insert(where, { Attribute = { Intensity = 'Normal' } })
   if sub then
     table.insert(where, { Foreground = { Color = '#7f848e' } })

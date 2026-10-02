@@ -38,9 +38,18 @@ process.stdin.on('end', () => {
   const palette = [cyan, green, orange, magenta, blue];
   let pc = projColors[project.toLowerCase()];
   if (!pc) { let h = 0; for (const ch of project) h = (h * 31 + ch.charCodeAt(0)) >>> 0; pc = palette[h % palette.length]; }
+  // Màu + logo riêng từng dự án lấy từ Hion\cay-du-an.json (trường "mau", "logo") — giống tab WezTerm
+  let logo = '📁';
+  try {
+    const cay = JSON.parse(fs.readFileSync(path.join(projDir, '..', 'Hion', 'cay-du-an.json'), 'utf8').replace(/^﻿/, '')).cay || [];
+    const it = cay.find((n) => String(n.ten).toLowerCase() === project.toLowerCase());
+    const m = it && /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(it.mau || '');
+    if (m) pc = `[1;38;2;${parseInt(m[1], 16)};${parseInt(m[2], 16)};${parseInt(m[3], 16)}m`;
+    if (it && it.logo) logo = it.logo;
+  } catch {}
   // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó
   const role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
-  let where = `${pc}${bold}${role}${R}  📁 ${pc}${bold}${project}${R}`;
+  let where = `${pc}${bold}${role}${R}  ${logo} ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);
   if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) where += `${dim} › ${rel.replace(/\\/g, '/')}${R}`;
 
