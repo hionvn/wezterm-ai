@@ -650,9 +650,33 @@ local function pane_kind(p)
   return ({ Claude = 'claude', Codex = 'codex' })[ai] or 'shell'
 end
 
+-- Sổ đội (wez-ai\doi\<dự án>.json) → [số ô] = vai trong đội; khoá công cụ (chan) lấy từ định nghĩa Hion\doi\<dự án>.json.
+-- Lưu vào bố cục để khi mở lại, ô đội có lại đúng tên, Remote Control, khoá chỉ đọc; sổ đội ghi số ô mới.
+local function doi_map()
+  local m = {}
+  for _, path in ipairs(wezterm.glob(AIDIR:gsub('\\', '/') .. '/doi/*.json')) do
+    local r = read_json(path)
+    if r and r.du_an then
+      local def = read_json(HUB .. '\\doi\\' .. r.du_an .. '.json') or {}
+      local chan = {}
+      for _, w in ipairs(def.worker or {}) do chan[w.vai] = w.chan end
+      if def.manager then chan[def.manager.vai or 'Manager'] = def.manager.chan end
+      local function add(x)
+        if x and x.o and tostring(x.o) ~= '' then
+          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai] }
+        end
+      end
+      add(r.manager)
+      for _, w in ipairs(r.worker or {}) do add(w) end
+    end
+  end
+  return m
+end
+
 local function capture_layout()
   local out, n = { t = os.time(), tabs = {} }, 0
   local docs = wezterm.GLOBAL.docs or {}
+  local doi = doi_map()
   for _, mw in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(mw:tabs()) do
       local panes = {}
@@ -664,9 +688,14 @@ local function capture_layout()
           if it.kind == 'claude' then
             local s = read_json(STATE .. '\\' .. id .. '.json')
             if s and s.session and s.session ~= '' then it.session = s.session end
+            it.state = s and s.state -- 'work' = đang làm dở → mở lại sẽ tự làm tiếp
+          elseif it.kind == 'codex' then
+            it.state = title_state(p)
           elseif it.kind == 'doc' then
             it.path = docs[id]
           end
+          local d = doi[id]
+          if d then for k, v in pairs(d) do it[k] = v end end
           table.insert(panes, it)
           n = n + 1
         end
@@ -684,9 +713,31 @@ local function write_layout(path)
   return n
 end
 
+local function q(s) return "'" .. (tostring(s):gsub("'", "''")) .. "'" end
+local TIEP = 'Tiếp tục việc đang làm dở trước khi WezTerm khởi động lại (đọc lại tiến độ nếu cần).'
 local function restore_args(it)
-  if it.kind == 'claude' then return PS(it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue') end
-  if it.kind == 'codex' then return PS('codex resume --last') end
+  if it.kind == 'claude' then
+    local c
+    if it.doi then -- ô trong đội: giữ tên, Remote Control, khoá công cụ
+      c = (it.session and ('claude --resume ' .. it.session) or 'claude --continue')
+        .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
+        .. ' --remote-control ' .. q(it.doi .. '-' .. it.vai)
+      if it.chan then c = c .. ' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ','))) end
+    else
+      c = it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue'
+    end
+    if it.state == 'work' then c = c .. ' ' .. q(TIEP) end -- đang làm dở → tự làm tiếp
+    return PS(c)
+  end
+  if it.kind == 'codex' then
+    local tiep = it.state == 'work' and (' ' .. q(TIEP)) or ''
+    -- ô Codex trong đội: mở lại đúng phiên theo tên (/rename lúc mở đội); không thấy tên thì lấy phiên gần nhất
+    if it.doi then
+      return PS('codex resume ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten) .. tiep
+        .. '; if ($LASTEXITCODE) { codex resume --last' .. tiep .. ' }')
+    end
+    return PS('codex resume --last' .. tiep)
+  end
   if it.kind == 'canduyet' then return VIEWER end
   if it.kind == 'doc' and it.path then return DOCVIEW(it.path) end
   return { 'powershell.exe', '-NoLogo' }
@@ -715,8 +766,10 @@ local function restore_tab(mw, t)
   table.sort(cols, function(a, b) return a.left < b.left end)
   for _, c in ipairs(cols) do table.sort(c.items, function(a, b) return a.top < b.top end) end
 
+  local made = {} -- { it, ô mới } → ghi số ô mới vào sổ đội
   local first = cols[1].items[1]
   local tab, root = mw:spawn_tab { cwd = safe_cwd(first.cwd), args = restore_args(first) }
+  made[#made + 1] = { first, root }
   if t.title and t.title ~= '' then tab:set_title(t.title) end
   local heads, cur = { root }, root
   for i = 2, #cols do -- tách dần sang phải, giữ tỉ lệ chiều rộng
@@ -724,6 +777,7 @@ local function restore_tab(mw, t)
     for j = i, #cols do rest = rest + cols[j].width end
     local it = cols[i].items[1]
     cur = cur:split { direction = 'Right', size = rest / (rest + cols[i - 1].width), cwd = safe_cwd(it.cwd), args = restore_args(it) }
+    made[#made + 1] = { it, cur }
     heads[i] = cur
   end
   for i, c in ipairs(cols) do -- trong mỗi cột: tách dần xuống dưới
@@ -733,9 +787,36 @@ local function restore_tab(mw, t)
       for j = k, #c.items do rest = rest + c.items[j].height end
       local it = c.items[k]
       p = p:split { direction = 'Bottom', size = rest / (rest + c.items[k - 1].height), cwd = safe_cwd(it.cwd), args = restore_args(it) }
+      made[#made + 1] = { it, p }
     end
   end
   root:activate()
+  -- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (Chatbot.Engineer…) trỏ đúng
+  local by_doi = {}
+  for _, m in ipairs(made) do
+    local it = m[1]
+    if it.doi then by_doi[it.doi] = by_doi[it.doi] or {}; by_doi[it.doi][it.vai] = tostring(m[2]:pane_id()) end
+  end
+  for du_an, vai_o in pairs(by_doi) do
+    local path = AIDIR .. '\\doi\\' .. du_an .. '.json'
+    local r = read_json(path)
+    if r then
+      if r.manager and vai_o[r.manager.vai] then r.manager.o = vai_o[r.manager.vai] end
+      for _, w in ipairs(r.worker or {}) do if vai_o[w.vai] then w.o = vai_o[w.vai] end end
+      local f = io.open(path, 'w')
+      if f then f:write(wezterm.json_encode(r)) f:close() end
+    end
+  end
+end
+
+-- Mở lại cả bố cục đã lưu vào cửa sổ (dùng cho Ctrl+Shift+O, menu `ai`, và tự mở lại khi khởi động)
+local function restore_layout(window, d)
+  local n = 0
+  for _, t in ipairs(d and d.tabs or {}) do
+    local ok, err = pcall(restore_tab, window:mux_window(), t)
+    if ok then n = n + 1 else wezterm.log_error('restore_tab: ' .. tostring(err)) end
+  end
+  return n
 end
 
 -- Ctrl+Shift+S: lưu bố cục hiện tại
@@ -793,10 +874,10 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
   kill_pane(pane) -- đóng đúng ô menu (CloseCurrentPane có thể đóng nhầm ô đang chọn sau khi mở lại các tab)
 end)
 
--- Tự lưu mỗi phút, chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
+-- Tự lưu mỗi 30 giây (03/10: trước là 1 phút — trạng thái "đang làm" mới hơn khi mở lại), chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
 local last_autosave = 0
 local function autosave()
-  if os.time() - last_autosave < 60 then return end
+  if os.time() - last_autosave < 30 then return end
   last_autosave = os.time()
   local n = 0
   for _, mw in ipairs(wezterm.mux.all_windows()) do
@@ -1253,6 +1334,18 @@ wezterm.on('update-status', function(window, pane)
   if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
   if wezterm.GLOBAL.hint_restore then
     wezterm.GLOBAL.hint_restore = false
+    -- 03/10: mở WezTerm lên (vd sau khi cập nhật / khởi động lại máy) → TỰ mở lại mọi tab của phiên trước;
+    -- ô Claude/Codex nào đang làm dở thì tự làm tiếp. Tắt: "tuMoLai": false trong ~\.wez-ai.json.
+    local mw = window:mux_window()
+    local fresh = #mw:tabs() == 1 and #mw:tabs()[1]:panes() == 1
+    local d = read_json(LAYOUT.prev)
+    if machine.tuMoLai ~= false and fresh and d and d.tabs and #d.tabs > 0 then
+      local menu = pane
+      local n = restore_layout(window, d)
+      kill_pane(menu) -- đóng ô menu `ai` lúc mở
+      window:toast_notification('WezTerm · đội AI', '⏮ Đã tự mở lại ' .. n .. ' tab của phiên trước. Ô nào đang làm dở sẽ tự làm tiếp.', nil, 8000)
+      return
+    end
     window:toast_notification('WezTerm · đội AI', '⏮ Có bố cục của phiên trước. Bấm Ctrl+Shift+O để mở lại.', nil, 8000)
   end
   local okx, x = pcall(pinfo, pane) -- ô có thể vừa đóng
