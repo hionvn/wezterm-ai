@@ -60,6 +60,9 @@ Copy-Safe "$here\wezterm\.wezterm.lua" "$HOME\.wezterm.lua"
 
 Write-Host "`n[4/8] Script điều khiển ô, báo động, khoá file, tài liệu ($hubScripts)" -ForegroundColor Cyan
 Get-ChildItem "$here\scripts" -File | ForEach-Object { Copy-Safe $_.FullName (Join-Path $hubScripts $_.Name) }
+# Link wezai-o: — bấm thông báo của đội AI là nhảy về đúng ô (HKCU, không cần Administrator)
+$dk = Join-Path $hubScripts 'dang-ky-thong-bao.ps1'
+if (Test-Path $dk) { & $dk }
 
 Write-Host "`n[5/8] Claude: thanh trạng thái + hooks (báo động, trạng thái, khoá file)" -ForegroundColor Cyan
 Copy-Safe "$here\claude\statusline.js" "$HOME\.claude\statusline.js"

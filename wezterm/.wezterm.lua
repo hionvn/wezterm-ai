@@ -412,16 +412,33 @@ local function send_phone(text)
     '-H', 'Priority: high', '--data-binary', '@' .. body, (PHONE.server or 'https://ntfy.sh') .. '/' .. PHONE.ntfy, '&', 'del', body }
 end
 
+-- Thông báo Windows bấm được: bấm vào → nhảy về đúng ô (thong-bao.ps1 tạo link wezai-o:<PANEID> → chuyen-o.ps1).
+-- Link đăng ký 1 lần bằng cai-dat\dang-ky-thong-bao.ps1; thiếu script thì dùng thông báo thường của WezTerm.
+local NOTIFY = { vbs = HUB .. '\\cai-dat\\an.vbs', ps1 = HUB .. '\\cai-dat\\thong-bao.ps1' }
+local function toast_click(window, pane_id, title, text)
+  local f = io.open(NOTIFY.ps1, 'rb')
+  if f then
+    f:close()
+    wezterm.background_child_process { 'wscript.exe', NOTIFY.vbs, NOTIFY.ps1, '-Pane', tostring(pane_id), '-Title', title, '-Text', text }
+  else
+    window:toast_notification(title, text, nil, 6000)
+  end
+end
+
 local function process_alerts(window)
   local focused = window:is_focused()
   local active = tostring(window:active_pane():pane_id())
-  local alive, pane_tab = {}, {}
+  local alive, pane_tab, pane_proj = {}, {}, {}
   -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
   for _, mw in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(mw:tabs()) do
       for _, p in ipairs(tab:panes()) do
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
+        local okp, proj = pcall(function()
+          return split_project(pane_dir { current_working_dir = p:get_current_working_dir(), foreground_process_name = '', title = p:get_title() })
+        end)
+        pane_proj[id] = (okp and proj ~= '?') and proj or nil
         local state, who = title_state(p)
         if state then
           local prev = last_state[id]
@@ -449,7 +466,8 @@ local function process_alerts(window)
           tab_alert[tid] = (tab_alert[tid] == 'need') and 'need' or v.kind
           if toasted[id] ~= v.t then
             toasted[id] = v.t
-            window:toast_notification('WezTerm · đội AI', v.text or 'AI cần bạn', nil, 6000)
+            local where = pane_proj[id] and (' · ' .. pane_proj[id]) or ''
+            toast_click(window, id, 'WezTerm · đội AI' .. where, v.text or 'AI cần bạn')
           end
           -- Chưa bấm vào ô sau N phút → báo sang điện thoại (mỗi lần báo động chỉ gửi 1 lần)
           local key = id .. ':' .. tostring(v.t)
