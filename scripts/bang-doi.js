@@ -1,6 +1,6 @@
 // Bảng tổng quan đội AI (03/10/2026) — 1 tab "📊 Tổng quan", tự cập nhật mỗi 3 giây.
 // Mỗi dòng = 1 ô AI: dự án · vai · ⏳ đang làm / 🔔 cần duyệt / 🟢 rảnh · bao lâu rồi. Bấm vào dòng → nhảy tới ô đó
-// (link wezai-o:<số ô>, ~/.wezterm.lua sự kiện open-uri xử lý). Mở / quay lại: Ctrl+Shift+U.
+// (link wezai-o:<số ô>, ~/.wezterm.lua sự kiện open-uri xử lý). Tự hiện bên phải ô Tổng quản khi agent làm việc; Ctrl+Shift+U bật/tắt.
 // Đọc: wezterm cli list · sổ đội %LOCALAPPDATA%\wez-ai\doi\*.json · trạng thái wez-ai\state · báo động wez-ai\alerts
 //       · hạn mức wez-ai\fuel-claude.json, fuel-codex.json · thứ tự + logo dự án Hion\cay-du-an.json
 const fs = require('fs');
@@ -8,7 +8,8 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const WEZAI = path.join(process.env.LOCALAPPDATA || '', 'wez-ai');
-const EXE = process.env.WEZTERM_EXECUTABLE || 'C:\\Program Files\\WezTerm\\wezterm.exe';
+// WEZTERM_EXECUTABLE có thể là wezterm-gui.exe (không có lệnh cli) → luôn dùng wezterm.exe cùng thư mục
+const EXE = path.join(path.dirname(process.env.WEZTERM_EXECUTABLE || 'C:\\Program Files\\WezTerm\\wezterm.exe'), 'wezterm.exe');
 const HUB = path.resolve(__dirname, '..');
 const E = '\x1b';
 const R = `${E}[0m`, B = `${E}[1m`, DIM = `${E}[2m`;
@@ -147,7 +148,7 @@ function draw() {
     for (const d of docs) out.push('   ' + link(d.id, pad(d.t.slice(0, 50), 54) + `${DIM}tab ${d.tabNo} · ô ${d.id}${R}`));
   }
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U quay lại bảng này${R}`);
+  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
   const s = out.join('\n');
   if (s !== draw.last) { draw.last = s; process.stdout.write(`${E}[H${E}[2J${s}\n`); }
 }

@@ -699,7 +699,7 @@ local function capture_layout()
       local panes = {}
       for _, info in ipairs(tab:panes_with_info()) do
         local p, id = info.pane, tostring(info.pane:pane_id())
-        if not is_header(p) then -- ô tên không lưu: tự dựng lại sau khi khôi phục
+        if not is_header(p) and id ~= tostring(wezterm.GLOBAL.board_o) then -- ô tên + bảng 📊 tự hiện không lưu: tự dựng lại sau khi khôi phục
           local it = { left = info.left, top = info.top, width = info.width, height = info.height,
             cwd = pinfo(p).dir, kind = pane_kind(p) } -- dùng thư mục đã nhớ, không hỏi lại Windows
           if it.kind == 'claude' then
@@ -752,7 +752,7 @@ local function restore_args(it)
   end
   if it.kind == 'claude' then
     local c
-    if it.doi then -- ô trong đội: giữ tên, Remote Control, khoá công cụ
+    if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ (Tổng quản Hion giữ cách mở cũ claudeRC)
       c = (it.session and ('claude --resume ' .. it.session) or 'claude --continue')
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
         .. ' --remote-control ' .. q(it.doi .. '-' .. it.vai)
@@ -1373,6 +1373,56 @@ wezterm.on('chia-deu', function(window, pane)
   end)
 end)
 
+-- ===== Bảng 📊 (báo cáo + checklist) tự hiện bên phải ô Tổng quản khi agent làm việc (03/10/2026) =====
+-- Ô Tổng quản: sổ wez-ai\doi\Hion.json (manager.o). Có agent đang làm (⏳) hoặc còn việc ☐ chưa xong → mở bảng bên phải;
+-- mọi agent rảnh + hết việc dở quá 3 phút → tự đóng (chỉ bảng tự mở; bảng mở bằng Ctrl+Shift+U thì để yên).
+-- Tắt tự hiện: "bangTuDong": false trong ~\.wez-ai.json.
+local BOARD_MEMO = { t = 0, chua = 0, ranh_tu = nil }
+-- get_pane báo LỖI (không trả nil) khi ô đã đóng → bọc pcall
+local function pane_or_nil(o)
+  if not o then return nil end
+  local ok, p = pcall(wezterm.mux.get_pane, tonumber(o))
+  return ok and p or nil
+end
+local function board_pane()
+  local o = wezterm.GLOBAL.board_o
+  return pane_or_nil(o)
+end
+local function open_board(beside, auto)
+  local nb = beside:split { direction = 'Right', size = 0.45, top_level = true, cwd = HUB, args = BOARD } -- top_level: bảng chiếm trọn mép phải, không bóp 1 ô
+  wezterm.GLOBAL.board_o, wezterm.GLOBAL.board_auto = tostring(nb:pane_id()), auto
+  beside:activate() -- giữ con trỏ ở ô bạn đang gõ
+  return nb
+end
+local function auto_board()
+  if machine.bangTuDong == false then return end
+  local r = read_json(AIDIR .. '\\doi\\Hion.json')
+  local tq = r and r.manager and pane_or_nil(r.manager.o)
+  if not tq then return end
+  local now = os.time()
+  if now - BOARD_MEMO.t >= 10 then -- đếm việc ☐ chưa xong mỗi 10 giây
+    BOARD_MEMO.t = now
+    local vs, n = read_json(AIDIR .. '\\viec.json') or {}, 0
+    for _, v in ipairs(vs) do if not v.xong and not v.bo then n = n + 1 end end
+    BOARD_MEMO.chua = n
+  end
+  local work = 0
+  for _, st in pairs(TAB_STAT) do work = work + (st.work or 0) end
+  -- chính ô Tổng quản đang làm (đang trả lời bạn) thì không tính là "agent làm việc"
+  local x = PANE_LAST[tostring(tq:pane_id())]
+  local t1 = x and (x.title or ''):match('^(%S+)') or ''
+  if t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒' then work = work - 1 end
+  local busy = work > 0 or BOARD_MEMO.chua > 0
+  local b = board_pane()
+  if busy then
+    BOARD_MEMO.ranh_tu = nil
+    if not b then open_board(tq, true) end
+  elseif b and wezterm.GLOBAL.board_auto then
+    BOARD_MEMO.ranh_tu = BOARD_MEMO.ranh_tu or now
+    if now - BOARD_MEMO.ranh_tu >= 180 then kill_pane(b); wezterm.GLOBAL.board_o = nil; BOARD_MEMO.ranh_tu = nil end
+  end
+end
+
 wezterm.on('update-status', function(window, pane)
   -- Thanh tên bật lại 02/10 22h sau khi thêm phanh (hdr_allow / hdr_note); tắt tạm 18:18 vì dựng ô liên tục
   local okh, errh = pcall(process_headers, window)
@@ -1383,6 +1433,8 @@ wezterm.on('update-status', function(window, pane)
   if not oka then wezterm.log_error('process_alerts: ' .. tostring(erra)) end
   local oko, erro = pcall(process_open, window)
   if not oko then wezterm.log_error('process_open: ' .. tostring(erro)) end
+  local okb, errb = pcall(auto_board)
+  if not okb then wezterm.log_error('auto_board: ' .. tostring(errb)) end
   local oks, errs = pcall(autosave)
   if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
   if wezterm.GLOBAL.hint_restore then
@@ -1415,15 +1467,18 @@ wezterm.on('update-status', function(window, pane)
 end)
 
 -- ===== Bảng tổng quan + nhảy tới ô theo tên (03/10/2026) =====
--- Ctrl+Shift+U: tới tab "📊 Tổng quan" (chưa có thì mở) — mọi AI theo dự án, trạng thái, bấm dòng để nhảy tới ô
+-- Ctrl+Shift+U: bật / tắt bảng 📊 (báo cáo + checklist) ở BÊN PHẢI tab đang xem (03/10: trước là tab riêng).
+-- Bảng mở bằng phím thì không tự đóng; bấm lại để đóng.
 wezterm.on('tong-quan', function(window, pane)
-  for _, t in ipairs(window:mux_window():tabs()) do
-    for _, p in ipairs(t:panes()) do
-      if (p:get_title() or ''):find('📊 Tổng quan', 1, true) then t:activate() return end
-    end
+  local b = board_pane()
+  if b then
+    local cur_tab = window:active_tab():tab_id()
+    local ok, bt = pcall(function() return b:tab():tab_id() end)
+    kill_pane(b); wezterm.GLOBAL.board_o = nil
+    if ok and bt == cur_tab then return end -- bảng đang ở tab này → chỉ đóng
   end
-  local tab = window:mux_window():spawn_tab { cwd = HUB, args = BOARD }
-  tab:set_title('📊 Tổng quan')
+  if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
+  open_board(pane, false)
 end)
 
 -- Ctrl+Shift+Space: danh sách mọi ô (dự án · vai · trạng thái), gõ vài chữ để lọc, Enter là tới đúng ô
