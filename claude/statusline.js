@@ -53,9 +53,17 @@ process.stdin.on('end', () => {
   const rel = path.relative(projDir, dir);
   if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) where += `${dim} › ${rel.replace(/\\/g, '/')}${R}`;
 
+  // Fast: data.fast_mode = lượt vừa rồi chạy nhanh thật; settings.json "fastMode" = anh đã bật bằng /fast.
+  // Bật mà Claude chưa chạy nhanh (chưa có lượt mới, hoặc tạm hết lượt fast) → hiện mờ "⚡ fast chờ".
+  const fastLabel = () => {
+    if (data.fast_mode) return ` ${orange}${bold}⚡ FAST${R}`;
+    let on = false;
+    try { on = JSON.parse(fs.readFileSync(path.join(require('os').homedir(), '.claude', 'settings.json'), 'utf8')).fastMode === true; } catch {}
+    return on ? ` ${dim}${orange}⚡ fast chờ${R}` : '';
+  };
   const line1 = [where];
   const model = (data.model && data.model.display_name) || '?';
-  line1.push(`🤖 ${cyan}${model}${R}` + (data.fast_mode ? ` ${orange}${bold}⚡ FAST${R}` : ''));
+  line1.push(`🤖 ${cyan}${model}${R}` + fastLabel());
   if (data.effort && data.effort.level) line1.push(`💭 ${magenta}${data.effort.level}${R}`);
   if (data.session_name) line1.push(`💬 ${dim}${data.session_name}${R}`);
   if (data.output_style && data.output_style.name && data.output_style.name !== 'default') {
