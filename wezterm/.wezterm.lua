@@ -743,6 +743,13 @@ end
 local function q(s) return "'" .. (tostring(s):gsub("'", "''")) .. "'" end
 local TIEP = 'Tiếp tục việc đang làm dở trước khi WezTerm khởi động lại (đọc lại tiến độ nếu cần).'
 local function restore_args(it)
+  -- 03/10: lần khởi động lại thật, các ô Claude mở lại bị chạy trong E:\AI\Hion thay vì thư mục dự án
+  -- (tham số cwd của split không được tôn trọng) → luôn tự cd vào đúng thư mục trước khi chạy AI
+  local PS0 = PS
+  local function PS(cmd)
+    if it.cwd and it.cwd ~= '' then cmd = 'Set-Location -LiteralPath ' .. q(it.cwd) .. '; ' .. cmd end
+    return PS0(cmd)
+  end
   if it.kind == 'claude' then
     local c
     if it.doi then -- ô trong đội: giữ tên, Remote Control, khoá công cụ
