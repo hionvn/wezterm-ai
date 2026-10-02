@@ -284,6 +284,11 @@ config.keys = {
 -- Chuột phải = dán (giống Windows Terminal)
 config.mouse_bindings = {
   { event = { Down = { streak = 1, button = 'Right' } }, mods = 'NONE', action = act.PasteFrom 'Clipboard' },
+  -- Ctrl + click = mở link trên trình duyệt, kể cả khi Claude/Codex đang giữ chuột (mouse_reporting)
+  { event = { Up = { streak = 1, button = 'Left' } }, mods = 'CTRL', action = act.OpenLinkAtMouseCursor },
+  { event = { Down = { streak = 1, button = 'Left' } }, mods = 'CTRL', action = act.Nop },
+  { event = { Up = { streak = 1, button = 'Left' } }, mods = 'CTRL', mouse_reporting = true, action = act.OpenLinkAtMouseCursor },
+  { event = { Down = { streak = 1, button = 'Left' } }, mods = 'CTRL', mouse_reporting = true, action = act.Nop },
 }
 
 -- ===== Thanh trạng thái (thêm 01/10/2026; bản cũ: .wezterm.lua.bak-before-statusbar) =====
