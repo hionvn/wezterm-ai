@@ -246,6 +246,7 @@ switch ($Cmd) {
         $bom = New-Object Text.UTF8Encoding $true
         $ws = @($def.worker)
         $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
+        if (-not $tenWorker) { $tenWorker = "chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
         # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
         # tên hiển thị (có dấu, vd "Số liệu") khác tên gọi lệnh (không dấu, vd Sino.SoLieu) khi định nghĩa có trường "ten"
         function TenVai($m) { if ($m.ten) { $m.ten } else { $m.vai } }
@@ -310,7 +311,7 @@ switch ($Cmd) {
         $tabOf = @{}; foreach ($p in $panes) { $tabOf["$($p.pane_id)"] = "$($p.tab_id)" }
         $mg = $def.manager
         $idsCu = @($oCu[$mg.vai]) + @($ws | ForEach-Object { $oCu[$_.vai] })
-        $chungTab = ($idsCu | Where-Object { -not $_ }).Count -eq 0 -and (@($idsCu | ForEach-Object { $tabOf[$_] } | Select-Object -Unique)).Count -eq 1
+        $chungTab = ($idsCu | Where-Object { -not $_ }).Count -eq 0 -and (@($idsCu | ForEach-Object { if ($_) { $tabOf[$_] } } | Select-Object -Unique)).Count -eq 1
         if ("$($Rest[1])" -eq 'xep') { $chungTab = $false }   # doi <dự án> xep: ép xếp lại bố cục chuẩn (vd sau khi bị lệch)
         $moMoi = 0
         # Đặt 1 vai vào chỗ: tách từ ô $from theo $huong; ô cũ còn sống thì chuyển nó vào (--move-pane-id), không thì mở mới
@@ -334,7 +335,7 @@ switch ($Cmd) {
             # 2) Đầu 2 cột worker: cột 1 chiếm nửa phải, cột 2 tách đôi cột 1
             $c1 = @(); $c2 = @()
             for ($i = 0; $i -lt $ws.Count; $i++) { if ($i % 2 -eq 0) { $c1 += $ws[$i] } else { $c2 += $ws[$i] } }
-            $h1 = Dat $c1[0] $false $mo '--right' 50; $ids[$c1[0].vai] = $h1
+            if ($c1.Count) { $h1 = Dat $c1[0] $false $mo '--right' 50; $ids[$c1[0].vai] = $h1 }   # đội chưa có worker: chỉ Manager cả tab
             if ($c2.Count) { $h2 = Dat $c2[0] $false $h1 '--right' 50; $ids[$c2[0].vai] = $h2 }
             # 3) Xếp chồng trong từng cột, cao bằng nhau
             foreach ($cot in @(@{ ds = $c1; dau = $h1 }, @{ ds = $c2; dau = $h2 })) {
@@ -353,7 +354,7 @@ switch ($Cmd) {
         & $exe cli --no-auto-start activate-pane --pane-id $mo
         $ghiChu = if ($chungTab) { 'cả đội đã chung 1 tab, giữ nguyên' } else { "xếp lại: Manager trái, worker lưới bên phải · mở mới $moMoi ô" }
         Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " ($ghiChu)") -ForegroundColor Cyan
-        Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`""
+        if ($ws.Count) { Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`"" } else { Write-Host "   Gọi Manager: wez.ps1 send $($def.du_an).Manager `"việc`"" }
     }
     'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
