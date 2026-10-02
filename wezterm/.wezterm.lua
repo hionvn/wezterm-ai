@@ -89,6 +89,18 @@ local function DOCVIEW(path)
     HUB .. '\\cai-dat\\can-duyet-view.ps1', '-File', path }
 end
 local function is_doc(p) return (p:get_title() or ''):find('📄', 1, true) ~= nil end
+-- Ô tên 1 dòng trên đỉnh ô AI (cai-dat\ten-o.js). Sổ { [id ô tên] = id ô AI } lưu dạng JSON trong GLOBAL
+-- (GLOBAL tự đổi khoá "227" thành số 227 nên không lưu bảng trực tiếp được).
+local function hdr_map()
+  local ok, m = pcall(wezterm.json_parse, wezterm.GLOBAL.ten_o_map or '{}')
+  return (ok and type(m) == 'table') and m or {}
+end
+local function hdr_save(m) wezterm.GLOBAL.ten_o_map = next(m) and wezterm.json_encode(m) or '{}' end
+-- nhận Pane hoặc PaneInformation
+local function is_header(p)
+  local id = type(p.pane_id) == 'number' and p.pane_id or p:pane_id()
+  return hdr_map()[tostring(id)] ~= nil
+end
 
 -- AI gọi cai-dat\mo-tai-lieu.js → wez-ai\open.json → mở ô 📄 bên phải tab đang xem (thay ô 📄 cũ)
 local function process_open(window)
@@ -108,10 +120,12 @@ local function process_open(window)
     end
   end
   if not cur then
-    for _, p in ipairs(tab:panes()) do if not is_doc(p) then cur = p break end end
+    for _, p in ipairs(tab:panes()) do if not is_doc(p) and not is_header(p) then cur = p break end end
   end
   if not cur then return end
-  local doc = cur:split { direction = 'Right', size = 0.42, cwd = HUB, args = DOCVIEW(req.path) }
+  if is_header(cur) then cur = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(cur:pane_id())])) or cur end
+  -- top_level: ô 📄 chiếm trọn mép phải tab, không chen vào dưới thanh tên của ô AI
+  local doc = cur:split { direction = 'Right', size = 0.42, top_level = true, cwd = HUB, args = DOCVIEW(req.path) }
   local docs = wezterm.GLOBAL.docs or {} -- nhớ ô 📄 nào xem file nào (để lưu / khôi phục bố cục)
   docs[tostring(doc:pane_id())] = req.path
   wezterm.GLOBAL.docs = docs
@@ -258,10 +272,10 @@ config.keys = {
   { key = '3', mods = 'ALT|SHIFT', action = cols(3) },
   { key = '4', mods = 'ALT|SHIFT', action = cols(4) },
   -- Chia đều mọi ô trong tab đang xem (bao nhiêu ô cũng được): cột rộng bằng nhau, ô xếp chồng cao bằng nhau
-  { key = 'E', mods = 'CTRL|SHIFT', action = wezterm.action_callback(function(_, p)
-    wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-      '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(p:pane_id()) }
-  end) },
+  -- (đóng tạm thanh tên các ô trước khi chia, chia xong tự dựng lại — xem sự kiện 'chia-deu' cuối file)
+  { key = 'E', mods = 'CTRL|SHIFT', action = act.EmitEvent 'chia-deu' },
+  -- Bật/tắt thanh tên 1 dòng trên đỉnh mỗi ô AI
+  { key = 'D', mods = 'CTRL|SHIFT', action = act.EmitEvent 'ten-o-bat-tat' },
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
   { key = 'RightArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Right' },
@@ -536,16 +550,18 @@ local function capture_layout()
       local panes = {}
       for _, info in ipairs(tab:panes_with_info()) do
         local p, id = info.pane, tostring(info.pane:pane_id())
-        local it = { left = info.left, top = info.top, width = info.width, height = info.height,
-          cwd = pane_dir { current_working_dir = p:get_current_working_dir() }, kind = pane_kind(p) }
-        if it.kind == 'claude' then
-          local s = read_json(STATE .. '\\' .. id .. '.json')
-          if s and s.session and s.session ~= '' then it.session = s.session end
-        elseif it.kind == 'doc' then
-          it.path = docs[id]
+        if not is_header(p) then -- ô tên không lưu: tự dựng lại sau khi khôi phục
+          local it = { left = info.left, top = info.top, width = info.width, height = info.height,
+            cwd = pane_dir { current_working_dir = p:get_current_working_dir() }, kind = pane_kind(p) }
+          if it.kind == 'claude' then
+            local s = read_json(STATE .. '\\' .. id .. '.json')
+            if s and s.session and s.session ~= '' then it.session = s.session end
+          elseif it.kind == 'doc' then
+            it.path = docs[id]
+          end
+          table.insert(panes, it)
+          n = n + 1
         end
-        table.insert(panes, it)
-        n = n + 1
       end
       table.insert(out.tabs, { title = tab:get_title(), panes = panes })
     end
@@ -763,6 +779,12 @@ end
 
 wezterm.on('format-tab-title', function(tab)
   local p = tab.active_pane
+  local tid = hdr_map()[tostring(p.pane_id)] -- đang đứng ở ô tên → lấy ô AI bên dưới
+  local tp = tid and wezterm.mux.get_pane(tonumber(tid))
+  if tp then
+    p = { current_working_dir = tp:get_current_working_dir(), foreground_process_name = tp:get_foreground_process_name(),
+      title = tp:get_title(), is_zoomed = p.is_zoomed }
+  end
   local proj = split_project(pane_dir(p))
   local icon = which_ai(p)
   local zoom = p.is_zoomed and ' 🔍' or ''
@@ -786,11 +808,17 @@ wezterm.on('format-window-title', function(tab, pane, tabs, panes)
     local icon, ai = which_ai(p)
     return icon .. ' ' .. (ai or 'Terminal') .. ' · ' .. split_project(pane_dir(p))
   end
+  local tid = hdr_map()[tostring(pane.pane_id)]
+  local tp = tid and wezterm.mux.get_pane(tonumber(tid))
+  if tp then -- đang đứng ở ô tên → lấy ô AI bên dưới
+    pane = { pane_id = tp:pane_id(), title = tp:get_title(), foreground_process_name = tp:get_foreground_process_name(),
+      current_working_dir = tp:get_current_working_dir() }
+  end
   local parts, seen = { label(pane) }, {}
   seen[parts[1]] = true
   for _, p in ipairs(panes) do
     local t = p.title or ''
-    if p.pane_id ~= pane.pane_id and not t:find('📄', 1, true) and not t:find('📋', 1, true) then
+    if p.pane_id ~= pane.pane_id and not t:find('📄', 1, true) and not t:find('📋', 1, true) and not is_header(p) then
       local l = label(p)
       if not seen[l] then seen[l] = true; parts[#parts + 1] = l end
     end
@@ -836,7 +864,117 @@ local function morning_report()
   wezterm.background_child_process { 'node', HUB .. '/cai-dat/bao-cao-sang.js', '--mo' }
 end
 
+-- ===== Thanh tên trên đỉnh mỗi ô AI (02/10/2026) =====
+-- Tab có từ 2 ô trở lên: mỗi ô Claude/Codex được tách thêm 1 ô cao 1 dòng phía trên chạy cai-dat\ten-o.js,
+-- hiện "🤖 Claude · CHATBOT › thư-mục-con" trên nền màu dự án, giãn theo bề ngang ô. Ctrl+Shift+D bật/tắt.
+-- Sổ ô tên: hdr_map()/hdr_save() ; thông tin vẽ ghi ra wez-ai\ten-o.json cho ten-o.js đọc.
+local TEN_O_FILE = AIDIR .. '\\ten-o.json'
+local TEN_O_JS = HUB .. '\\cai-dat\\ten-o.js'
+
+local function close_headers(window, tab)
+  local map, n = hdr_map(), 0
+  for _, p in ipairs(tab:panes()) do
+    local id = tostring(p:pane_id())
+    if map[id] then
+      map[id] = nil
+      n = n + 1
+      window:perform_action(act.CloseCurrentPane { confirm = false }, p)
+    end
+  end
+  hdr_save(map)
+  return n
+end
+
+local function process_headers(window)
+  local g = wezterm.GLOBAL
+  local map = hdr_map()
+  -- ô nào còn sống, nằm ở tab nào
+  local alive = {}
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, t in ipairs(mw:tabs()) do
+      for _, p in ipairs(t:panes()) do alive[tostring(p:pane_id())] = { pane = p, tab = t:tab_id() } end
+    end
+  end
+  local has = {}
+  for h, t in pairs(map) do -- bỏ cặp đã mất ô, hoặc ô AI đã bị đẩy sang tab khác
+    if not alive[h] or not alive[t] or alive[h].tab ~= alive[t].tab then map[h] = nil else has[t] = h end
+  end
+  local paused = (g.ten_o_hoan or 0) > os.time()
+  for _, tab in ipairs(not g.ten_o_tat and not paused and window:mux_window():tabs() or {}) do
+    local infos = tab:panes_with_info()
+    local real = 0
+    for _, info in ipairs(infos) do if not map[tostring(info.pane:pane_id())] then real = real + 1 end end
+    if real >= 2 then
+      for _, info in ipairs(infos) do
+        local p = info.pane
+        local id = tostring(p:pane_id())
+        if not map[id] and not has[id] and info.height > 4 then
+          local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = p:get_title() }
+          if ai == 'Claude' or ai == 'Codex' then
+            local ok, h = pcall(function()
+              return p:split { direction = 'Top', size = 1, cwd = HUB, args = { 'node', TEN_O_JS } }
+            end)
+            if ok and h then
+              map[tostring(h:pane_id())] = id
+              has[id] = tostring(h:pane_id())
+              alive[tostring(h:pane_id())] = { pane = h, tab = tab:tab_id() }
+              p:activate()
+            else
+              wezterm.log_error('ten-o split: ' .. tostring(h))
+            end
+          end
+        end
+      end
+    end
+  end
+  hdr_save(map)
+  -- bấm vào ô tên → chuyển sang ô AI bên dưới
+  local ap = window:active_pane()
+  local target = ap and map[tostring(ap:pane_id())]
+  if target and alive[target] then alive[target].pane:activate() end
+  -- ghi thông tin cho ten-o.js
+  local out = { tat = g.ten_o_tat and true or false, o = {} }
+  if not g.ten_o_tat then
+    for h, t in pairs(map) do
+      local tp = alive[t].pane
+      local info = { current_working_dir = tp:get_current_working_dir(), foreground_process_name = tp:get_foreground_process_name(), title = tp:get_title() }
+      local proj, sub = split_project(pane_dir(info))
+      local icon, ai = which_ai(info)
+      out.o[h] = { icon = icon, ai = ai or 'Terminal', proj = proj, sub = sub, color = proj_color(proj) }
+    end
+  end
+  local s = wezterm.json_encode(out)
+  if s ~= g.ten_o_last then
+    local f = io.open(TEN_O_FILE, 'w')
+    if f then f:write(s) f:close() g.ten_o_last = s end
+  end
+end
+
+wezterm.on('ten-o-bat-tat', function(window, pane)
+  local g = wezterm.GLOBAL
+  g.ten_o_tat = not g.ten_o_tat
+  g.ten_o_last = nil
+  if g.ten_o_tat then
+    for _, t in ipairs(window:mux_window():tabs()) do close_headers(window, t) end
+  end
+  pcall(process_headers, window)
+  window:toast_notification('WezTerm · đội AI', g.ten_o_tat and '🏷 Đã tắt thanh tên ô (Ctrl+Shift+D để bật lại)' or '🏷 Đã bật thanh tên ô', nil, 3000)
+end)
+
+wezterm.on('chia-deu', function(window, pane)
+  local tab = window:active_tab()
+  if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
+  wezterm.GLOBAL.ten_o_hoan = os.time() + 20 -- chia xong mới dựng lại thanh tên
+  close_headers(window, tab)
+  wezterm.time.call_after(0.3, function()
+    wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
+      '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(pane:pane_id()) }
+  end)
+end)
+
 wezterm.on('update-status', function(window, pane)
+  local okh, errh = pcall(process_headers, window)
+  if not okh then wezterm.log_error('process_headers: ' .. tostring(errh)) end
   local okr, errr = pcall(morning_report)
   if not okr then wezterm.log_error('morning_report: ' .. tostring(errr)) end
   local oka, erra = pcall(process_alerts, window)
