@@ -916,7 +916,7 @@ wezterm.on('format-tab-title', function(tab)
   local icon = x and x.icon or which_ai { title = p.title }
   local zoom = p.is_zoomed and ' 🔍' or ''
   local alert = tab_alert[tostring(tab.tab_id)]
-  local bg = alert == 'need' and '#a8322d' or (alert == 'done' and '#2e6b3a' or (tab.is_active and '#3a3f4b' or '#1e2127'))
+  local bg = alert == 'need' and '#a8322d' or (alert == 'done' and '#1f5fb4' or (tab.is_active and '#3a3f4b' or '#1e2127')) -- xong việc = nền xanh dương (03/10, người dùng chọn), cần duyệt = đỏ
   local bell = alert == 'need' and '🔔 ' or (alert == 'done' and '✅ ' or '')
   return {
     { Background = { Color = bg } },
