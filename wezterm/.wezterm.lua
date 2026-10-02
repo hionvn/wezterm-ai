@@ -67,6 +67,13 @@ end)
 local VIEWER = { 'powershell.exe', '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
   HUB .. '\\cai-dat\\can-duyet-view.ps1' }
 
+-- Đóng ĐÚNG ô theo số ô. KHÔNG dùng perform_action(CloseCurrentPane, ô): lệnh đó đóng ô ĐANG CHỌN của tab,
+-- không phải ô truyền vào → 02/10 22h47 mở tài liệu 📄 mới đã đóng nhầm ô Manager Chatbot.
+local function kill_pane(p)
+  wezterm.background_child_process { wezterm.executable_dir .. '\\wezterm.exe', 'cli', '--no-auto-start',
+    'kill-pane', '--pane-id', tostring(p:pane_id()) }
+end
+
 local function find_viewer(tab)
   for _, p in ipairs(tab:panes()) do
     if (p:get_title() or ''):find('Cần duyệt', 1, true) then return p end
@@ -77,7 +84,7 @@ end
 local toggle_doc = wezterm.action_callback(function(window, pane)
   local v = find_viewer(window:active_tab())
   if v then
-    window:perform_action(act.CloseCurrentPane { confirm = false }, v)
+    kill_pane(v)
   else
     pane:split { direction = 'Right', size = 0.38, cwd = HUB, args = VIEWER }
   end
@@ -123,7 +130,7 @@ local function process_open(window)
   for _, p in ipairs(tab:panes()) do
     if is_doc(p) then
       if p:pane_id() == cur:pane_id() then cur = nil end
-      window:perform_action(act.CloseCurrentPane { confirm = false }, p)
+      kill_pane(p)
     end
   end
   if not cur then
@@ -739,7 +746,7 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
     local ok, err = pcall(restore_tab, window:mux_window(), t)
     if not ok then wezterm.log_error('restore_tab: ' .. tostring(err)) end
   end
-  window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
+  kill_pane(pane) -- đóng đúng ô menu (CloseCurrentPane có thể đóng nhầm ô đang chọn sau khi mở lại các tab)
 end)
 
 -- Tự lưu mỗi phút, chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
