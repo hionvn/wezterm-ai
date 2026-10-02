@@ -439,6 +439,33 @@ switch ($Cmd) {
         foreach ($m in $ds) { Write-Host ("  {0}. {1}" -f $m.so, $m.ten) }
         Write-Host "Đóng: wez.ps1 don dong 1,2   (chọn số; không chạy thì không đóng gì)" -ForegroundColor DarkGray
     }
+    # tat <dự án> : liệt kê mọi ô của dự án (đội, phiên phụ, tài liệu) · tat <dự án> dong : đóng hết (03/10/2026)
+    #   Không bao giờ đóng ô đang gọi lệnh, ô Tổng quản, bảng 📊. Mở lại: doi <dự án> hoặc Ctrl+Shift+O. Phím tương ứng: Ctrl+Shift+F4.
+    'tat' {
+        $proj = "$($Rest[0])"
+        if (-not $proj) { Write-Error 'Cách dùng: wez.ps1 tat <dự án> [dong]'; exit 1 }
+        $doiSo = Sync-Doi $proj
+        $trongDoi = @{}
+        if ($doiSo) { foreach ($m in @($doiSo.manager) + @($doiSo.worker)) { if ($m -and $m.o) { $trongDoi["$($m.o)"] = $true } } }
+        $giu = @{ "$env:WEZTERM_PANE" = $true }
+        $hf = Join-Path $doiDir 'Hion.json'
+        if (Test-Path $hf) { $h = Get-Content $hf -Raw -Encoding UTF8 | ConvertFrom-Json; if ($h.manager) { $giu["$($h.manager.o)"] = $true } }
+        $ds = @(Get-Panes | Where-Object {
+            $id = "$($_.pane_id)"
+            if ($giu[$id] -or $_.title -match 'ten-o|📊 Tổng quan') { return $false }   # chỉ bỏ bảng tổng quan, KHÔNG bỏ worker 📊 Số liệu
+            $cwd = [uri]::UnescapeDataString("$($_.cwd)") -replace '^file:///', '' -replace '/', '\'
+            $trongDoi[$id] -or ($cwd -match "^[A-Za-z]:\\AI\\$([regex]::Escape($proj))(\\|$)")
+        })
+        if ($ds.Count -eq 0) { Write-Host "Không có ô nào của $proj đang mở."; break }
+        if ("$($Rest[1])" -ne 'dong') {
+            Write-Host "Các ô của ${proj} sẽ bị đóng:" -ForegroundColor Cyan
+            foreach ($p in $ds) { Write-Host ("  ô {0,-4} {1}" -f $p.pane_id, ($p.title -replace '^[✳◐◓◑◒]\s*', '')) }
+            Write-Host "Đóng thật: wez.ps1 tat $proj dong   (AI đang làm sẽ bị dừng)" -ForegroundColor DarkGray
+            break
+        }
+        foreach ($p in $ds) { & $exe cli --no-auto-start kill-pane --pane-id $p.pane_id 2>$null }
+        Write-Host "🛑 Đã đóng $($ds.Count) ô của $proj. Mở lại: wez.ps1 doi $proj"
+    }
     # khoidonglai: khởi động lại toàn bộ WezTerm rồi tự mở lại mọi phiên (03/10/2026).
     #   Đợi bản tự lưu mới (≤ 35 giây) → chép làm bản lưu tay dự phòng → nhờ Task Scheduler (không thuộc WezTerm nên không bị tắt theo)
     #   tắt CẢ CÂY tiến trình WezTerm (taskkill /T: gồm Claude/Codex bên trong, tránh phiên cũ chạy mồ côi) → mở lại WezTerm.

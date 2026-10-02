@@ -323,6 +323,7 @@ config.keys = {
   -- Bật/tắt thanh tên 1 dòng trên đỉnh mỗi ô AI
   { key = 'D', mods = 'CTRL|SHIFT', action = act.EmitEvent 'ten-o-bat-tat' },
   { key = 'U', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tong-quan' },   -- 📊 bảng tổng quan đội (03/10)
+  { key = 'F4', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tat-du-an' },  -- đóng hẳn 1 dự án (mọi ô của nó), có hỏi lại (03/10)
   { key = 'Space', mods = 'CTRL|SHIFT', action = act.EmitEvent 'nhay-o' }, -- nhảy tới ô theo tên (03/10)
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
@@ -1496,6 +1497,53 @@ wezterm.on('tong-quan', function(window, pane)
   end
   if is_header(pane) then pane = wezterm.mux.get_pane(tonumber(hdr_map()[tostring(pane:pane_id())])) or pane end
   open_board(pane, false)
+end)
+
+-- Ctrl+Shift+F4: đóng hẳn 1 dự án — chọn dự án (thấy số ô, số ô đang làm) → hỏi lại → đóng mọi ô của dự án
+-- (đội, phiên phụ, tài liệu). Không bao giờ đóng ô Tổng quản + bảng 📊. Mở lại: wez.ps1 doi <dự án> hoặc Ctrl+Shift+O. (03/10/2026)
+wezterm.on('tat-du-an', function(window, pane)
+  local doi = doi_map()
+  local hion = read_json(AIDIR .. '\\doi\\Hion.json')
+  local giu = { [tostring(wezterm.GLOBAL.board_o or '')] = true }
+  if hion and hion.manager then giu[tostring(hion.manager.o)] = true end
+  local nhom, thu_tu = {}, {}
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(mw:tabs()) do
+      for _, p in ipairs(tab:panes()) do
+        local id = tostring(p:pane_id())
+        if not is_header(p) and not giu[id] then
+          local x = PANE_LAST[id] or pinfo(p)
+          local proj = (doi[id] and doi[id].doi) or x.proj or '?'
+          if not nhom[proj] then nhom[proj] = { o = {}, work = 0 }; table.insert(thu_tu, proj) end
+          table.insert(nhom[proj].o, id)
+          local t1 = (x.title or ''):match('^(%S+)') or ''
+          if t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒' or (x.title or ''):find('| Working |', 1, true) then nhom[proj].work = nhom[proj].work + 1 end
+        end
+      end
+    end
+  end
+  local choices = {}
+  for _, proj in ipairs(thu_tu) do
+    local g = nhom[proj]
+    table.insert(choices, { id = proj, label = proj_logo(proj) .. ' ' .. proj .. ' — ' .. #g.o .. ' ô' .. (g.work > 0 and ('  ·  ⚠️ ' .. g.work .. ' ô đang làm') or '') })
+  end
+  if #choices == 0 then window:toast_notification('WezTerm', 'Không có dự án nào để đóng', nil, 3000) return end
+  window:perform_action(act.InputSelector {
+    title = 'Đóng hẳn dự án nào?  (Enter chọn · Esc thoát)', fuzzy = true, choices = choices,
+    action = wezterm.action_callback(function(w, p2, proj)
+      if not proj then return end
+      local g = nhom[proj]
+      w:perform_action(act.InputSelector {
+        title = 'Đóng ' .. #g.o .. ' ô của ' .. proj .. '?' .. (g.work > 0 and (' ⚠️ ' .. g.work .. ' ô ĐANG LÀM sẽ bị dừng.') or '') .. ' Mở lại: wez.ps1 doi ' .. proj .. ' / Ctrl+Shift+O',
+        choices = { { id = 'khong', label = '❌ Không, giữ lại' }, { id = 'dong', label = '✅ Đóng hết ' .. #g.o .. ' ô của ' .. proj } },
+        action = wezterm.action_callback(function(w2, _, ok)
+          if ok ~= 'dong' then return end
+          for _, id in ipairs(g.o) do local pp = pane_or_nil(id); if pp then kill_pane(pp) end end
+          w2:toast_notification('WezTerm · đội AI', '🛑 Đã đóng ' .. #g.o .. ' ô của ' .. proj, nil, 5000)
+        end),
+      }, p2)
+    end),
+  }, pane)
 end)
 
 -- Ctrl+Shift+Space: danh sách mọi ô (dự án · vai · trạng thái), gõ vài chữ để lọc, Enter là tới đúng ô
