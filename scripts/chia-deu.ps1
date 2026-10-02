@@ -1,4 +1,4 @@
-# Chia đều các ô trong tab đang xem của WezTerm (phím Ctrl+Shift+E gọi script này).
+﻿# Chia đều các ô trong tab đang xem của WezTerm (phím Ctrl+Shift+E gọi script này).
 # Cột: chia đều chiều ngang các ô ở hàng trên cùng. Trong mỗi cột: chia đều chiều cao các ô xếp chồng.
 # Lệnh `wezterm cli adjust-pane-size` dời đường ranh gần nhất của ô ĐANG CHỌN, nên mỗi lần chỉnh phải chọn ô trước,
 # rồi thử 1 ô xem đúng đường ranh cần dời chưa; sai thì trả lại và dùng ô bên kia đường ranh.

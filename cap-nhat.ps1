@@ -8,6 +8,13 @@ if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw
 $caiDat = Join-Path $AIRoot 'Hion\cai-dat'
 $utf8 = New-Object Text.UTF8Encoding $false
 
+# Chạy thử mọi cấu hình / script trước (03/10/2026): có lỗi thì DỪNG, không chép bản hỏng vào repo
+$kiem = Join-Path $caiDat 'kiem-cau-hinh.ps1'
+if (Test-Path $kiem) {
+    & $kiem
+    if ($LASTEXITCODE) { Write-Host '⛔ Dừng: cấu hình đang có lỗi (xem dòng ❌ ở trên). Sửa xong chạy lại cap-nhat.ps1.' -ForegroundColor Red; exit 1 }
+}
+
 $copies = @(
     @("$HOME\.wezterm.lua", 'wezterm\.wezterm.lua'),
     @("$HOME\.claude\statusline.js", 'claude\statusline.js'),

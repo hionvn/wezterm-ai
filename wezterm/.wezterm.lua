@@ -28,6 +28,12 @@ local function PS(cmd)
   return { 'powershell.exe', '-NoLogo', '-NoExit', '-Command',
     'Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; ' .. cmd }
 end
+-- Như PS nhưng KHÔNG nạp profile (nhanh hơn ~1–2 giây/ô, 03/10) — chỉ dùng khi lệnh không cần hàm của profile
+-- (claudeRC, codex chọn tài khoản…), vd ô Claude trong đội gọi thẳng `claude --resume`
+local function PSN(cmd)
+  return { 'powershell.exe', '-NoLogo', '-NoProfile', '-NoExit', '-Command',
+    'Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; ' .. cmd }
+end
 
 -- Mở lên là vào menu `ai` (chọn dự án rồi chọn AI), bắt đầu ở Hion
 config.default_prog = PS('ai')
@@ -752,22 +758,20 @@ local function restore_args(it)
   -- 03/10: lần khởi động lại thật, các ô Claude mở lại bị chạy trong E:\AI\Hion thay vì thư mục dự án
   -- (tham số cwd của split không được tôn trọng) → luôn tự cd vào đúng thư mục trước khi chạy AI
   local PS0 = PS
-  local function PS(cmd)
+  local function PS(cmd, khong_profile)
     if it.cwd and it.cwd ~= '' then cmd = 'Set-Location -LiteralPath ' .. q(it.cwd) .. '; ' .. cmd end
-    return PS0(cmd)
+    return (khong_profile and PSN or PS0)(cmd)
   end
   if it.kind == 'claude' then
-    local c
-    if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ (Tổng quản Hion giữ cách mở cũ claudeRC)
-      c = (it.session and ('claude --resume ' .. it.session) or 'claude --continue')
+    local tiep = it.state == 'work' and (' ' .. q(TIEP)) or '' -- đang làm dở → tự làm tiếp
+    if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
+      return PS((it.session and ('claude --resume ' .. it.session) or 'claude --continue')
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
         .. ' --remote-control ' .. q(it.doi .. '-' .. it.vai)
-      if it.chan then c = c .. ' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ','))) end
-    else
-      c = it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue'
+        .. (it.chan and (' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ',')))) or '') .. tiep, true)
     end
-    if it.state == 'work' then c = c .. ' ' .. q(TIEP) end -- đang làm dở → tự làm tiếp
-    return PS(c)
+    -- ô ngoài đội + Tổng quản Hion: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
+    return PS((it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue') .. tiep)
   end
   if it.kind == 'codex' then
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or ''
@@ -852,6 +856,9 @@ end
 
 -- Mở lại cả bố cục đã lưu vào cửa sổ (dùng cho Ctrl+Shift+O, menu `ai`, và tự mở lại khi khởi động)
 local function restore_layout(window, d)
+  -- 03/10: tạm dừng dựng thanh tên 🏷 trong 25 giây — mở lại nhiều ô cùng lúc làm thanh tên bị dựng/xoá liên tục
+  -- → phanh an toàn hiểu nhầm là lỗi và tự tắt thanh tên (sau khởi động lại thấy 0 thanh tên)
+  wezterm.GLOBAL.ten_o_hoan = os.time() + 25
   local n = 0
   for _, t in ipairs(d and d.tabs or {}) do
     local ok, err = pcall(restore_tab, window:mux_window(), t)
@@ -939,6 +946,12 @@ wezterm.on('gui-startup', function()
     wezterm.GLOBAL.hint_restore = true
   end
   for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do os.remove(path) end
+  -- 03/10: dọn rác mỗi lần mở WezTerm (chạy ngầm, không làm chậm lúc mở): giữ 5 log WezTerm mới nhất;
+  -- xoá file tạm cũ hơn 1 ngày ở wez-ai\giao (câu giao việc), wez-ai\git-nho (nhớ git của statusline), ntfy-*.txt
+  wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-Command',
+    "$d = \"$HOME\\.local\\share\\wezterm\"; Get-ChildItem $d -Filter '*log*' -File | Sort-Object LastWriteTime -Descending | Select-Object -Skip 5 | Remove-Item -ErrorAction SilentlyContinue; "
+    .. "$w = \"$env:LOCALAPPDATA\\wez-ai\"; Get-ChildItem \"$w\\giao\",\"$w\\git-nho\" -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } | Remove-Item -ErrorAction SilentlyContinue; "
+    .. "Get-ChildItem $w -Filter 'ntfy-*.txt' -File -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue" }
 end)
 
 -- Nhiên liệu: hạn mức 5 giờ / tuần đã dùng của Claude (statusline.js ghi) và Codex (file phiên gần nhất)

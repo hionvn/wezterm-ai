@@ -321,7 +321,8 @@ switch ($Cmd) {
             }
             $lf = Join-Path $launchDir "mo-$($m.vai).ps1"
             [IO.File]::WriteAllText($lf, $l, $bom)
-            $a = @('powershell', '-NoLogo', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $lf)
+            # ô đội gọi thẳng claude / codex.cmd (CODEX_HOME đặt sẵn) → không cần profile, mở nhanh hơn (03/10)
+            $a = @('powershell', '-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $lf)
             $id = if ($splitFrom) { & $exe cli --no-auto-start split-pane --pane-id $splitFrom $huong --percent $pct --cwd $projDir -- @a }
                   else { & $exe cli --no-auto-start spawn --cwd $projDir -- @a }
             $id = "$id".Trim()
