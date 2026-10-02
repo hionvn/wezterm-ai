@@ -47,12 +47,42 @@ $AITools = [ordered]@{
     '2' = @{ Name = 'Codex (GPT)'; Cmd = 'codex' }
     '3' = @{ Name = 'Grok'; Cmd = 'grok' }
 }
+# Get-AIProjects : folders in E:\AI ordered as the agent-team tree in Hion\cay-du-an.json
+#   (Tong quan -> PM du an -> cong cu); folders not in the tree go last, under "Khac".
+function Get-AIProjects {
+    $dirs = @(Get-ChildItem $AIRoot -Directory | Sort-Object Name)
+    $tree = @()
+    $f = Join-Path $AIRoot 'Hion\cay-du-an.json'
+    if (Test-Path $f) { try { $tree = @((Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json).cay) } catch {} }
+    $out = @()
+    foreach ($n in $tree) {
+        $d = $dirs | Where-Object { $_.Name -eq $n.ten } | Select-Object -First 1
+        if ($d) { $out += [pscustomobject]@{ Dir = $d; Level = [int]$n.cap; Label = $n.nhan } }
+    }
+    foreach ($d in $dirs) {
+        if ($out.Dir.Name -notcontains $d.Name) { $out += [pscustomobject]@{ Dir = $d; Level = -1; Label = '' } }
+    }
+    $out
+}
 function ai {
-    # Step 1: pick a project (every folder in E:\AI is listed automatically)
-    $projects = @(Get-ChildItem $AIRoot -Directory | Sort-Object Name)
+    # Step 1: pick a project (every folder in E:\AI, in agent-team tree order)
+    $items = @(Get-AIProjects)
+    $projects = @($items.Dir)
     Write-Host ""
     Write-Host "  DU AN  (Enter = giu thu muc hien tai: $((Get-Location).Path))" -ForegroundColor Cyan
-    for ($i = 0; $i -lt $projects.Count; $i++) { Write-Host ("   {0}) {1}" -f ($i + 1), $projects[$i].Name) }
+    $other = $false
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $it = $items[$i]
+        $num = "{0,2})" -f ($i + 1)
+        $isLastChild = $it.Level -eq 1 -and ($i -eq $items.Count - 1 -or $items[$i + 1].Level -ne 1)
+        switch ($it.Level) {
+            0 { Write-Host ("  {0} {1,-12} {2}" -f $num, $it.Dir.Name, $it.Label) -ForegroundColor Yellow }
+            1 { $branch = if ($isLastChild) { '`--' } else { '|--' }
+                Write-Host ("      {0} {1} {2,-10} {3}" -f $branch, $num, $it.Dir.Name, $it.Label) }
+            default { if (-not $other) { Write-Host "  Khac:" -ForegroundColor DarkGray; $other = $true }
+                      Write-Host ("  {0} {1}" -f $num, $it.Dir.Name) -ForegroundColor DarkGray }
+        }
+    }
     $p = (Read-Host "  Chon du an").Trim()
     if ($p) {
         $n = 0

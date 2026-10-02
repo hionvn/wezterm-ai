@@ -172,20 +172,41 @@ end)
 
 -- Ctrl+Shift+A: chọn dự án + AI từ danh sách, rồi chọn mở ở ô phải / ô dưới / tab mới
 local AIS = { { '🤖 Claude', 'claudeRC' }, { '🧩 Codex', 'codex' } } -- Gemini đã bỏ (02/10/2026)
+-- Thứ tự theo cây đội agent ở Hion\cay-du-an.json: Tổng quản → các PM dự án → công cụ; thư mục khác xếp cuối
 local function projects()
-  local t = {}
+  local dirs, seen, t = {}, {}, {}
   for _, path in ipairs(wezterm.read_dir(AI_ROOT)) do
     local n = path:match('([^\\/]+)$')
-    if n and not n:find('.', 1, true) then table.insert(t, n) end -- bỏ file, chỉ lấy thư mục
+    if n and not n:find('.', 1, true) then dirs[n] = true end -- bỏ file, chỉ lấy thư mục
   end
-  table.sort(t)
+  local f = io.open(HUB .. '\\cay-du-an.json', 'rb')
+  if f then
+    local ok, v = pcall(wezterm.json_parse, (f:read('*a'):gsub('^\239\187\191', '')))
+    f:close()
+    if ok and v and v.cay then
+      for _, n in ipairs(v.cay) do
+        if dirs[n.ten] and not seen[n.ten] then
+          seen[n.ten] = true
+          table.insert(t, { name = n.ten, level = n.cap or 0, icon = n.bieuTuong or '', role = n.vai or '' })
+        end
+      end
+    end
+  end
+  local rest = {}
+  for n in pairs(dirs) do if not seen[n] then table.insert(rest, n) end end
+  table.sort(rest)
+  for _, n in ipairs(rest) do table.insert(t, { name = n, level = -1, icon = '·', role = 'khác' }) end
   return t
 end
 local project_menu = wezterm.action_callback(function(window, pane)
   local choices = {}
-  for _, proj in ipairs(projects()) do
+  local list = projects()
+  for k, p in ipairs(list) do
+    local last_child = p.level == 1 and (k == #list or list[k + 1].level ~= 1)
+    local indent = p.level == 1 and (last_child and '   └─ ' or '   ├─ ') or ''
     for i, a in ipairs(AIS) do
-      table.insert(choices, { id = proj .. '|' .. i, label = proj .. '   ·   ' .. a[1] })
+      table.insert(choices, { id = p.name .. '|' .. i,
+        label = indent .. p.icon .. ' ' .. p.name .. '  ·  ' .. p.role .. '   →   ' .. a[1] })
     end
   end
   window:perform_action(act.InputSelector {
