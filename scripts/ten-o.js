@@ -76,7 +76,7 @@ function tick() {
   try { data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { /* file đang được ghi: thử lại lần sau */ return; }
   const it = data && !data.tat && data.o && data.o[ME];
   if (!it) {
-    if (++missing >= 4) { process.stdout.write(`${ESC}[0m${ESC}[?25h`); process.exit(0); } // ~4 giây không thấy → tự đóng
+    if (++missing >= 2) { process.stdout.write(`${ESC}[0m${ESC}[?25h`); process.exit(0); } // ~1 giây không thấy → tự đóng (WezTerm bỏ ô khỏi sổ = lệnh đóng)
     return;
   }
   missing = 0;
@@ -88,5 +88,5 @@ process.stdout.write(`${ESC}]0;🏷 ten-o${'\x07'}${ESC}[?25l${ESC}[2J`); // ti�
 process.stdout.on('resize', () => { last = ''; process.stdout.write(`${ESC}[2J`); draw(); });
 process.stdin.on('data', () => {}); // nuốt phím lỡ gõ vào ô tên
 try { process.stdin.setRawMode && process.stdin.setRawMode(true); process.stdin.resume(); } catch {}
-setInterval(tick, 1000);
+setInterval(tick, 500);
 tick();

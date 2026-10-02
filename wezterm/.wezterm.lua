@@ -951,6 +951,19 @@ end
 local TEN_O_FILE = AIDIR .. '\\ten-o.json'
 local TEN_O_JS = HUB .. '\\cai-dat\\ten-o.js'
 
+-- Đóng ô tên = bỏ khỏi sổ + ghi lại ten-o.json → ten-o.js không thấy mình nữa thì tự thoát (~1 giây).
+-- KHÔNG dùng perform_action(CloseCurrentPane / AdjustPaneSize, ô): 2 lệnh này tác động lên ô ĐANG CHỌN của tab,
+-- không phải ô truyền vào → đóng / bóp nhầm ô AI (lỗi bóp nhỏ ô 18:16 02/10).
+local function write_ten_o(map)
+  local g = wezterm.GLOBAL
+  local ok, old = pcall(wezterm.json_parse, g.ten_o_last or '{}')
+  local oldo = (ok and type(old) == 'table' and type(old.o) == 'table') and old.o or {}
+  local out = { tat = g.ten_o_tat and true or false, o = {} }
+  for h in pairs(map) do out.o[h] = oldo[h] end
+  local s = wezterm.json_encode(out)
+  local f = io.open(TEN_O_FILE, 'w')
+  if f then f:write(s) f:close() g.ten_o_last = s end
+end
 local function close_headers(window, tab)
   local map, n = hdr_copy(), 0
   for _, p in ipairs(tab:panes()) do
@@ -958,14 +971,34 @@ local function close_headers(window, tab)
     if map[id] then
       map[id] = nil
       n = n + 1
-      window:perform_action(act.CloseCurrentPane { confirm = false }, p)
     end
   end
   hdr_save(map)
+  if n > 0 then write_ten_o(map) end
   return n
 end
 
-local HDR_FIX = {} -- lần cuối chỉnh cỡ từng ô tên (tránh giành kích thước khi bạn đang kéo ô)
+-- Phanh chống dựng ô tên liên tục (lỗi 18:16 02/10: tab bị thu còn 14 cột → "No space for split!" mỗi giây,
+-- ô tên đặt sai chỗ bị đóng rồi dựng lại → ô AI bị bóp nhỏ dần):
+--   mỗi ô AI: cách nhau ≥ 30 giây, tối đa 3 lần / 10 phút · mỗi lượt chỉ dựng 1 ô · ≥ 8 lần / phút → tự TẮT thanh tên.
+local HDR_TRY, HDR_RATE = {}, {}
+local function hdr_allow(id)
+  local now = os.time()
+  local x = HDR_TRY[id]
+  if x and (now - x.t < 30 or (now - x.t < 600 and x.n >= 3)) then return false end
+  return true
+end
+local function hdr_note(id)
+  local now = os.time()
+  local x = HDR_TRY[id]
+  if not x or now - x.t >= 600 then x = { n = 0, t = now } end
+  x.n, x.t = x.n + 1, now
+  HDR_TRY[id] = x
+  local r = { now }
+  for _, t in ipairs(HDR_RATE) do if now - t < 60 then table.insert(r, t) end end
+  HDR_RATE = r
+  return #r
+end
 local function process_headers(window)
   local g = wezterm.GLOBAL
   local map = hdr_copy()
@@ -981,35 +1014,47 @@ local function process_headers(window)
     if not alive[h] or not alive[t] or alive[h].tab ~= alive[t].tab then map[h] = nil else has[t] = h end
   end
   local paused = (g.ten_o_hoan or 0) > os.time()
+  local made = false
   for _, tab in ipairs(not g.ten_o_tat and not paused and window:mux_window():tabs() or {}) do
     local infos = tab:panes_with_info()
     local real = 0
     for _, info in ipairs(infos) do if not map[tostring(info.pane:pane_id())] then real = real + 1 end end
-    if real >= 2 then
+    local ts = tab:get_size()
+    -- cửa sổ thu nhỏ / đang kéo cỡ: kích thước tab nhỏ hơn ô → bỏ qua, không tách
+    local tab_ok = ts and ts.cols >= 30 and ts.rows >= 12
+    if real >= 2 and tab_ok then
       for _, info in ipairs(infos) do
         local p = info.pane
         local id = tostring(p:pane_id())
-        if not map[id] and not has[id] and info.height > 4 then
+        if not made and not map[id] and not has[id] and info.height > 8 and info.width >= 20
+            and info.width <= ts.cols and hdr_allow(id) then
           local ai = pinfo(p).ai
           if ai == 'Claude' or ai == 'Codex' then
+            made = true
             local ok, h = pcall(function()
-              return p:split { direction = 'Top', size = 0.05, cwd = HUB, args = { 'node', TEN_O_JS } }
+              return p:split { direction = 'Top', size = 1, cwd = HUB, args = { 'node', TEN_O_JS } } -- size >= 1 = số dòng
             end)
             if ok and h then
               map[tostring(h:pane_id())] = id
               has[id] = tostring(h:pane_id())
               alive[tostring(h:pane_id())] = { pane = h, tab = tab:tab_id() }
-              p:activate()
+              if info.is_active then p:activate() end -- trả lại ô đang chọn, không giành chỗ của ô khác
             else
               wezterm.log_error('ten-o split: ' .. tostring(h))
+            end
+            if hdr_note(id) >= 8 then
+              g.ten_o_tat = true
+              g.ten_o_last = nil
+              wezterm.log_error('ten-o: dựng quá 8 ô / phút → tự tắt thanh tên')
+              window:toast_notification('WezTerm · đội AI', '⚠️ Thanh tên ô dựng lại liên tục → đã tự tắt (Ctrl+Shift+D để bật lại)', nil, 6000)
             end
           end
         end
       end
     end
   end
-  -- ô tên phải nằm ngay trên ô AI của nó (sau khi đổi chỗ ô thì không còn đúng) → đóng, vòng sau dựng lại đúng chỗ
-  -- và giữ ô tên đúng 1 dòng (lúc tách, hoặc sau khi kéo / chia đều, ô tên có thể bị cao lên)
+  -- ô tên phải nằm ngay trên ô AI của nó và cao 1 dòng (sau khi đổi chỗ / kéo / chia đều thì có thể sai)
+  -- → bỏ khỏi sổ (ten-o.js tự thoát), vòng sau dựng lại đúng chỗ — có phanh hdr_allow nên không lặp liên tục
   local active_of = {}
   for _, t in ipairs(window:mux_window():tabs()) do
     local pos = {}
@@ -1018,13 +1063,9 @@ local function process_headers(window)
     if tap then active_of[tostring(tap:pane_id())] = true end
     for h, tid in pairs(map) do
       local hi, ti = pos[h], pos[tid]
-      if hi and ti and hi.height <= 1 and (hi.left ~= ti.left or hi.top + hi.height + 1 ~= ti.top) then
-        map[h] = nil
-        window:perform_action(act.CloseCurrentPane { confirm = false }, hi.pane)
-      elseif hi and hi.height > 1 and not paused and os.time() - (HDR_FIX[h] or 0) >= 10 then
-        HDR_FIX[h] = os.time()
-        window:perform_action(act.AdjustPaneSize { 'Up', hi.height - 1 }, hi.pane)
-      end
+      local sai_cho = hi and ti and (hi.left ~= ti.left or hi.top + hi.height + 1 ~= ti.top)
+      local cao = hi and hi.height > 1 and not paused
+      if (sai_cho or cao) and hdr_allow(tid) then map[h] = nil end
     end
   end
   hdr_save(map)
@@ -1076,7 +1117,7 @@ wezterm.on('chia-deu', function(window, pane)
   chia_deu_hen.n = chia_deu_hen.n + 1
   chia_deu_hen.pane = pane:pane_id()
   local my = chia_deu_hen.n
-  wezterm.time.call_after(1.2, function()
+  wezterm.time.call_after(2.0, function() -- 2 giây: chờ ô tên tự thoát (~1 giây) rồi mới chia
     if my ~= chia_deu_hen.n then return end -- đã có lần bấm mới hơn, để lần đó chạy
     wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
       '-File', HUB .. '\\cai-dat\\chia-deu.ps1', '-Pane', tostring(chia_deu_hen.pane) }
@@ -1084,8 +1125,8 @@ wezterm.on('chia-deu', function(window, pane)
 end)
 
 wezterm.on('update-status', function(window, pane)
-  local okh, errh = true, nil -- TẠM TẮT thanh tên (18:18 02/10): đang tạo ô liên tục, bóp nhỏ các ô
-  -- local okh, errh = pcall(process_headers, window)
+  -- Thanh tên bật lại 02/10 22h sau khi thêm phanh (hdr_allow / hdr_note); tắt tạm 18:18 vì dựng ô liên tục
+  local okh, errh = pcall(process_headers, window)
   if not okh then wezterm.log_error('process_headers: ' .. tostring(errh)) end
   local okr, errr = pcall(morning_report)
   if not okr then wezterm.log_error('morning_report: ' .. tostring(errr)) end
