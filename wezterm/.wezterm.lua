@@ -1037,7 +1037,7 @@ local function process_headers(window)
   if not g.ten_o_tat then
     for h, t in pairs(map) do
       local x = pinfo(alive[t].pane)
-      out.o[h] = { icon = x.icon, ai = x.ai or 'Terminal', proj = x.proj, logo = proj_logo(x.proj), sub = x.sub, color = proj_color(x.proj), active = active_of[t] or false }
+      out.o[h] = { pane = t, icon = x.icon, ai = x.ai or 'Terminal', proj = x.proj, logo = proj_logo(x.proj), sub = x.sub, color = proj_color(x.proj), active = active_of[t] or false }
     end
   end
   local s = wezterm.json_encode(out)

@@ -47,8 +47,15 @@ process.stdin.on('end', () => {
     if (m) pc = `[1;38;2;${parseInt(m[1], 16)};${parseInt(m[2], 16)};${parseInt(m[3], 16)}m`;
     if (it && it.logo) logo = it.logo;
   } catch {}
-  // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó
-  const role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó;
+  // ô có tên trong sổ đội (%LOCALAPPDATA%\wez-ai\doi\<dự án>.json) là worker → "⚙️ ENGINEER ← MANAGER ô 24"
+  let role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  try {
+    const pane = String(process.env.WEZTERM_PANE || '');
+    const doi = JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'doi', project + '.json'), 'utf8').replace(/^﻿/, ''));
+    const w = pane && (doi.worker || []).find((x) => String(x.o) === pane);
+    if (w) role = `${w.icon} ${w.vai.toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`;
+  } catch {}
   let where = `${pc}${bold}${role}${R}  ${logo} ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);
   if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) where += `${dim} › ${rel.replace(/\\/g, '/')}${R}`;

@@ -2,13 +2,36 @@
 // WezTerm (~\.wezterm.lua, hàm process_headers) tự tách ô này phía trên ô AI và ghi thông tin vào %LOCALAPPDATA%\wez-ai\ten-o.json:
 //   { "tat": false, "o": { "<id ô tên>": { "icon": "🤖", "ai": "Claude", "proj": "Chatbot", "logo": "💬", "sub": "...", "color": "#c678dd" } } }
 // Ô tên tự đóng khi không còn trong file (ô AI bên dưới đã đóng, chuyển tab, hoặc tắt bằng Ctrl+Shift+T).
+// Sổ đội %LOCALAPPDATA%\wez-ai\doi\<dự án>.json (manager + worker theo số ô AI) → thanh tên ghi vai + ai quản lý:
+//   worker:  "● ⚙️ Engineer · 💬 CHATBOT ← 🧭 Manager ô 25"   manager: "🧭 Manager · 💬 CHATBOT → 4 worker: ô 20-23"
 const fs = require('fs');
 const path = require('path');
 
 const ME = process.env.WEZTERM_PANE || '';
-const FILE = path.join(process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local'), 'wez-ai', 'ten-o.json');
+const WEZAI = path.join(process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local'), 'wez-ai');
+const FILE = path.join(WEZAI, 'ten-o.json');
+const DOI_DIR = path.join(WEZAI, 'doi');
 const ESC = '\x1b';
 let info = null, missing = 0, last = '';
+
+// Tìm ô AI trong các sổ đội: trả về { vai, quanLy } để thêm vào thanh tên
+function roleOf(pane) {
+  if (!pane) return null;
+  let files = [];
+  try { files = fs.readdirSync(DOI_DIR).filter(f => f.endsWith('.json')); } catch { return null; }
+  for (const f of files) {
+    let d;
+    try { d = JSON.parse(fs.readFileSync(path.join(DOI_DIR, f), 'utf8').replace(/^﻿/, '')); } catch { continue; }
+    const m = d.manager;
+    const ws = d.worker || [];
+    if (m && String(m.o) === String(pane)) {
+      return { vai: '🧭 Manager', mau: m.mau, them: `→ ${ws.length} worker: ô ${ws.map(w => w.o).join(',')}` };
+    }
+    const w = ws.find(x => String(x.o) === String(pane));
+    if (w) return { vai: `${w.icon} ${w.vai}`, mau: w.mau, them: m ? `← 🧭 Manager ô ${m.o}` : '← chưa có Manager' };
+  }
+  return null;
+}
 
 function hex(c) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c || '');
@@ -32,7 +55,13 @@ function draw() {
   if (info) {
     // ô đang chọn: nền màu dự án + dấu ▶ (nổi lên); ô khác: nền xám tối
     bg = info.active ? hex(info.color) : [52, 56, 62];
-    text = ` ${info.active ? '▶' : ' '} ${info.icon || '▪️'} ${info.ai} · ${info.logo ? info.logo + ' ' : ''}${String(info.proj || '?').toUpperCase()}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
+    const r = roleOf(info.pane);
+    const proj = `${info.logo ? info.logo + ' ' : ''}${String(info.proj || '?').toUpperCase()}`;
+    text = r
+      ? ` ${info.active ? '▶' : ' '} ${r.vai} · ${proj}  ${r.them}  (${info.ai})`
+      : ` ${info.active ? '▶' : ' '} ${info.icon || '▪️'} ${info.ai} · ${proj}` + (info.sub ? `  › ${String(info.sub).replace(/\\/g, '/')}` : '');
+    // ô không chọn mà có vai: nền tối pha màu vai để 4 worker nhìn khác nhau
+    if (r && r.mau && !info.active) bg = hex(r.mau).map(c => Math.round(c * 0.45));
   }
   // cắt bớt nếu ô hẹp, rồi tô kín cả dòng
   while (width(text) > cols - 1 && text.length) text = [...text].slice(0, -1).join('');
