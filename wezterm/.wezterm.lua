@@ -324,6 +324,7 @@ config.keys = {
   { key = 'D', mods = 'CTRL|SHIFT', action = act.EmitEvent 'ten-o-bat-tat' },
   { key = 'U', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tong-quan' },   -- 📊 bảng tổng quan đội (03/10)
   { key = 'F4', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tat-du-an' },  -- đóng hẳn 1 dự án (mọi ô của nó), có hỏi lại (03/10)
+  { key = 'w', mods = 'CTRL|ALT', action = act.EmitEvent 'tat-du-an' },     -- như trên; laptop hay cần Fn cho F4 nên thêm phím này
   { key = 'Space', mods = 'CTRL|SHIFT', action = act.EmitEvent 'nhay-o' }, -- nhảy tới ô theo tên (03/10)
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
@@ -1501,7 +1502,17 @@ end)
 
 -- Ctrl+Shift+F4: đóng hẳn 1 dự án — chọn dự án (thấy số ô, số ô đang làm) → hỏi lại → đóng mọi ô của dự án
 -- (đội, phiên phụ, tài liệu). Không bao giờ đóng ô Tổng quản + bảng 📊. Mở lại: wez.ps1 doi <dự án> hoặc Ctrl+Shift+O. (03/10/2026)
+-- Bảng lệnh Ctrl+Shift+P: thêm mục cho các tính năng đội AI (gõ "đóng", "bảng", "nhảy"…) — dùng được cả khi phím tắt bị máy chiếm
+wezterm.on('augment-command-palette', function()
+  return {
+    { brief = '🛑 Đóng hẳn 1 dự án (mọi ô của nó)', action = act.EmitEvent 'tat-du-an' },
+    { brief = '📊 Bật/tắt bảng tổng quan + checklist', action = act.EmitEvent 'tong-quan' },
+    { brief = '🔎 Nhảy tới ô theo tên', action = act.EmitEvent 'nhay-o' },
+  }
+end)
+
 wezterm.on('tat-du-an', function(window, pane)
+  wezterm.log_warn('tat-du-an: đã nhận lệnh') -- để biết phím có tới WezTerm không
   local doi = doi_map()
   local hion = read_json(AIDIR .. '\\doi\\Hion.json')
   local giu = { [tostring(wezterm.GLOBAL.board_o or '')] = true }
