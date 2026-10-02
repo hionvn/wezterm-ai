@@ -251,7 +251,7 @@ switch ($Cmd) {
         function Loi($m, $laManager) {
             $quyen = if ($m.quyen) { " QUYỀN CỦA BẠN: $($m.quyen)" } else { '' }
             if ($laManager) {
-                return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (mỗi worker 1 ô ở tab '$($def.logo) $($def.du_an) · worker'; vai + quyền từng worker: E:\AI\Hion\doi\$($def.du_an).json).$quyen " +
+                return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (cùng tab '$($def.logo) $($def.du_an) · đội' với bạn: bạn nửa trái, worker nửa phải; vai + quyền từng worker: E:\AI\Hion\doi\$($def.du_an).json).$quyen " +
                     "Giao việc bằng TÊN, không dùng số ô: E:\AI\Hion\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
                     "Việc chạm khách/tiền/giá/đăng bài → duyet.js them, không tự làm. Bây giờ: đọc AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo ngắn việc đang làm / kẹt / đề xuất giao gì cho từng worker. CHƯA giao việc khi người dùng chưa đồng ý."
             }
@@ -302,27 +302,55 @@ switch ($Cmd) {
             return $id
         }
         $so = [ordered]@{ du_an = $def.du_an; logo = $def.logo; cap_nhat = (Get-Date -Format 'yyyy-MM-dd HH:mm'); manager = $null; worker = @() }
-        # Manager: cạnh ô đang gọi lệnh (tab chính)
+        # Bố cục (người dùng chốt 03/10): cả đội chung 1 tab — Manager nửa trái, worker nửa phải chia lưới 2 cột
+        #   (4 worker = 2×2: trên-trái, trên-phải, dưới-trái, dưới-phải). Ô đã mở ở chỗ khác thì CHUYỂN vào đúng chỗ (giữ nguyên phiên),
+        #   ô thiếu thì mở mới. Cả đội đã đứng chung 1 tab rồi thì để nguyên, không xếp lại.
+        $panes = @(Get-Panes)
+        $tabOf = @{}; foreach ($p in $panes) { $tabOf["$($p.pane_id)"] = "$($p.tab_id)" }
         $mg = $def.manager
-        $mo = if ($oCu[$mg.vai]) { $oCu[$mg.vai] } else { Mo $mg $true $env:WEZTERM_PANE '--right' 50 }
-        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
-        # Worker: đứng cạnh nhau ở tab riêng; ô còn sống thì giữ, ô thiếu thì tách bên phải ô worker cuối
-        $cuoi = $null; $n = $ws.Count; $k = 0; $moMoi = 0
-        foreach ($w in $ws) {
-            $id = $oCu[$w.vai]
-            if (-not $id) {
-                $pct = [int](100 * ($n - $k) / ($n - $k + 1))   # 4 worker: 75 · 67 · 50 → rộng bằng nhau
-                $id = if ($cuoi) { Mo $w $false $cuoi '--right' ([Math]::Max(20, $pct)) } else { Mo $w $false $null $null 0 }
-                $moMoi++
+        $idsCu = @($oCu[$mg.vai]) + @($ws | ForEach-Object { $oCu[$_.vai] })
+        $chungTab = ($idsCu | Where-Object { -not $_ }).Count -eq 0 -and (@($idsCu | ForEach-Object { $tabOf[$_] } | Select-Object -Unique)).Count -eq 1
+        $moMoi = 0
+        # Đặt 1 vai vào chỗ: tách từ ô $from theo $huong; ô cũ còn sống thì chuyển nó vào (--move-pane-id), không thì mở mới
+        function Dat($m, $laManager, $from, $huong, $pct) {
+            $cuId = $oCu[$m.vai]
+            if ($cuId) {
+                & $exe cli --no-auto-start split-pane --pane-id $from $huong --percent $pct --move-pane-id $cuId | Out-Null
+                return $cuId
             }
-            $so.worker += [ordered]@{ o = $id; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec }
-            $cuoi = $id; $k++
+            $script:moMoi++
+            return (Mo $m $laManager $from $huong $pct)
         }
+        $ids = @{}
+        if ($chungTab) {
+            $mo = $oCu[$mg.vai]
+            foreach ($w in $ws) { $ids[$w.vai] = $oCu[$w.vai] }
+        } else {
+            # 1) Manager mở tab mới (ô cũ thì đẩy sang tab mới)
+            if ($oCu[$mg.vai]) { $mo = $oCu[$mg.vai]; & $exe cli --no-auto-start move-pane-to-new-tab --pane-id $mo | Out-Null }
+            else { $mo = Mo $mg $true $null $null 0; $moMoi++ }
+            # 2) Đầu 2 cột worker: cột 1 chiếm nửa phải, cột 2 tách đôi cột 1
+            $c1 = @(); $c2 = @()
+            for ($i = 0; $i -lt $ws.Count; $i++) { if ($i % 2 -eq 0) { $c1 += $ws[$i] } else { $c2 += $ws[$i] } }
+            $h1 = Dat $c1[0] $false $mo '--right' 50; $ids[$c1[0].vai] = $h1
+            if ($c2.Count) { $h2 = Dat $c2[0] $false $h1 '--right' 50; $ids[$c2[0].vai] = $h2 }
+            # 3) Xếp chồng trong từng cột, cao bằng nhau
+            foreach ($cot in @(@{ ds = $c1; dau = $h1 }, @{ ds = $c2; dau = $h2 })) {
+                $cuoi = $cot.dau; $n = $cot.ds.Count
+                for ($k = 1; $k -lt $n; $k++) {
+                    $pct = [int](100 * ($n - $k) / ($n - $k + 1))   # 2 ô: 50 · 3 ô: 67, 50
+                    $cuoi = Dat $cot.ds[$k] $false $cuoi '--bottom' $pct
+                    $ids[$cot.ds[$k].vai] = $cuoi
+                }
+            }
+        }
+        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
+        foreach ($w in $ws) { $so.worker += [ordered]@{ o = $ids[$w.vai]; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec } }
         [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
-        $w0 = ($so.worker | Select-Object -First 1).o
-        if ($w0) { & $exe cli --no-auto-start set-tab-title --pane-id $w0 "$($def.logo) $($def.du_an) · worker ← Manager" }
-        if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }
-        Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " (mở mới $moMoi worker)") -ForegroundColor Cyan
+        & $exe cli --no-auto-start set-tab-title --pane-id $mo "$($def.logo) $($def.du_an) · đội"
+        & $exe cli --no-auto-start activate-pane --pane-id $mo
+        $ghiChu = if ($chungTab) { 'cả đội đã chung 1 tab, giữ nguyên' } else { "xếp lại: Manager trái, worker lưới bên phải · mở mới $moMoi ô" }
+        Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " ($ghiChu)") -ForegroundColor Cyan
         Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`""
     }
     'cli' { & $exe cli --no-auto-start @Rest }

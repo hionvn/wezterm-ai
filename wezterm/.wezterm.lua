@@ -1040,10 +1040,17 @@ local function hdr_note(id)
   if not x or now - x.t >= 600 then x = { n = 0, t = now } end
   x.n, x.t = x.n + 1, now
   HDR_TRY[id] = x
-  local r = { now }
+  -- 03/10: chỉ đếm lần DỰNG LẠI cùng một ô (dấu hiệu lặp). Mở / xếp lại cả đội dựng nhiều ô mới một lúc là bình thường
+  -- (trước đây đếm cả ô mới → xếp 2 đội cùng lúc đã làm phanh tự tắt nhầm).
+  local r = {}
+  if x.n >= 2 then r[1] = now end
   for _, t in ipairs(HDR_RATE) do if now - t < 60 then table.insert(r, t) end end
   HDR_RATE = r
   return #r
+end
+-- Phanh tự tắt (không phải bạn bấm Ctrl+Shift+D) → nạp lại cấu hình hoặc sau 5 phút thì tự bật lại
+if wezterm.GLOBAL.ten_o_tu_tat or (wezterm.GLOBAL.ten_o_tat and not wezterm.GLOBAL.ten_o_tat_bang_tay) then
+  wezterm.GLOBAL.ten_o_tu_tat, wezterm.GLOBAL.ten_o_tat, wezterm.GLOBAL.ten_o_last = nil, false, nil
 end
 local function process_headers(window)
   local g = wezterm.GLOBAL
@@ -1058,6 +1065,9 @@ local function process_headers(window)
   local has = {}
   for h, t in pairs(map) do -- bỏ cặp đã mất ô, hoặc ô AI đã bị đẩy sang tab khác
     if not alive[h] or not alive[t] or alive[h].tab ~= alive[t].tab then map[h] = nil else has[t] = h end
+  end
+  if g.ten_o_tu_tat and os.time() - g.ten_o_tu_tat >= 300 then -- phanh tự tắt quá 5 phút → thử bật lại
+    g.ten_o_tu_tat, g.ten_o_tat, g.ten_o_last = nil, false, nil
   end
   local paused = (g.ten_o_hoan or 0) > os.time()
   local made = false
@@ -1088,8 +1098,9 @@ local function process_headers(window)
             else
               wezterm.log_error('ten-o split: ' .. tostring(h))
             end
-            if hdr_note(id) >= 8 then
+            if hdr_note(id) >= 6 then
               g.ten_o_tat = true
+              g.ten_o_tu_tat = os.time()
               g.ten_o_last = nil
               wezterm.log_error('ten-o: dựng quá 8 ô / phút → tự tắt thanh tên')
               window:toast_notification('WezTerm · đội AI', '⚠️ Thanh tên ô dựng lại liên tục → đã tự tắt (Ctrl+Shift+D để bật lại)', nil, 6000)
@@ -1137,6 +1148,7 @@ end
 wezterm.on('ten-o-bat-tat', function(window, pane)
   local g = wezterm.GLOBAL
   g.ten_o_tat = not g.ten_o_tat
+  g.ten_o_tat_bang_tay = g.ten_o_tat -- bạn tự tắt bằng phím → giữ tắt, không tự bật lại
   g.ten_o_last = nil
   if g.ten_o_tat then
     for _, t in ipairs(window:mux_window():tabs()) do close_headers(window, t) end
