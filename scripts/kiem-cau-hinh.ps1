@@ -10,13 +10,19 @@ $cfg = $null; if (Test-Path "$HOME\.wez-ai.json") { $cfg = Get-Content "$HOME\.w
 $exe = if ($cfg -and $cfg.wezterm) { $cfg.wezterm } else { 'C:\Program Files\WezTerm\wezterm.exe' }
 $caiDat = $PSScriptRoot
 
-# 1) WezTerm Lua: cho WezTerm nạp thử cấu hình (không ảnh hưởng cửa sổ đang chạy)
+# 1) WezTerm Lua: cho WezTerm nạp thử cấu hình (không ảnh hưởng cửa sổ đang chạy).
+#    WezTerm gặp lỗi thì LẶNG LẼ dùng cấu hình mặc định (không in lỗi) → bộ nạp ~\.wezterm.lua ghi lỗi vào file WEZ_KIEM_LOI
+#    (dạng "06-bo-cuc.lua:42: …"); thêm lớp 2: phím riêng của đội (menu Ctrl+Shift+P) phải có trong bảng phím.
 $lua = "$HOME\.wezterm.lua"
+$env:WEZ_KIEM_LOI = Join-Path $env:TEMP "wez-kiem-loi-$PID.txt"
+Remove-Item $env:WEZ_KIEM_LOI -ErrorAction SilentlyContinue
 $out = & $exe --config-file $lua show-keys 2>&1 | Out-String
-if ($out -match 'Configuration Error|syntax error|runtime error') { Hong ("~\.wezterm.lua: " + (($out -split "`n" | Select-String 'error' | Select-Object -First 1).Line.Trim())) } else { Ok '~\.wezterm.lua nạp được' }
-$soReturn = @(Select-String -Path $lua -Pattern '^return config').Count
-if ($soReturn -ne 1) { Hong "~\.wezterm.lua có $soReturn dòng 'return config' (phải đúng 1 — dấu hiệu file bị nhân đôi)" }
-# các file con (nếu đã tách module) cũng nằm trong lần nạp thử ở trên
+if (Test-Path $env:WEZ_KIEM_LOI) { Hong ("WezTerm: " + (Get-Content $env:WEZ_KIEM_LOI -Raw -Encoding UTF8).Split("`n")[0].Trim()); Remove-Item $env:WEZ_KIEM_LOI }
+elseif ($out -notmatch 'menu-doi') { Hong 'WezTerm không nạp được cấu hình của đội (bảng phím là bảng mặc định)' }
+else { Ok "WezTerm nạp được ($(@(Get-ChildItem "$HOME\.wezterm" -Filter '*.lua' -ErrorAction SilentlyContinue).Count) phần trong ~\.wezterm\)" }
+Remove-Item Env:WEZ_KIEM_LOI
+$soReturn = @(Get-ChildItem "$HOME\.wezterm" -Filter '*.lua' -ErrorAction SilentlyContinue | Select-String -Pattern '^return config').Count
+if ($soReturn -ne 1) { Hong "Các phần ~\.wezterm\*.lua có $soReturn dòng 'return config' (phải đúng 1, ở 12-menu.lua — dấu hiệu bị chép trùng)" }
 
 # 2) JavaScript: node --check
 $js = @(Get-ChildItem $caiDat -Filter *.js -File | Where-Object { $_.Name -notmatch '\.bak' }) + @(Get-Item "$HOME\.claude\statusline.js" -ErrorAction SilentlyContinue)

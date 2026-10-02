@@ -56,7 +56,8 @@ New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot 'Hion'), "
 Write-Host "  ✓ dự án ở $AIRoot · WezTerm: $wezExe" -ForegroundColor Green
 
 Write-Host "`n[3/9] WezTerm" -ForegroundColor Cyan
-Copy-Safe "$here\wezterm\.wezterm.lua" "$HOME\.wezterm.lua"
+Copy-Safe "$here\wezterm\.wezterm.lua" "$HOME\.wezterm.lua"   # bộ nạp (03/10/2026: cấu hình tách phần)
+Get-ChildItem "$here\wezterm\phan" -Filter '*.lua' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Safe $_.FullName (Join-Path "$HOME\.wezterm" $_.Name) }
 
 Write-Host "`n[4/9] Script điều khiển ô, báo động, khoá file, tài liệu ($hubScripts)" -ForegroundColor Cyan
 Get-ChildItem "$here\scripts" -File | ForEach-Object { Copy-Safe $_.FullName (Join-Path $hubScripts $_.Name) }

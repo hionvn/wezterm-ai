@@ -21,6 +21,12 @@ $copies = @(
     @($PROFILE, 'powershell\Microsoft.PowerShell_profile.ps1')
 )
 foreach ($c in $copies) { Copy-Item $c[0] (Join-Path $here $c[1]) -Force; Write-Host "  ✓ $($c[1])" }
+# Cấu hình WezTerm đã tách phần (03/10/2026): ~\.wezterm.lua = bộ nạp, nội dung ở ~\.wezterm\NN-ten.lua → chép cả thư mục
+$phan = Join-Path $here 'wezterm\phan'
+New-Item -ItemType Directory -Force $phan | Out-Null
+Get-ChildItem $phan -Filter '*.lua' | Where-Object { -not (Test-Path (Join-Path "$HOME\.wezterm" $_.Name)) } | Remove-Item   # phần đã xoá trên máy
+foreach ($f in Get-ChildItem "$HOME\.wezterm" -Filter '*.lua' -ErrorAction SilentlyContinue) { Copy-Item $f.FullName (Join-Path $phan $f.Name) -Force }
+Write-Host "  ✓ wezterm\phan\ ($(@(Get-ChildItem $phan -Filter '*.lua').Count) phần)"
 
 # Script: chép mọi file repo đang theo dõi trong scripts\; báo file mới ở cai-dat chưa có trong repo
 foreach ($f in Get-ChildItem "$here\scripts" -File) {

@@ -1,0 +1,203 @@
+-- ===== Báo động + đồng hồ nhiên liệu (thêm 01/10/2026) =====
+local function read_file(path, tail)
+  local f = io.open(path, 'rb')
+  if not f then return nil end
+  if tail then
+    local size = f:seek('end')
+    f:seek('set', math.max(0, size - tail))
+  end
+  local s = f:read('*a')
+  f:close()
+  return s
+end
+local function read_json(path)
+  local s = read_file(path)
+  if not s or s == '' then return nil end
+  local ok, v = pcall(wezterm.json_parse, s)
+  return ok and v or nil
+end
+
+-- Báo động: Claude ghi file qua hooks (cai-dat\wez-alert.js); Codex thì đoán từ tiêu đề ô.
+-- File: %LOCALAPPDATA%\wez-ai\alerts\<PANEID>.json = { kind = 'need' | 'done', text, t }
+-- Trạng thái (cho wez.ps1 send / cho): wez-ai\state\<PANEID>.json = { state = 'work' | 'idle' | 'need', ai, t }
+local ALERTS = AIDIR .. '\\alerts'
+local STATE = AIDIR .. '\\state'
+local tab_alert, toasted, last_state = {}, {}, {}
+local TAB_STAT = {} -- [tab_id] = { work, need } — process_alerts đếm mỗi 2 giây, format-tab-title đọc
+local function write_alert(id, kind, text)
+  local f = io.open(ALERTS .. '\\' .. id .. '.json', 'w')
+  if f then
+    f:write(string.format('{"kind":"%s","text":"%s","t":%d}', kind, text, os.time()))
+    f:close()
+  end
+end
+
+-- Đồng bộ file trạng thái với điều đoán được từ tiêu đề ô.
+-- wez.ps1 send vừa ghi 'work' thì để yên 10 giây (AI chưa kịp nhận câu, tiêu đề chưa đổi).
+-- Nhớ trong RAM lần ghi gần nhất → không đọc file mỗi 2 giây cho từng ô (chỉ đọc khi trạng thái đổi hoặc mỗi 10 giây)
+local SYNC_MEMO, FIX_MEMO = {}, {}
+local function sync_state(id, state, ai)
+  local m = SYNC_MEMO[id]
+  if m and m.state == state and os.time() - m.t < 10 then return end
+  SYNC_MEMO[id] = { state = state, t = os.time() }
+  local path = STATE .. '\\' .. id .. '.json'
+  local cur = read_json(path) or {}
+  if cur.state == state then return end
+  if cur.state == 'work' and cur.by == 'send' and os.time() - (cur.t or 0) < 10 then return end
+  cur.state, cur.ai, cur.t, cur.by = state, ai, os.time(), nil
+  local f = io.open(path, 'w')
+  if f then f:write(wezterm.json_encode(cur)) f:close() end
+end
+
+-- Claude: hooks ghi trạng thái; nhưng bấm Esc ngắt giữa chừng thì không có hook "xong".
+-- Tiêu đề có ✳ = Claude đang rảnh → sửa 'work' bị kẹt thành 'idle' (giữ nguyên session).
+local function fix_claude_state(id, title)
+  if not title:find('✳', 1, true) then FIX_MEMO[id] = nil return end
+  if FIX_MEMO[id] and os.time() - FIX_MEMO[id] < 10 then return end -- ô rảnh: soát file mỗi 10 giây là đủ
+  FIX_MEMO[id] = os.time()
+  local path = STATE .. '\\' .. id .. '.json'
+  local cur = read_json(path)
+  if not cur or cur.state ~= 'work' or os.time() - (cur.t or 0) < 8 then return end
+  cur.state, cur.t, cur.by = 'idle', os.time(), nil
+  local f = io.open(path, 'w')
+  if f then f:write(wezterm.json_encode(cur)) f:close() end
+end
+
+-- Thông tin một ô (tiêu đề, tiến trình, thư mục, AI, dự án), hỏi Windows tối đa 1 lần mỗi giây cho mỗi ô.
+-- get_foreground_process_name / get_current_working_dir trên Windows khá chậm; trước đây báo động, thanh tên,
+-- thanh trạng thái, vẽ tab… mỗi chỗ hỏi lại riêng → GUI giật/treo khi thao tác nhanh. PANE_LAST giữ bản gần nhất
+-- để các hàm vẽ (format-tab-title, format-window-title — chạy rất dày) chỉ tra bảng, không hỏi Windows.
+-- 03/10: tiến trình + thư mục (2 câu hỏi chậm) chỉ hỏi lại mỗi PANE_SLOW giây / ô; tiêu đề (nhanh) vẫn mỗi giây.
+-- Trước đây cứ 2 giây hỏi lại cả 2 cho MỌI ô (kể cả ô tên 🏷) → 20 ô = 40 lần hỏi Windows / 2 giây → giật.
+local PANE_NOW, PANE_LAST, PANE_SLOWC = { t = -1, m = {} }, {}, {}
+local PANE_SLOW = 6
+local function pinfo(p)
+  local now = os.time()
+  if PANE_NOW.t ~= now then PANE_NOW = { t = now, m = {} } end
+  local id = p:pane_id()
+  local x = PANE_NOW.m[id]
+  if x then return x end
+  local sc = PANE_SLOWC[id]
+  if not sc or now - sc.t >= PANE_SLOW then
+    sc = { t = now, proc = p:get_foreground_process_name() or '', cwd = p:get_current_working_dir() }
+    PANE_SLOWC[id] = sc
+  end
+  x = { title = p:get_title() or '', proc = sc.proc, cwd = sc.cwd }
+  x.dir = pane_dir { current_working_dir = x.cwd }
+  x.proj, x.sub = split_project(x.dir)
+  x.icon, x.ai = which_ai { foreground_process_name = x.proc, title = x.title }
+  PANE_NOW.m[id], PANE_LAST[tostring(id)] = x, x
+  return x
+end
+
+-- Trạng thái Codex đọc từ tiêu đề: 'work' đang làm, 'idle' rảnh, 'need' cần duyệt
+local function title_state(p)
+  local x = pinfo(p)
+  local title = x.title
+  local proc = x.proc:lower()
+  if proc:find('codex') then
+    local low = title:lower()
+    if low:find('approv') or low:find('waiting') then return 'need', '🧩 Codex' end
+    if title:find('Ready') then return 'idle', '🧩 Codex' end
+    return 'work', '🧩 Codex'
+  end
+end
+
+-- Báo sang điện thoại (ntfy) khi một ô cần duyệt mà bạn chưa bấm vào sau N phút.
+-- Bật / tắt: wez.ps1 dienthoai bat | tat | thu  → ghi vào ~\.wez-ai.json mục "dienThoai".
+local PHONE = machine.dienThoai
+if PHONE and not PHONE.ntfy then PHONE = nil end
+local phoned = {}
+local function send_phone(text)
+  local body = AIDIR .. '\\ntfy-' .. os.time() .. '.txt' -- nội dung qua file: giữ đúng tiếng Việt
+  local f = io.open(body, 'wb')
+  if not f then return end
+  f:write(text)
+  f:close()
+  wezterm.background_child_process { 'cmd.exe', '/c', 'curl.exe', '-s', '-m', '15', '-H', 'Title: WezTerm AI', '-H', 'Tags: bell',
+    '-H', 'Priority: high', '--data-binary', '@' .. body, (PHONE.server or 'https://ntfy.sh') .. '/' .. PHONE.ntfy, '&', 'del', body }
+end
+
+-- Thông báo Windows bấm được: bấm vào → nhảy về đúng ô (thong-bao.ps1 tạo link wezai-o:<PANEID> → chuyen-o.ps1).
+-- Link đăng ký 1 lần bằng cai-dat\dang-ky-thong-bao.ps1; thiếu script thì dùng thông báo thường của WezTerm.
+local NOTIFY = { vbs = HUB .. '\\cai-dat\\an.vbs', ps1 = HUB .. '\\cai-dat\\thong-bao.ps1' }
+local function toast_click(window, pane_id, title, text)
+  local f = io.open(NOTIFY.ps1, 'rb')
+  if f then
+    f:close()
+    wezterm.background_child_process { 'wscript.exe', NOTIFY.vbs, NOTIFY.ps1, '-Pane', tostring(pane_id), '-Title', title, '-Text', text }
+  else
+    window:toast_notification(title, text, nil, 6000)
+  end
+end
+
+local function process_alerts(window)
+  local focused = window:is_focused()
+  local active = tostring(window:active_pane():pane_id())
+  local alive, pane_tab, pane_proj = {}, {}, {}
+  local stat = {} -- [tab] = { work = số ô đang làm, need = số ô cần duyệt } → hiện trên tên tab
+  -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for _, tab in ipairs(mw:tabs()) do
+      for _, p in ipairs(tab:panes()) do
+        local id = tostring(p:pane_id())
+        alive[id], pane_tab[id] = true, tostring(tab:tab_id())
+        if not is_header(p) then -- ô tên 🏷: không có AI, khỏi hỏi Windows
+          local okp, x = pcall(pinfo, p)
+          pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
+          local state, who = title_state(p)
+          -- đếm cho tên tab: Claude đang làm = tiêu đề có dấu quay ◐◓◑◒; Codex đang làm = 'work'
+          local t1 = okp and x.title:match('^(%S+)') or ''
+          local busy = state == 'work' or (not state and (t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒'))
+          local tid0 = pane_tab[id]
+          stat[tid0] = stat[tid0] or { work = 0, need = 0 }
+          if busy then stat[tid0].work = stat[tid0].work + 1 end
+          if state then
+            local prev = last_state[id]
+            last_state[id] = state
+            if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
+            elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
+            sync_state(id, state, 'codex')
+          else
+            fix_claude_state(id, okp and x.title or '')
+          end
+        end
+      end
+    end
+  end
+  tab_alert = {}
+  for _, path in ipairs(wezterm.glob(ALERTS:gsub('\\', '/') .. '/*.json')) do
+    local id = path:match('(%d+)%.json$')
+    if id then
+      if not alive[id] or (focused and id == active) then
+        os.remove(path) -- ô đã đóng, hoặc bạn đang nhìn đúng ô đó: tắt báo động
+        if not alive[id] then toasted[id], last_state[id] = nil, nil end
+      else
+        local v = read_json(path)
+        if v then
+          local tid = pane_tab[id]
+          tab_alert[tid] = (tab_alert[tid] == 'need') and 'need' or v.kind
+          if v.kind == 'need' then stat[tid] = stat[tid] or { work = 0, need = 0 }; stat[tid].need = stat[tid].need + 1 end
+          if toasted[id] ~= v.t then
+            toasted[id] = v.t
+            local where = pane_proj[id] and (' · ' .. pane_proj[id]) or ''
+            toast_click(window, id, 'WezTerm · đội AI' .. where, v.text or 'AI cần bạn')
+          end
+          -- Chưa bấm vào ô sau N phút → báo sang điện thoại (mỗi lần báo động chỉ gửi 1 lần)
+          local key = id .. ':' .. tostring(v.t)
+          if PHONE and not phoned[key] and (v.kind == 'need' or (v.kind == 'done' and PHONE.baoXong))
+            and os.time() - (v.t or 0) >= (PHONE.sauPhut or 5) * 60 then
+            phoned[key] = true
+            send_phone((v.text or 'AI cần bạn') .. ' (chờ ' .. math.floor((os.time() - v.t) / 60) .. ' phút)')
+          end
+        end
+      end
+    end
+  end
+  TAB_STAT = stat
+  -- Dọn trạng thái của ô đã đóng (số ô có thể được dùng lại sau khi mở lại WezTerm)
+  for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
+    local id = path:match('(%d+)%.json$')
+    if id and not alive[id] then os.remove(path) end
+  end
+end

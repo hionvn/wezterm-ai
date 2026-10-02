@@ -33,7 +33,8 @@ Sổ tay phím tắt + hướng dẫn theo tình huống: https://claude.ai/arti
 
 ## Cấu trúc
 ```
-wezterm/.wezterm.lua              → ~\.wezterm.lua
+wezterm/.wezterm.lua              → ~\.wezterm.lua            (bộ nạp: ghép các phần bên dưới rồi chạy)
+wezterm/phan/NN-ten.lua           → ~\.wezterm\NN-ten.lua     (12 phần cấu hình theo chủ đề: 01-co-ban … 12-menu)
 scripts/*                         → E:\AI\Hion\cai-dat\   (wez.ps1, báo động, khoá file, tự bật tài liệu, ô Cần duyệt, kiểm tra)
 claude/statusline.js              → ~\.claude\statusline.js
 claude/settings.phan-them.json    → gộp vào ~\.claude\settings.json (statusLine + hooks)
