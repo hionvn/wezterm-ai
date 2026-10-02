@@ -54,7 +54,7 @@ process.stdin.on('end', () => {
     const pane = String(process.env.WEZTERM_PANE || '');
     const doi = JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'doi', project + '.json'), 'utf8').replace(/^﻿/, ''));
     const w = pane && (doi.worker || []).find((x) => String(x.o) === pane);
-    if (w) role = `${w.icon} ${w.vai.toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`;
+    if (w) role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`;
   } catch {}
   let where = `${pc}${bold}${role}${R}  ${logo} ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);

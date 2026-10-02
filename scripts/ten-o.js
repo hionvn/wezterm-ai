@@ -28,7 +28,7 @@ function roleOf(pane) {
       return { vai: '🧭 Manager', mau: m.mau, them: `→ ${ws.length} worker: ô ${ws.map(w => w.o).join(',')}` };
     }
     const w = ws.find(x => String(x.o) === String(pane));
-    if (w) return { vai: `${w.icon} ${w.vai}`, mau: w.mau, them: m ? `← 🧭 Manager ô ${m.o}` : '← chưa có Manager' };
+    if (w) return { vai: `${w.icon} ${w.ten || w.vai}`, mau: w.mau, them: m ? `← 🧭 Manager ô ${m.o}` : '← chưa có Manager' };
   }
   return null;
 }

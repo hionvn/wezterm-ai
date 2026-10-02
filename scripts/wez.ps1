@@ -45,7 +45,8 @@ function Sync-Doi($proj) {
     foreach ($m in @($d.manager) + @($d.worker)) {
         if (-not $m -or -not $m.vai) { continue }
         if ($m.o -and ($panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" })) { continue }
-        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and $_.title -match "\b$([regex]::Escape($m.vai))\b" -and $_.title -notmatch 'ten-o' } | Select-Object -First 1
+        $ten = if ($m.ten) { $m.ten } else { $m.vai }   # tiêu đề ô mang tên hiển thị (có dấu)
+        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and $_.title -match "(^|[^\p{L}])$([regex]::Escape($ten))([^\p{L}]|$)" -and $_.title -notmatch 'ten-o' } | Select-Object -First 1
         $moi = if ($hit) { "$($hit.pane_id)" } else { '' }
         if ("$($m.o)" -ne $moi) { $m.o = $moi; $doi = $true }
     }
@@ -60,7 +61,7 @@ function Resolve-Id($s) {
     $proj = $Matches[1]; $vai = $Matches[2]
     $d = Sync-Doi $proj
     if (-not $d) { Write-Error "Chưa có sổ đội $proj — mở đội: wez.ps1 doi $proj"; exit 1 }
-    $m = @($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai -eq $vai } | Select-Object -First 1
+    $m = @($d.manager) + @($d.worker) | Where-Object { $_ -and ($_.vai -eq $vai -or $_.ten -eq $vai) } | Select-Object -First 1
     if (-not $m) { Write-Error "Đội $proj không có vai '$vai'"; exit 1 }
     if (-not $m.o) { Write-Error "$proj.$vai đang tắt — mở lại: wez.ps1 doi $proj"; exit 1 }
     return "$($m.o)"
@@ -245,19 +246,22 @@ switch ($Cmd) {
         $ws = @($def.worker)
         $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
         # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
+        # tên hiển thị (có dấu, vd "Số liệu") khác tên gọi lệnh (không dấu, vd Sino.SoLieu) khi định nghĩa có trường "ten"
+        function TenVai($m) { if ($m.ten) { $m.ten } else { $m.vai } }
         function Loi($m, $laManager) {
+            $quyen = if ($m.quyen) { " QUYỀN CỦA BẠN: $($m.quyen)" } else { '' }
             if ($laManager) {
-                return "Bạn là $($m.icon) $($m.vai) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (mỗi worker 1 ô ở tab '$($def.logo) $($def.du_an) · worker'). " +
+                return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (mỗi worker 1 ô ở tab '$($def.logo) $($def.du_an) · worker'; vai + quyền từng worker: E:\AI\Hion\doi\$($def.du_an).json).$quyen " +
                     "Giao việc bằng TÊN, không dùng số ô: E:\AI\Hion\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
                     "Việc chạm khách/tiền/giá/đăng bài → duyet.js them, không tự làm. Bây giờ: đọc AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo ngắn việc đang làm / kẹt / đề xuất giao gì cho từng worker. CHƯA giao việc khi người dùng chưa đồng ý."
             }
-            return "Bạn là worker $($def.logo) $($def.du_an) · $($m.icon) $($m.vai). Phụ trách: $($m.viec). Manager của bạn: $($def.du_an).Manager. " +
-                "Luật: chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
-                "Bây giờ: đọc AGENTS.md + tien-do của dự án, trả lời 3 dòng (bạn là ai, việc đang chờ thuộc phần mình, sẵn sàng) rồi CHỜ việc. Chưa sửa file nào."
+            return "Bạn là worker $($def.logo) $($def.du_an) · $($m.icon) $(TenVai $m). Phụ trách: $($m.viec). Manager của bạn: $($def.du_an).Manager.$quyen " +
+                "Luật chung: chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
+                "Bây giờ: đọc AGENTS.md + tien-do của dự án, trả lời 3 dòng (bạn là ai, quyền của bạn tóm 1 dòng, sẵn sàng) rồi CHỜ việc. Chưa sửa file nào."
         }
         # Mở 1 ô; Claude đặt tên bằng -n (hiện trên statusline + tiêu đề ô), Codex đổi tên bằng /rename sau khi mở
         function Mo($m, $laManager, $splitFrom, $huong, $pct) {
-            $ten = "$($def.logo) $($def.du_an) · $($m.icon) $($m.vai)"
+            $ten = "$($def.logo) $($def.du_an) · $($m.icon) $(TenVai $m)"
             $loiF = Join-Path $launchDir "$($m.vai).txt"
             [IO.File]::WriteAllText($loiF, (Loi $m $laManager), $bom)
             $l = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item`r`n"
@@ -270,7 +274,9 @@ switch ($Cmd) {
                 }
                 $l += "codex.cmd --no-daemon`r`n"
             } else {
-                $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten' (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n"
+                # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
+                $chan = if ($m.chan) { " '--disallowedTools=$(($m.chan -split ' ') -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
+                $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n"
             }
             $lf = Join-Path $launchDir "mo-$($m.vai).ps1"
             [IO.File]::WriteAllText($lf, $l, $bom)
@@ -299,7 +305,7 @@ switch ($Cmd) {
         # Manager: cạnh ô đang gọi lệnh (tab chính)
         $mg = $def.manager
         $mo = if ($oCu[$mg.vai]) { $oCu[$mg.vai] } else { Mo $mg $true $env:WEZTERM_PANE '--right' 50 }
-        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
+        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
         # Worker: đứng cạnh nhau ở tab riêng; ô còn sống thì giữ, ô thiếu thì tách bên phải ô worker cuối
         $cuoi = $null; $n = $ws.Count; $k = 0; $moMoi = 0
         foreach ($w in $ws) {
@@ -309,7 +315,7 @@ switch ($Cmd) {
                 $id = if ($cuoi) { Mo $w $false $cuoi '--right' ([Math]::Max(20, $pct)) } else { Mo $w $false $null $null 0 }
                 $moMoi++
             }
-            $so.worker += [ordered]@{ o = $id; vai = $w.vai; icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec }
+            $so.worker += [ordered]@{ o = $id; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec }
             $cuoi = $id; $k++
         }
         [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
@@ -317,7 +323,7 @@ switch ($Cmd) {
         if ($w0) { & $exe cli --no-auto-start set-tab-title --pane-id $w0 "$($def.logo) $($def.du_an) · worker ← Manager" }
         if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }
         Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " (mở mới $moMoi worker)") -ForegroundColor Cyan
-        Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).Engineer `"việc`""
+        Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`""
     }
     'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
