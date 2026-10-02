@@ -589,7 +589,10 @@ local function safe_cwd(dir)
 end
 
 local function restore_tab(mw, t)
-  if not t.panes or #t.panes == 0 then return end
+  local keep = {} -- bỏ ô không có thư mục (ô tên 🏷 lỡ bị lưu ở bản cũ)
+  for _, it in ipairs(t.panes or {}) do if it.cwd or it.kind ~= 'shell' then table.insert(keep, it) end end
+  t = { title = t.title, panes = keep }
+  if #t.panes == 0 then return end
   local cols, by_left = {}, {}
   for _, it in ipairs(t.panes) do -- gom ô thành cột theo mép trái
     local c = by_left[it.left]
@@ -660,6 +663,26 @@ restore_menu = wezterm.action_callback(function(window, pane)
       end
     end),
   }, pane)
+end)
+
+-- Menu `ai` chọn "2) Mở lại tất cả phiên đang làm dở" → PowerShell gửi biến wez_ai=mo-lai (OSC 1337 SetUserVar)
+-- → mở lại bố cục phiên trước (Claude tiếp đúng phiên, Codex resume) rồi đóng ô menu.
+wezterm.on('user-var-changed', function(window, pane, name, value)
+  if name ~= 'wez_ai' or value ~= 'mo-lai' then return end
+  local d
+  for _, k in ipairs { 'prev', 'saved', 'auto' } do
+    local x = read_json(LAYOUT[k])
+    if x and x.tabs and #x.tabs > 0 then d = x break end
+  end
+  if not d then
+    window:toast_notification('WezTerm · đội AI', 'Chưa có phiên nào được lưu để mở lại', nil, 4000)
+    return
+  end
+  for _, t in ipairs(d.tabs) do
+    local ok, err = pcall(restore_tab, window:mux_window(), t)
+    if not ok then wezterm.log_error('restore_tab: ' .. tostring(err)) end
+  end
+  window:perform_action(act.CloseCurrentPane { confirm = false }, pane)
 end)
 
 -- Tự lưu mỗi phút, chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
@@ -912,7 +935,7 @@ local function process_headers(window)
           local _, ai = which_ai { foreground_process_name = p:get_foreground_process_name(), title = p:get_title() }
           if ai == 'Claude' or ai == 'Codex' then
             local ok, h = pcall(function()
-              return p:split { direction = 'Top', size = 1, cwd = HUB, args = { 'node', TEN_O_JS } }
+              return p:split { direction = 'Top', size = 0.05, cwd = HUB, args = { 'node', TEN_O_JS } }
             end)
             if ok and h then
               map[tostring(h:pane_id())] = id
@@ -928,6 +951,14 @@ local function process_headers(window)
     end
   end
   hdr_save(map)
+  -- giữ ô tên đúng 1 dòng (lúc tách, hoặc sau khi kéo / chia đều, ô tên có thể bị cao lên)
+  for _, t in ipairs(window:mux_window():tabs()) do
+    for _, info in ipairs(t:panes_with_info()) do
+      if map[tostring(info.pane:pane_id())] and info.height > 1 then
+        window:perform_action(act.AdjustPaneSize { 'Up', info.height - 1 }, info.pane)
+      end
+    end
+  end
   -- bấm vào ô tên → chuyển sang ô AI bên dưới
   local ap = window:active_pane()
   local target = ap and map[tostring(ap:pane_id())]

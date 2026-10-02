@@ -91,6 +91,30 @@ function Get-AIProjects {
     $out
 }
 function ai {
+    # Step 0 (chi trong WezTerm, khi co bo cuc da luu): menu cu hay mo lai tat ca phien dang lam do
+    $saved = @('bo-cuc-phien-truoc.json', 'bo-cuc-luu.json', 'bo-cuc-tu-luu.json') |
+        ForEach-Object { Join-Path $env:LOCALAPPDATA "wez-ai\$_" } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($env:WEZTERM_PANE -and $saved) {
+        $info = ''
+        try {
+            $d = Get-Content $saved -Raw -Encoding UTF8 | ConvertFrom-Json
+            $n = 0; foreach ($t in $d.tabs) { $n += @($t.panes).Count }
+            $info = "  ({0} tab, {1} o - luu luc {2})" -f @($d.tabs).Count, $n, ([DateTimeOffset]::FromUnixTimeSeconds([int64]$d.t).LocalDateTime.ToString('HH:mm dd/MM'))
+        } catch {}
+        Write-Host ""
+        Write-Host "  BAT DAU" -ForegroundColor Cyan
+        Write-Host "   1) Chon du an + AI (menu nhu cu)"
+        Write-Host "   2) Mo lai tat ca phien dang lam do$info" -ForegroundColor Green
+        $s = (Read-Host "  Chon (Enter = 1)").Trim()
+        if ($s -eq '2') {
+            # bao WezTerm (su kien user-var-changed trong ~\.wezterm.lua) mo lai bo cuc, roi dong o nay
+            $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('mo-lai'))
+            [Console]::Write("$([char]27)]1337;SetUserVar=wez_ai=$b64$([char]7)")
+            Write-Host "  Dang mo lai cac phien..." -ForegroundColor Green
+            return
+        }
+    }
+
     # Step 1: pick a project (every folder in E:\AI, in agent-team tree order)
     $items = @(Get-AIProjects)
     $projects = @($items.Dir)
