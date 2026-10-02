@@ -66,6 +66,8 @@ end)
 -- Ô tài liệu bên phải: can-duyet.md + sổ tiến độ các dự án, tự vẽ lại khi file đổi
 local VIEWER = { 'powershell.exe', '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
   HUB .. '\\cai-dat\\can-duyet-view.ps1' }
+-- Bảng tổng quan đội (Ctrl+Shift+U, 03/10/2026): cai-dat\bang-doi.js
+local BOARD = { 'node', HUB .. '\\cai-dat\\bang-doi.js' }
 
 -- Đóng ĐÚNG ô theo số ô. KHÔNG dùng perform_action(CloseCurrentPane, ô): lệnh đó đóng ô ĐANG CHỌN của tab,
 -- không phải ô truyền vào → 02/10 22h47 mở tài liệu 📄 mới đã đóng nhầm ô Manager Chatbot.
@@ -320,6 +322,8 @@ config.keys = {
   { key = 'E', mods = 'CTRL|SHIFT', action = act.EmitEvent 'chia-deu' },
   -- Bật/tắt thanh tên 1 dòng trên đỉnh mỗi ô AI
   { key = 'D', mods = 'CTRL|SHIFT', action = act.EmitEvent 'ten-o-bat-tat' },
+  { key = 'U', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tong-quan' },   -- 📊 bảng tổng quan đội (03/10)
+  { key = 'Space', mods = 'CTRL|SHIFT', action = act.EmitEvent 'nhay-o' }, -- nhảy tới ô theo tên (03/10)
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
   { key = 'RightArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Right' },
@@ -466,6 +470,7 @@ end
 local ALERTS = AIDIR .. '\\alerts'
 local STATE = AIDIR .. '\\state'
 local tab_alert, toasted, last_state = {}, {}, {}
+local TAB_STAT = {} -- [tab_id] = { work, need } — process_alerts đếm mỗi 2 giây, format-tab-title đọc
 local function write_alert(id, kind, text)
   local f = io.open(ALERTS .. '\\' .. id .. '.json', 'w')
   if f then
@@ -577,6 +582,7 @@ local function process_alerts(window)
   local focused = window:is_focused()
   local active = tostring(window:active_pane():pane_id())
   local alive, pane_tab, pane_proj = {}, {}, {}
+  local stat = {} -- [tab] = { work = số ô đang làm, need = số ô cần duyệt } → hiện trên tên tab
   -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
   for _, mw in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(mw:tabs()) do
@@ -587,6 +593,12 @@ local function process_alerts(window)
           local okp, x = pcall(pinfo, p)
           pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
           local state, who = title_state(p)
+          -- đếm cho tên tab: Claude đang làm = tiêu đề có dấu quay ◐◓◑◒; Codex đang làm = 'work'
+          local t1 = okp and x.title:match('^(%S+)') or ''
+          local busy = state == 'work' or (not state and (t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒'))
+          local tid0 = pane_tab[id]
+          stat[tid0] = stat[tid0] or { work = 0, need = 0 }
+          if busy then stat[tid0].work = stat[tid0].work + 1 end
           if state then
             local prev = last_state[id]
             last_state[id] = state
@@ -612,6 +624,7 @@ local function process_alerts(window)
         if v then
           local tid = pane_tab[id]
           tab_alert[tid] = (tab_alert[tid] == 'need') and 'need' or v.kind
+          if v.kind == 'need' then stat[tid] = stat[tid] or { work = 0, need = 0 }; stat[tid].need = stat[tid].need + 1 end
           if toasted[id] ~= v.t then
             toasted[id] = v.t
             local where = pane_proj[id] and (' · ' .. pane_proj[id]) or ''
@@ -628,6 +641,7 @@ local function process_alerts(window)
       end
     end
   end
+  TAB_STAT = stat
   -- Dọn trạng thái của ô đã đóng (số ô có thể được dùng lại sau khi mở lại WezTerm)
   for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
     local id = path:match('(%d+)%.json$')
@@ -647,6 +661,7 @@ local function pane_kind(p)
   local title, ai = x.title, x.ai
   if title:find('Cần duyệt', 1, true) then return 'canduyet' end
   if title:find('📄', 1, true) then return 'doc' end
+  if title:find('📊 Tổng quan', 1, true) then return 'board' end
   return ({ Claude = 'claude', Codex = 'codex' })[ai] or 'shell'
 end
 
@@ -739,6 +754,7 @@ local function restore_args(it)
     return PS('codex resume --last' .. tiep)
   end
   if it.kind == 'canduyet' then return VIEWER end
+  if it.kind == 'board' then return BOARD end
   if it.kind == 'doc' and it.path then return DOCVIEW(it.path) end
   return { 'powershell.exe', '-NoLogo' }
 end
@@ -977,6 +993,13 @@ local function fuel_cells()
     for _, it in ipairs(fuel_part(#codex > 1 and c.icon or 'Codex', c.five, c.five_reset, #codex > 1 and nil or c.week)) do table.insert(cells, it) end
   end
   fuel_cache = { at = os.time(), cells = cells, codex = codex }
+  -- ghi hạn mức Codex ra file cho bảng tổng quan (cai-dat\bang-doi.js) — thanh bên phải đã bỏ (03/10)
+  local fx = io.open(AIDIR .. '\\fuel-codex.json', 'w')
+  if fx then
+    local rows = {}
+    for _, c in ipairs(codex) do rows[#rows + 1] = { icon = c.icon, ten = c.ten, five = c.five, week = c.week } end
+    fx:write(wezterm.json_encode(rows)) fx:close()
+  end
   return cells
 end
 
@@ -1053,6 +1076,10 @@ wezterm.on('format-tab-title', function(tab, tabs)
     end
   end
   if tab.active_pane.is_zoomed then label = label .. ' 🔍' end
+  -- tình trạng tab (03/10): ⏳n = số ô đang làm · 🔔n = số ô cần duyệt (chỉ hiện khi > 0)
+  local st = TAB_STAT[tostring(tab.tab_id)]
+  if st and st.work > 0 then label = label .. ' ⏳' .. st.work end
+  if st and st.need > 0 then label = label .. ' 🔔' .. st.need end
   local alert = tab_alert[tostring(tab.tab_id)]
   local color = proj_color(proj)
   local n = tostring(tab.tab_index + 1)
@@ -1101,6 +1128,13 @@ local function run_duyet(window, args)
   window:toast_notification('WezTerm · bàn duyệt', msg ~= '' and msg or 'Đã ghi.', nil, 4000)
 end
 wezterm.on('open-uri', function(window, pane, uri)
+  -- bảng tổng quan: bấm vào dòng (link wezai-o:<số ô>) → nhảy tới đúng ô, kể cả ở tab khác
+  local oid = uri:match('^wezai%-o:(%d+)$')
+  if oid then
+    local p = wezterm.mux.get_pane(tonumber(oid))
+    if p then p:tab():activate() p:activate() end
+    return false
+  end
   local verb, id = uri:match('^wezai%-duyet:(%a+)/(%w+)$')
   if not verb then return end -- link thường: mở như mặc định
   if verb == 'ok' then
@@ -1348,42 +1382,69 @@ wezterm.on('update-status', function(window, pane)
     end
     window:toast_notification('WezTerm · đội AI', '⏮ Có bố cục của phiên trước. Bấm Ctrl+Shift+O để mở lại.', nil, 8000)
   end
-  local okx, x = pcall(pinfo, pane) -- ô có thể vừa đóng
-  if not okx then return end
-  local dir, proj, sub, icon, ai = x.dir, x.proj, x.sub, x.icon, x.ai
-  local cells = {}
-  local function add(items)
-    if #cells > 0 then
-      table.insert(cells, { Foreground = { Color = '#5c6370' } })
-      table.insert(cells, { Text = '  |  ' })
-    end
-    for _, it in ipairs(items) do table.insert(cells, it) end
-  end
-
+  -- 03/10: BỎ phần thông tin bên phải thanh tab (⛽ hạn mức, AI, dự án, nhánh, số ô, giờ) để các tab có thêm chỗ
+  -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).
   local okf, fc = pcall(fuel_cells)
   if not okf then wezterm.log_error('fuel_cells: ' .. tostring(fc)) end
-  if okf and fc and #fc > 2 then add(fc) end
   local okw, errw = pcall(codex_warn, window)
   if not okw then wezterm.log_error('codex_warn: ' .. tostring(errw)) end
-  if ai then add { { Foreground = { Color = '#56b6c2' } }, { Text = icon .. ' ' .. ai } } end
-  local where = { { Foreground = { Color = proj_color(proj) } }, { Attribute = { Intensity = 'Bold' } }, { Text = proj_logo(proj) .. ' ' .. proj } }
-  table.insert(where, { Attribute = { Intensity = 'Normal' } })
-  if sub then
-    table.insert(where, { Foreground = { Color = '#7f848e' } })
-    table.insert(where, { Text = ' › ' .. (sub:gsub('\\', '/')) })
-  end
-  add(where)
-  local br = dir and git_branch(dir)
-  if br then add { { Foreground = { Color = '#98c379' } }, { Text = '🌿 ' .. br } } end
-  local n = #window:active_tab():panes()
-  if n > 1 then add { { Foreground = { Color = '#abb2bf' } }, { Text = '▦ ' .. n .. ' ô' } } end
-  local wd = { 'CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7' }
-  add { { Foreground = { Color = '#abb2bf' } }, { Text = '🕐 ' .. wezterm.strftime('%H:%M') .. ' ' .. wd[tonumber(wezterm.strftime('%w')) + 1] .. ' ' .. wezterm.strftime('%d/%m') .. ' ' } }
-  window:set_right_status(wezterm.format(cells))
+  window:set_right_status('')
 
   -- Góc trái: báo khi đang ở chế độ phím đặc biệt (copy mode…)
   local kt = window:active_key_table()
   window:set_left_status(kt and wezterm.format { { Background = { Color = '#e5c07b' } }, { Foreground = { Color = '#000000' } }, { Text = ' ⌨ ' .. kt .. ' ' } } or '')
+end)
+
+-- ===== Bảng tổng quan + nhảy tới ô theo tên (03/10/2026) =====
+-- Ctrl+Shift+U: tới tab "📊 Tổng quan" (chưa có thì mở) — mọi AI theo dự án, trạng thái, bấm dòng để nhảy tới ô
+wezterm.on('tong-quan', function(window, pane)
+  for _, t in ipairs(window:mux_window():tabs()) do
+    for _, p in ipairs(t:panes()) do
+      if (p:get_title() or ''):find('📊 Tổng quan', 1, true) then t:activate() return end
+    end
+  end
+  local tab = window:mux_window():spawn_tab { cwd = HUB, args = BOARD }
+  tab:set_title('📊 Tổng quan')
+end)
+
+-- Ctrl+Shift+Space: danh sách mọi ô (dự án · vai · trạng thái), gõ vài chữ để lọc, Enter là tới đúng ô
+wezterm.on('nhay-o', function(window, pane)
+  local doi = doi_map()
+  local choices = {}
+  for _, mw in ipairs(wezterm.mux.all_windows()) do
+    for ti, tab in ipairs(mw:tabs()) do
+      for _, p in ipairs(tab:panes()) do
+        if not is_header(p) then
+          local id = tostring(p:pane_id())
+          local x = PANE_LAST[id] or pinfo(p)
+          local title = x.title or ''
+          local d = doi[id]
+          local who
+          if d then who = d.icon .. ' ' .. d.ten
+          elseif title:find('📄', 1, true) then who = title
+          elseif title:find('📊', 1, true) then who = '📊 Tổng quan'
+          else who = (x.ai and (x.icon .. ' ') or '') .. (short_title(title, x.proj, 30) or (x.ai or 'PowerShell')) end
+          local t1 = title:match('^(%S+)') or ''
+          local al = read_json(ALERTS .. '\\' .. id .. '.json')
+          local st = (al and al.kind == 'need') and '🔔 cần duyệt'
+            or ((t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒' or title:find('Working', 1, true)) and '⏳ đang làm')
+            or (x.ai and '🟢 rảnh' or '')
+          local proj = d and d.doi or x.proj
+          table.insert(choices, { id = id, label = proj_logo(proj) .. ' ' .. proj .. ' · ' .. who .. '   ' .. st .. '   (tab ' .. ti .. ')' })
+        end
+      end
+    end
+  end
+  window:perform_action(act.InputSelector {
+    title = 'Nhảy tới ô nào?  (gõ để lọc · Enter chọn · Esc thoát)',
+    fuzzy = true,
+    choices = choices,
+    action = wezterm.action_callback(function(w, _, id)
+      if not id then return end
+      local p = wezterm.mux.get_pane(tonumber(id))
+      if p then p:tab():activate() p:activate() end
+    end),
+  }, pane)
 end)
 
 return config

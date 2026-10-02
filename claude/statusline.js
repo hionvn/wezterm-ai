@@ -50,11 +50,12 @@ process.stdin.on('end', () => {
   // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó;
   // ô có tên trong sổ đội (%LOCALAPPDATA%\wez-ai\doi\<dự án>.json) là worker → "⚙️ ENGINEER ← MANAGER ô 24"
   let role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  let isWorker = false; // worker trong đội → thanh trạng thái 1 dòng (ô lưới 2×2 thấp, đỡ mất chỗ)
   try {
     const pane = String(process.env.WEZTERM_PANE || '');
     const doi = JSON.parse(fs.readFileSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'doi', project + '.json'), 'utf8').replace(/^﻿/, ''));
     const w = pane && (doi.worker || []).find((x) => String(x.o) === pane);
-    if (w) role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`;
+    if (w) { role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`; isWorker = true; }
     // 03/10: dự án đã có đội mà ô này không phải Manager / worker (vd phiên review, phiên mở thêm) → không gắn nhãn Manager
     else if (pane && doi.manager && String(doi.manager.o) !== pane) role = `🔹 PHIÊN PHỤ ${project.toUpperCase()}`;
   } catch {}
@@ -198,6 +199,14 @@ process.stdin.on('end', () => {
     alerts.push(`${cyan}🧊 cache nguội (${kilo(pcache.recache_tokens_if_cold)} token đọc lại) — việc mới thì nên /clear${R}`);
   }
 
+  // 03/10: worker trong đội → gọn 1 dòng: vai ← Manager · 🧠 ngữ cảnh · ⏱ 5h · cảnh báo nặng (nếu có)
+  if (isWorker) {
+    const one = [`${pc}${bold}${role}${R}`];
+    if (cw && cw.used_percentage != null) { const p = Math.round(cw.used_percentage); one.push(`🧠 ${color(p)}${p}%${R}` + (p >= 80 ? ` ${red}⚠ /compact${R}` : '')); }
+    if (rl.five_hour && rl.five_hour.used_percentage != null) { const p = Math.round(rl.five_hour.used_percentage); one.push(`⏱ 5h ${color(p)}${p}%${R}`); }
+    process.stdout.write(one.join('  ·  '));
+    return;
+  }
   const out = [line1.join('  |  ')];
   if (line2.length) out.push(line2.join('  |  '));
   if (alerts.length) out.push(alerts.join('  |  '));

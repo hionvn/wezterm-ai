@@ -356,6 +356,50 @@ switch ($Cmd) {
         Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " ($ghiChu)") -ForegroundColor Cyan
         if ($ws.Count) { Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`"" } else { Write-Host "   Gọi Manager: wez.ps1 send $($def.du_an).Manager `"việc`"" }
     }
+    # don: liệt kê ô / tab thừa có thể đóng (tài liệu 📄, phiên phụ đang rảnh, PowerShell trống) — KHÔNG tự đóng.
+    # don dong 1,3 : đóng các mục số 1 và 3 trong danh sách vừa liệt kê (03/10/2026)
+    'don' {
+        $donF = Join-Path $env:LOCALAPPDATA 'wez-ai\don.json'
+        if ("$($Rest[0])" -eq 'dong') {
+            if (-not (Test-Path $donF)) { Write-Error 'Chạy "wez.ps1 don" để xem danh sách trước.'; exit 1 }
+            $ds = @(Get-Content $donF -Raw -Encoding UTF8 | ConvertFrom-Json)
+            foreach ($so in ("$($Rest[1])" -split ',')) {
+                $m = $ds | Where-Object { "$($_.so)" -eq $so.Trim() } | Select-Object -First 1
+                if (-not $m) { Write-Host "Không có mục $so" -ForegroundColor Yellow; continue }
+                foreach ($o in @($m.o)) { & $exe cli --no-auto-start kill-pane --pane-id $o 2>$null }
+                Write-Host "🧹 Đã đóng mục ${so}: $($m.ten)"
+            }
+            Remove-Item $donF -ErrorAction SilentlyContinue
+            break
+        }
+        $panes = @(Get-Panes)
+        # ô thuộc đội (không bao giờ đề xuất đóng)
+        $trongDoi = @{}
+        foreach ($f in Get-ChildItem $doiDir -Filter *.json -ErrorAction SilentlyContinue) {
+            $d = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($m in @($d.manager) + @($d.worker)) { if ($m -and $m.o) { $trongDoi["$($m.o)"] = $true } }
+        }
+        $ds = @(); $so = 0
+        foreach ($g in ($panes | Group-Object tab_id)) {
+            $that = @($g.Group | Where-Object { $_.title -notmatch 'ten-o' })   # bỏ ô tên 🏷
+            $tenO = @($g.Group | Where-Object { $_.title -match 'ten-o' } | ForEach-Object { "$($_.pane_id)" })
+            $loai = $null
+            if ($that.Count -eq 0) { continue }
+            if (@($that | Where-Object { "$($_.pane_id)" -eq "$env:WEZTERM_PANE" -or $trongDoi["$($_.pane_id)"] -or $_.title -match '📊' }).Count) { continue }
+            $t = $that[0].title
+            if (@($that | Where-Object { $_.title -notmatch '📄' }).Count -eq 0) { $loai = '📄 tài liệu' }
+            elseif ($that.Count -eq 1 -and ($t -match '^✳' -or $t -match '\| Ready \|')) { $loai = '🔹 phiên phụ đang rảnh' }
+            elseif ($that.Count -eq 1 -and ($t -match 'powershell|^[A-Z]:\\' -or $t -eq '')) { $loai = '⌨️ PowerShell trống' }
+            if (-not $loai) { continue }
+            $so++
+            $ds += [ordered]@{ so = $so; ten = "$loai · $($t -replace '^[✳◐◓◑◒]\s*', '')"; o = @(@($that | ForEach-Object { "$($_.pane_id)" }) + @($tenO)) }
+        }
+        if ($ds.Count -eq 0) { Write-Host '✨ Không có tab thừa nào.'; break }
+        [IO.File]::WriteAllText($donF, (ConvertTo-Json @($ds) -Depth 4), $utf8)
+        Write-Host '🧹 Tab có thể đóng (đội, ô đang làm và ô của bạn không bao giờ có trong danh sách):' -ForegroundColor Cyan
+        foreach ($m in $ds) { Write-Host ("  {0}. {1}" -f $m.so, $m.ten) }
+        Write-Host "Đóng: wez.ps1 don dong 1,2   (chọn số; không chạy thì không đóng gì)" -ForegroundColor DarkGray
+    }
     'cli' { & $exe cli --no-auto-start @Rest }
     # nen <id>: đẩy ô ra một tab nền riêng (agent chạy ngầm, không chiếm chỗ tab chính)
     'nen' { & $exe cli --no-auto-start move-pane-to-new-tab --pane-id (Resolve-Id $Rest[0]) }
