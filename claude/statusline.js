@@ -79,7 +79,24 @@ process.stdin.on('end', () => {
 
   // ---- Git (vài lệnh nhẹ, mỗi lệnh tối đa 1,5 giây) ----
   const alerts = [];
-  const git = (args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  // 03/10: nhớ kết quả git 8 giây / thư mục (file trong wez-ai\git-nho\) — 9 ô Claude × 4 lệnh git mỗi lần vẽ làm máy chậm
+  const gitRaw = (args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const memoDir = path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'git-nho');
+  const memoFile = path.join(memoDir, dir.replace(/[^A-Za-z0-9]+/g, '_') + '.json');
+  let memo = {};
+  try { const m = JSON.parse(fs.readFileSync(memoFile, 'utf8')); if (Date.now() - m.t < 8000) memo = m.v || {}; } catch {}
+  let memoChanged = false;
+  const git = (args) => {
+    const k = args.join(' ');
+    if (k in memo) { if (memo[k] === null) throw new Error('git'); return memo[k]; }
+    try { memo[k] = gitRaw(args); } catch (e) { memo[k] = null; memoChanged = true; throw e; }
+    memoChanged = true;
+    return memo[k];
+  };
+  process.on('exit', () => {
+    if (!memoChanged) return;
+    try { fs.mkdirSync(memoDir, { recursive: true }); fs.writeFileSync(memoFile, JSON.stringify({ t: Date.now(), v: memo })); } catch {}
+  });
   let gitRoot = null;
   try {
     const st = git(['status', '--porcelain=v2', '--branch']).split('\n');

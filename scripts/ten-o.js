@@ -15,7 +15,15 @@ const ESC = '\x1b';
 let info = null, missing = 0, last = '';
 
 // Tìm ô AI trong các sổ đội: trả về { vai, quanLy } để thêm vào thanh tên
+// Nhớ kết quả 5 giây: mỗi ô tên chạy 2 lần/giây, không cần đọc lại thư mục sổ đội mỗi lần
+let roleMemo = { t: 0, pane: null, r: null };
 function roleOf(pane) {
+  if (pane && roleMemo.pane === pane && Date.now() - roleMemo.t < 5000) return roleMemo.r;
+  const r = roleOfRaw(pane);
+  roleMemo = { t: Date.now(), pane, r };
+  return r;
+}
+function roleOfRaw(pane) {
   if (!pane) return null;
   let files = [];
   try { files = fs.readdirSync(DOI_DIR).filter(f => f.endsWith('.json')); } catch { return null; }

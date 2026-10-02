@@ -398,7 +398,16 @@ local function which_ai(p)
 end
 
 -- Nhánh git: đọc thẳng file .git\HEAD (không chạy lệnh git nên không chậm)
+local GIT_MEMO = {} -- [thư mục] = { t, nhánh } — thanh phải vẽ mỗi 2 giây, nhánh hiếm khi đổi
+local git_branch_raw
 local function git_branch(dir)
+  local m = GIT_MEMO[dir]
+  if m and os.time() - m.t < 15 then return m.b end
+  local b = git_branch_raw(dir)
+  GIT_MEMO[dir] = { t = os.time(), b = b }
+  return b
+end
+git_branch_raw = function(dir)
   local d = dir
   while d and d ~= '' do
     local f = io.open(d .. '\\.git\\HEAD', 'r')
@@ -449,7 +458,12 @@ end
 
 -- Đồng bộ file trạng thái với điều đoán được từ tiêu đề ô.
 -- wez.ps1 send vừa ghi 'work' thì để yên 10 giây (AI chưa kịp nhận câu, tiêu đề chưa đổi).
+-- Nhớ trong RAM lần ghi gần nhất → không đọc file mỗi 2 giây cho từng ô (chỉ đọc khi trạng thái đổi hoặc mỗi 10 giây)
+local SYNC_MEMO, FIX_MEMO = {}, {}
 local function sync_state(id, state, ai)
+  local m = SYNC_MEMO[id]
+  if m and m.state == state and os.time() - m.t < 10 then return end
+  SYNC_MEMO[id] = { state = state, t = os.time() }
   local path = STATE .. '\\' .. id .. '.json'
   local cur = read_json(path) or {}
   if cur.state == state then return end
@@ -462,7 +476,9 @@ end
 -- Claude: hooks ghi trạng thái; nhưng bấm Esc ngắt giữa chừng thì không có hook "xong".
 -- Tiêu đề có ✳ = Claude đang rảnh → sửa 'work' bị kẹt thành 'idle' (giữ nguyên session).
 local function fix_claude_state(id, title)
-  if not title:find('✳', 1, true) then return end
+  if not title:find('✳', 1, true) then FIX_MEMO[id] = nil return end
+  if FIX_MEMO[id] and os.time() - FIX_MEMO[id] < 10 then return end -- ô rảnh: soát file mỗi 10 giây là đủ
+  FIX_MEMO[id] = os.time()
   local path = STATE .. '\\' .. id .. '.json'
   local cur = read_json(path)
   if not cur or cur.state ~= 'work' or os.time() - (cur.t or 0) < 8 then return end
@@ -475,14 +491,22 @@ end
 -- get_foreground_process_name / get_current_working_dir trên Windows khá chậm; trước đây báo động, thanh tên,
 -- thanh trạng thái, vẽ tab… mỗi chỗ hỏi lại riêng → GUI giật/treo khi thao tác nhanh. PANE_LAST giữ bản gần nhất
 -- để các hàm vẽ (format-tab-title, format-window-title — chạy rất dày) chỉ tra bảng, không hỏi Windows.
-local PANE_NOW, PANE_LAST = { t = -1, m = {} }, {}
+-- 03/10: tiến trình + thư mục (2 câu hỏi chậm) chỉ hỏi lại mỗi PANE_SLOW giây / ô; tiêu đề (nhanh) vẫn mỗi giây.
+-- Trước đây cứ 2 giây hỏi lại cả 2 cho MỌI ô (kể cả ô tên 🏷) → 20 ô = 40 lần hỏi Windows / 2 giây → giật.
+local PANE_NOW, PANE_LAST, PANE_SLOWC = { t = -1, m = {} }, {}, {}
+local PANE_SLOW = 6
 local function pinfo(p)
   local now = os.time()
   if PANE_NOW.t ~= now then PANE_NOW = { t = now, m = {} } end
   local id = p:pane_id()
   local x = PANE_NOW.m[id]
   if x then return x end
-  x = { title = p:get_title() or '', proc = p:get_foreground_process_name() or '', cwd = p:get_current_working_dir() }
+  local sc = PANE_SLOWC[id]
+  if not sc or now - sc.t >= PANE_SLOW then
+    sc = { t = now, proc = p:get_foreground_process_name() or '', cwd = p:get_current_working_dir() }
+    PANE_SLOWC[id] = sc
+  end
+  x = { title = p:get_title() or '', proc = sc.proc, cwd = sc.cwd }
   x.dir = pane_dir { current_working_dir = x.cwd }
   x.proj, x.sub = split_project(x.dir)
   x.icon, x.ai = which_ai { foreground_process_name = x.proc, title = x.title }
@@ -541,17 +565,19 @@ local function process_alerts(window)
       for _, p in ipairs(tab:panes()) do
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
-        local okp, x = pcall(pinfo, p)
-        pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
-        local state, who = title_state(p)
-        if state then
-          local prev = last_state[id]
-          last_state[id] = state
-          if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
-          elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
-          sync_state(id, state, 'codex')
-        else
-          fix_claude_state(id, okp and x.title or '')
+        if not is_header(p) then -- ô tên 🏷: không có AI, khỏi hỏi Windows
+          local okp, x = pcall(pinfo, p)
+          pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
+          local state, who = title_state(p)
+          if state then
+            local prev = last_state[id]
+            last_state[id] = state
+            if state == 'need' and prev ~= 'need' then write_alert(id, 'need', who .. ' cần bạn duyệt')
+            elseif state == 'idle' and (prev == 'work' or prev == 'need') then write_alert(id, 'done', who .. ' đã làm xong') end
+            sync_state(id, state, 'codex')
+          else
+            fix_claude_state(id, okp and x.title or '')
+          end
         end
       end
     end
@@ -616,7 +642,7 @@ local function capture_layout()
         local p, id = info.pane, tostring(info.pane:pane_id())
         if not is_header(p) then -- ô tên không lưu: tự dựng lại sau khi khôi phục
           local it = { left = info.left, top = info.top, width = info.width, height = info.height,
-            cwd = pane_dir { current_working_dir = p:get_current_working_dir() }, kind = pane_kind(p) }
+            cwd = pinfo(p).dir, kind = pane_kind(p) } -- dùng thư mục đã nhớ, không hỏi lại Windows
           if it.kind == 'claude' then
             local s = read_json(STATE .. '\\' .. id .. '.json')
             if s and s.session and s.session ~= '' then it.session = s.session end
@@ -777,6 +803,7 @@ end)
 
 -- Nhiên liệu: hạn mức 5 giờ / tuần đã dùng của Claude (statusline.js ghi) và Codex (file phiên gần nhất)
 local fuel_cache = { at = 0, cells = nil }
+local FUEL_MEMO = {} -- [số tài khoản Codex] = { file, size, row }: file phiên chưa đổi thì không đọc lại
 local function pct_color(p)
   return p >= 80 and '#e06c75' or (p >= 50 and '#e5c07b' or '#98c379')
 end
@@ -819,7 +846,17 @@ local function fuel_cells()
       if #files > 0 then break end
     end
     table.sort(files)
-    local s = files[#files] and read_file(files[#files], 262144)
+    -- 03/10: file phiên không đổi cỡ thì dùng lại kết quả cũ; đọc 96KB cuối thay vì 256KB (mỗi phút × 3 tài khoản → giật)
+    local f, size = files[#files] and io.open(files[#files], 'rb'), nil
+    if f then size = f:seek('end') f:close() end
+    local memo = FUEL_MEMO[tk.so or 0]
+    local s = nil
+    if memo and memo.file == files[#files] and memo.size == size then
+      if memo.row then table.insert(codex, memo.row) end
+    else
+      s = files[#files] and read_file(files[#files], 98304)
+      FUEL_MEMO[tk.so or 0] = { file = files[#files], size = size }
+    end
     if s then
       local p5, r5, pw, rw
       for u, r in s:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do p5, r5 = u, r end
@@ -828,8 +865,10 @@ local function fuel_cells()
       if p5 then
         local du_an = {}
         for k, v in pairs((bang and bang.duAn) or {}) do if v == tk.so then table.insert(du_an, k) end end
-        table.insert(codex, { so = tk.so, ten = tk.ten or 'Codex', icon = (tk.ten or 'Codex'):match('^(%S+)'), du_an = table.concat(du_an, ', '),
-          five = tonumber(p5), five_reset = tonumber(r5), week = tonumber(pw), week_reset = tonumber(rw) })
+        local row = { so = tk.so, ten = tk.ten or 'Codex', icon = (tk.ten or 'Codex'):match('^(%S+)'), du_an = table.concat(du_an, ', '),
+          five = tonumber(p5), five_reset = tonumber(r5), week = tonumber(pw), week_reset = tonumber(rw) }
+        FUEL_MEMO[tk.so or 0].row = row
+        table.insert(codex, row)
       end
     end
   end
