@@ -22,7 +22,8 @@ foreach ($lan in 1, 2) {
 # Các file đáng lẽ phải có sau khi cài
 $can = "$HOME\.wez-ai.json", "$HOME\.wezterm.lua", "$HOME\.claude\settings.json", "$HOME\.claude\statusline.js",
     "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md", "$HOME\.codex\config.toml", $PROFILE,
-    'C:\AI\Hion\cai-dat\wez.ps1', 'C:\AI\Hion\cai-dat\khoa.js', 'C:\AI\Hion\cai-dat\kiem-tra.ps1', 'C:\AI\Hion\cai-dat\wez-alert.js'
+    'C:\AI\Hion\cai-dat\wez.ps1', 'C:\AI\Hion\cai-dat\khoa.js', 'C:\AI\Hion\cai-dat\kiem-tra.ps1', 'C:\AI\Hion\cai-dat\wez-alert.js',
+    'C:\AI\Hion\AGENTS.md', 'C:\AI\Hion\doi-agent.md', 'C:\AI\Hion\can-duyet.md', 'C:\AI\Hion\quyet-dinh.md', 'C:\AI\Hion\kho-kien-thuc.md', 'C:\AI\Hion\cai-dat\mau\du-an\AGENTS.md', 'C:\AI\Hion\cai-dat\doi-ca.ps1'
 foreach ($f in $can) { Ghi ("{0}  {1}" -f $(if (Test-Path $f) { '✅' } else { '❌ THIẾU' }), $f) }
 
 # Nội dung phải đúng theo máy (ổ C:\AI chứ không phải E:\AI)

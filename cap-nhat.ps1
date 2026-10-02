@@ -24,14 +24,22 @@ foreach ($f in Get-ChildItem "$here\scripts" -File) {
 $moi = Get-ChildItem $caiDat -File | Where-Object { $_.Name -notmatch '\.bak-' -and -not (Test-Path (Join-Path "$here\scripts" $_.Name)) }
 foreach ($m in $moi) { Write-Host "  ℹ️  $caiDat\$($m.Name) chưa có trong repo (muốn sao lưu thì chép vào scripts\)" -ForegroundColor DarkCyan }
 
-# Quy tắc chung: 1 file gốc (bản của Claude), cảnh báo nếu bản Codex đã bị sửa khác đi
-$rule = "$HOME\.claude\CLAUDE.md"
-$text = [IO.File]::ReadAllText($rule, [Text.Encoding]::UTF8)
-if ($AIRoot -ne 'E:\AI') { $text = $text.Replace("$AIRoot\", 'E:\AI\') }   # repo luôn ghi E:\AI, khoi-phuc.ps1 đổi theo máy
-[IO.File]::WriteAllText((Join-Path $here 'quy-tac\chung.md'), $text, $utf8); Write-Host '  ✓ quy-tac\chung.md'
-foreach ($o in @("$HOME\.codex\AGENTS.md")) {
-    if ((Get-FileHash $o).Hash -ne (Get-FileHash $rule).Hash) {
-        Write-Host "  ⚠️  $o khác ~\.claude\CLAUDE.md → repo chỉ lưu bản của Claude. Chép đè cho giống nhau nếu cần." -ForegroundColor Yellow
+# Quy tắc chung: quy-tac\chung.md trong repo là BẢN CHUNG cho mọi người (sửa trực tiếp file đó), không chép từ máy
+# vì ~\.claude\CLAUDE.md của bạn có thể chứa ghi chú riêng. Máy nào có đoạn đánh dấu "wezterm-ai" thì báo nếu lệch.
+foreach ($o in @("$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md")) {
+    if (-not (Test-Path $o)) { continue }
+    $m = [regex]::Match([IO.File]::ReadAllText($o, [Text.Encoding]::UTF8), '(?s)<!-- wezterm-ai: bat-dau.*?<!-- wezterm-ai: het -->')
+    if ($m.Success) {
+        $repo = (Get-Content (Join-Path $here 'quy-tac\chung.md') -Raw -Encoding UTF8).Replace('E:\AI\', "$AIRoot\").Trim()
+        if ($m.Value.Trim() -ne $repo) { Write-Host "  ⚠️  Đoạn quy tắc chung trong $o khác bản repo → sửa ở quy-tac\chung.md rồi chạy khoi-phuc.ps1" -ForegroundColor Yellow }
+    }
+}
+# Bộ mẫu: mau\ trong repo là bản gốc; báo nếu bản đã cài trên máy bị sửa khác đi
+$mauMay = Join-Path $caiDat 'mau'
+if (Test-Path $mauMay) {
+    foreach ($f in Get-ChildItem "$here\mau" -Recurse -File) {
+        $m2 = Join-Path $mauMay ($f.FullName.Substring("$here\mau\".Length))
+        if ((Test-Path $m2) -and (Get-FileHash $m2).Hash -ne (Get-FileHash $f.FullName).Hash) { Write-Host "  ⚠️  $m2 khác bản repo (mau\)" -ForegroundColor Yellow }
     }
 }
 

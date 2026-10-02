@@ -41,7 +41,9 @@ claude/statusline.js              → ~\.claude\statusline.js
 claude/settings.phan-them.json    → gộp vào ~\.claude\settings.json (statusLine + hooks)
 codex/config.phan-them.toml       → gộp vào ~\.codex\config.toml (tiêu đề có run-state → báo động Codex)
 powershell/...profile.ps1         → $PROFILE (lệnh ai, hion, bot...)
-quy-tac/chung.md                  → ~\.claude\CLAUDE.md, ~\.codex\AGENTS.md (1 nguồn cho cả 2)
+quy-tac/chung.md                  → đoạn đánh dấu "wezterm-ai" trong ~\.claude\CLAUDE.md, ~\.codex\AGENTS.md (bản chung, sửa trực tiếp)
+mau/Hion/*                        → Tổng quản: AGENTS.md, doi-agent.md, can-duyet.md, quyet-dinh.md, kho-kien-thuc.md (chỉ tạo khi chưa có)
+mau/du-an/*                       → mẫu Manager cho newproj / "khởi động đội" (chép vào Hion\cai-dat\mau)
 khoi-phuc.ps1                     cài lại tất cả lên máy mới (-AIRoot D:\AI nếu không có ổ E:)
 cap-nhat.ps1                      chép cấu hình đang dùng vào repo để sao lưu + quét khoá bí mật
 quet-bi-mat.ps1, .githooks/       quét khoá bí mật; git hook pre-commit chặn commit có khoá
@@ -57,6 +59,14 @@ cd E:\AI\wezterm-ai
 powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI
 ```
 Mọi file cũ trên máy được sao lưu thành `*.bak-<ngày giờ>` trước khi ghi đè. Sau đó tự đăng nhập từng AI.
+
+### Sau khi cài: đặt vai cho cả đội (5 phút)
+1. Mở WezTerm, đăng nhập `claude` và `codex`.
+2. Đặt các thư mục dự án vào thư mục AI (mặc định `E:\AI`, hoặc chỗ bạn chọn bằng `-AIRoot`). Tạo dự án mới: `newproj <tên>` — có sẵn vai 🧭 Manager và sổ tiến độ để bàn giao.
+3. Bấm `Ctrl+Shift+H` (tab Tổng quản) và nói **"khởi động đội"**: Tổng quản hỏi từng dự án làm gì, rồi tự điền vai cho cả đội (`Hion\AGENTS.md`, `doi-agent.md`, AGENTS.md từng dự án).
+4. Có nhiều tài khoản ChatGPT dùng Codex: `doi-ca cai` → mỗi dự án một tài khoản; tối trước khi ngủ `doi-ca bat` để Claude thay ca khi Codex hết lượt.
+
+Bộ cài tạo sẵn các file của Tổng quản (bàn duyệt, sổ quyết định, kho kiến thức, sơ đồ đội) từ thư mục `mau\` — **chỉ khi máy chưa có**, không ghi đè file của bạn. Quy tắc chung được thêm vào `~\.claude\CLAUDE.md` và `~\.codex\AGENTS.md` giữa hai dòng đánh dấu `wezterm-ai`; ghi chú riêng của bạn ngoài đoạn đó luôn được giữ.
 
 ## Sao lưu sau khi sửa cấu hình
 ```powershell

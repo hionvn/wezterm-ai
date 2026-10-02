@@ -143,6 +143,13 @@ function newproj {
         'CLAUDE.md'             = "@AGENTS.md`n"
         '.gitignore'            = "node_modules/`n.env`n__pycache__/`n.venv/`n.claude/settings.local.json`n"
     }
+    # Có bộ mẫu của wezterm-ai thì dùng: AGENTS.md ghi sẵn vai Manager + file tiến độ để bàn giao
+    $mau = Join-Path $AIRoot 'Hion\cai-dat\mau\du-an'
+    if (Test-Path "$mau\AGENTS.md") {
+        $thay = { param($s) $s.Replace('{{TEN}}', $Name).Replace('{{ten}}', $Name.ToLower()).Replace('{{AIROOT}}', $AIRoot) }
+        $files['AGENTS.md'] = & $thay (Get-Content "$mau\AGENTS.md" -Raw -Encoding UTF8)
+        $files["tien-do-$($Name.ToLower()).md"] = & $thay (Get-Content "$mau\tien-do.md" -Raw -Encoding UTF8)
+    }
     foreach ($k in $files.Keys) {
         $f = Join-Path $dir $k
         if (Test-Path $f) { Write-Host "  keep  $k" -ForegroundColor DarkGray; continue }
