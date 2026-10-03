@@ -57,8 +57,22 @@ function Sync-Doi($proj) {
 # Sổ việc đã giao (03/10/2026): %LOCALAPPDATA%\wez-ai\viec.json = [{ so, t, o, ai, viec, tu, xong, bo }]
 #   send / giao ghi thêm 1 việc; bảng tổng quan (bang-doi.js) tự đánh dấu xong khi ô nhận việc chuyển sang rảnh.
 $viecF = Join-Path $env:LOCALAPPDATA 'wez-ai\viec.json'
-function Read-Viec { if (Test-Path $viecF) { try { return @(Get-Content $viecF -Raw -Encoding UTF8 | ConvertFrom-Json) } catch {} }; return @() }
-function Save-Viec($vs) { [IO.File]::WriteAllText($viecF, (ConvertTo-Json @($vs | Select-Object -Last 300) -Depth 4), (New-Object Text.UTF8Encoding $false)) }
+# PowerShell 5.1: ConvertFrom-Json trả cả mảng thành 1 phần tử, ghi lại thì bị lồng {"value":[…],"Count":n} (lỗi 03/10)
+# → đọc thì trải phẳng mọi lớp, chỉ giữ object có "so"; ghi thì tự dựng chuỗi JSON từng việc
+function Flat-Viec($x) {
+    foreach ($e in @($x)) {
+        if ($null -eq $e) { continue }
+        if ($e -is [array]) { Flat-Viec $e; continue }
+        if ($e.PSObject.Properties['so']) { $e; continue }
+        if ($e.PSObject.Properties['value']) { Flat-Viec $e.value }
+    }
+}
+function Read-Viec { if (Test-Path $viecF) { try { $r = Get-Content $viecF -Raw -Encoding UTF8 | ConvertFrom-Json; return @(Flat-Viec $r) } catch {} }; return @() }
+function Save-Viec($vs) {
+    $ds = @(Flat-Viec $vs) | Sort-Object { [int]$_.so } | Select-Object -Last 300
+    $json = '[' + (($ds | ForEach-Object { $_ | ConvertTo-Json -Depth 3 -Compress }) -join ",`n") + ']'
+    [IO.File]::WriteAllText($viecF, $json, (New-Object Text.UTF8Encoding $false))
+}
 function Add-Viec($id, $text) {
     $vs = @(Read-Viec | Where-Object { $_ -and $_.so })
     $so = if ($vs.Count) { [int](($vs | Measure-Object so -Maximum).Maximum) + 1 } else { 1 }
