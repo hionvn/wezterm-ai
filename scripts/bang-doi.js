@@ -115,7 +115,8 @@ function drawRaw() {
     const alert = readJson(path.join(WEZAI, 'alerts', id + '.json'));
     const st = readJson(path.join(WEZAI, 'state', id + '.json'));
     let state = 'idle';
-    if (alert && alert.kind === 'need') state = 'need';
+    // 04/10: chỉ XIN QUYỀN mới là 🔔 (state 'need'); Claude rảnh lâu tự báo "đang chờ nhập" → vẫn là rảnh, không phải chờ duyệt
+    if (alert && alert.kind === 'need' && (!st || st.state === 'need' || st.ai !== 'claude')) state = 'need';
     else if (SPIN.some((s) => t.startsWith(s)) || /Working/.test(t)) state = 'work';
     const since = st && st.t ? now - st.t : null;
     const label = r ? `${r.icon} ${r.ten}` : `🔹 ${shortTitle(t)}`;
@@ -123,8 +124,9 @@ function drawRaw() {
   }
   // vẽ
   const cols = process.stdout.columns || 100;
+  const rows = process.stdout.rows || 40;
   const out = [];
-  const checklist = viecList(now);
+  viecList(now); // 04/10: KHÔNG hiện checklist nữa (Hion: bảng chỉ để danh sách agent) — vẫn chạy để tự ☑ việc xong trong viec.json (eval, Brain dùng)
   const fc = readJson(path.join(WEZAI, 'fuel-claude.json'));
   const fx = readJson(path.join(WEZAI, 'fuel-codex.json')) || [];
   const pc = (v) => (v == null ? '?' : `${Math.round(v)}%`);
@@ -134,31 +136,37 @@ function drawRaw() {
   const time = new Date().toTimeString().slice(0, 5);
   out.push(`${B} 📊 TỔNG QUAN ĐỘI AI${R} ${DIM}· ${time}${R}    ${fuel}`);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  for (const l of checklist) out.push(l);
-  const order =[...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
+  // 04/10: chỉ danh sách agent, dòng gọn (vai · trạng thái · bao lâu; bấm để nhảy tới ô). Mỗi dự án 1 khối;
+  // không đủ chiều cao mà đủ chiều ngang → chia 2 cột (khối nào nằm trọn 1 cột).
+  const W = 44; // bề rộng 1 cột
+  const cat = (s, n) => { let o = '', w = 0; for (const ch of s) { const cw = width(ch); if (w + cw > n) return o + '…'; o += ch; w += cw; } return o; };
+  const blocks = [];
+  const order = [...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
   let total = { work: 0, need: 0, idle: 0, ngu: 0 };
   for (const name of order) {
     const g = groups[name]; if (!g) continue;
     const info = projInfo[name.toLowerCase()] || {};
     const c = rgb(info.mau || '#9aa0a6');
     const n = { work: 0, need: 0, ngu: 0 }; g.forEach((x) => { if (x.state !== 'idle') n[x.state]++; total[x.state]++; });
-    const head = `${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '');
-    out.push(head);
+    const b = [`${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '')];
     g.sort((a, b) => (b.manager - a.manager) || (b.inTeam - a.inTeam) || (a.tabNo - b.tabNo));
     for (const x of g) {
-      if (x.state === 'ngu') { // đang ngủ: không có ô để nhảy tới
-        out.push('   ' + `${DIM}` + pad(x.label, 34) + pad('💤 ngủ', 16) + pad(x.since != null ? ago(x.since) : '', 12) + `tự thức khi được giao việc${R}`);
-        continue;
-      }
-      const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ bạn${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ đang làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
-      const t = x.since != null ? `${DIM}${ago(x.since)}${R}` : '';
-      out.push('   ' + link(x.id, pad(x.label, 34) + pad(s, 16) + pad(t, 12) + `${DIM}tab ${x.tabNo} · ô ${x.id}${R}`));
+      const ten = pad(cat(x.label, 24), 26);
+      const t = x.since != null ? ago(x.since) : '';
+      if (x.state === 'ngu') { b.push(' ' + `${DIM}${ten}${pad('💤 ngủ', 9)}${t}${R}`); continue; } // không có ô để nhảy
+      const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
+      b.push(' ' + link(x.id, ten + pad(s, 9) + `${DIM}${t}${R}`));
     }
+    blocks.push(b);
   }
-  if (docs.length) {
-    out.push(`${B}📄 TÀI LIỆU ĐANG MỞ${R}`);
-    for (const d of docs) out.push('   ' + link(d.id, pad(d.t.slice(0, 50), 54) + `${DIM}tab ${d.tabNo} · ô ${d.id}${R}`));
-  }
+  if (docs.length) blocks.push([`${B}📄 TÀI LIỆU${R}`, ...docs.map((d) => ' ' + link(d.id, cat(d.t, W - 3)))]);
+  const tong = blocks.reduce((s, b) => s + b.length, 0);
+  if (tong > rows - 5 && cols >= W * 2 + 3 && blocks.length > 1) {
+    // 2 cột: dồn khối theo thứ tự vào cột trái tới khi ≥ nửa tổng số dòng, phần còn lại sang phải
+    const trai = [], phai = []; let n = 0;
+    for (const b of blocks) { (n < tong / 2 ? trai : phai).push(...b); if (n < tong / 2) n += b.length; }
+    for (let i = 0; i < Math.max(trai.length, phai.length); i++) out.push(pad(trai[i] || '', W + 2) + (phai[i] || ''));
+  } else for (const b of blocks) out.push(...b);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
   out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh · 💤 ${total.ngu} ngủ   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
   const s = out.join('\n');
