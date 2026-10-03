@@ -51,6 +51,9 @@ const cho = bullets(section(read(path.join(HUB, 'can-duyet.md')), 'Đang chờ')
   return m ? { tag: m[1], text: m[2] } : { tag: '', text: l };
 });
 const quyetDinh = read(path.join(HUB, 'quyet-dinh.md')).split('\n').filter((l) => l.includes(ydayVN) || l.includes(todayVN)).map(plain);
+// Ca đêm (03/10/2026): Tổng quản viết ca-dem\bao-cao-<sáng nay>.md lúc 06:15 → gắn vào báo cáo sáng
+const demQua = read(path.join(HUB, 'ca-dem', `bao-cao-${today}.md`)).split('\n')
+  .filter((l) => l.trim() && !/^#\s/.test(l)).map((l) => plain(l.replace(/^[-*]\s*/, ''))).slice(0, 12);
 
 // Cây dự án (Hion\cay-du-an.json) + mọi thư mục có AGENTS.md
 const cay = (readJson(path.join(HUB, 'cay-du-an.json')) || {}).cay || [];
@@ -187,6 +190,8 @@ footer{font-size:.78rem;color:var(--muted)}
   </div>
 </section>
 
+${demQua.length ? `<section class="card"><h2>🌙 Đêm qua đội agent làm</h2><ul class="qd">${demQua.map((q) => `<li>${esc(cut(q, 200))}</li>`).join('')}</ul><p class="muted" style="font-size:.8rem;margin:10px 0 0">Chi tiết: Hion\\ca-dem\\bao-cao-${today}.md · eval: Hion\\learn\\</p></section>` : ''}
+
 <div class="grid2">
   <section class="card"><h2>🔔 Chờ anh duyệt (${cho.length})</h2>
     ${cho.length ? `<ol class="todo">${cho.map((c) => `<li><span>${c.tag ? `<span class="tag">${esc(c.tag)}</span>` : ''}${esc(cut(c.text, 150))}</span></li>`).join('')}</ol>` : '<p class="muted">✅ Không có việc nào.</p>'}
@@ -213,6 +218,7 @@ ${quyetDinh.length ? `<section class="card"><h2>📝 Quyết định hôm qua / 
 const md = [
   `# ☀️ Báo cáo sáng · ${thu} ${todayVN}`, '',
   `**Ngày ${dayN}/100** · tiền đã về ${trieu(tien)} / mục tiêu tới hôm nay ${trieu(mucTieu)}${cham ? ' ⚠️ chậm' : ' ✅'}`, '',
+  ...(demQua.length ? ['## 🌙 Đêm qua', ...demQua.map((q) => `- ${cut(q, 200)}`), ''] : []),
   `## 🔔 Chờ duyệt (${cho.length})`, ...(cho.length ? cho.map((c, i) => `${i + 1}. ${c.tag ? `[${c.tag}] ` : ''}${cut(c.text, 150)}`) : ['✅ Không có.']), '',
   '## 🗺️ Dự án', ...projects.map((p) => `- ${p.bieuTuong || '·'} **${p.ten}** · ${p.commits.reduce((a, b) => a + b, 0)} commit/7 ngày${p.ket.length ? ` · 🧱 ${p.ket.length} kẹt` : ''}${p.dirty ? ` · ✎ ${p.dirty} file chưa lưu` : ''}${p.lam[0] ? `\n  ⏳ ${cut(p.lam[0], 110)}` : ''}`), '',
   '## ⛽ Hạn mức', ...fuel.map((f) => `- ${f.ten}: 5 giờ ${Math.round(f.five ?? 0)}% · tuần ${Math.round(f.week ?? 0)}%`), '',
