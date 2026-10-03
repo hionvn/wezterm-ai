@@ -112,7 +112,10 @@ local function process_headers(window)
               map[tostring(h:pane_id())] = id
               has[id] = tostring(h:pane_id())
               alive[tostring(h:pane_id())] = { pane = h, tab = tab:tab_id() }
-              if info.is_active then p:activate() end -- trả lại ô đang chọn, không giành chỗ của ô khác
+              -- trả lại ô đang chọn, không giành chỗ của ô khác. CHỈ ở tab đang xem: pane:activate() ở tab khác
+              -- làm màn hình nhảy sang tab đó (03/10). Tab nền: thanh tên tạm là ô chọn, lúc bạn vào tab thì
+              -- đoạn "bấm vào ô tên" bên dưới tự chuyển về ô AI ngay dưới nó.
+              if info.is_active and tab:tab_id() == window:active_tab():tab_id() then p:activate() end
             else
               wezterm.log_error('ten-o split: ' .. tostring(h))
             end

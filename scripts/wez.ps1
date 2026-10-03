@@ -36,6 +36,10 @@ $utf8 = New-Object Text.UTF8Encoding $false
 
 # PowerShell 5.1: ConvertFrom-Json trả cả mảng thành 1 phần tử → foreach để trải ra từng ô
 function Get-Panes { $r = (& $exe cli --no-auto-start list --format json) -join "`n" | ConvertFrom-Json; foreach ($p in $r) { $p } }
+# Ô người dùng đang nhìn trên màn hình (khác $env:WEZTERM_PANE = ô AI gọi lệnh, có thể ở tab nền).
+# Mở/xếp ô xong thì trả màn hình về ô này — trước đây trả về ô AI gọi lệnh làm màn hình nhảy tab (03/10/2026).
+function Get-Focus { try { $c = (& $exe cli --no-auto-start list-clients --format json) -join "`n" | ConvertFrom-Json; return "$(@($c)[0].focused_pane_id)" } catch { return '' } }
+function Set-Focus($id) { if ("$id" -ne '') { & $exe cli --no-auto-start activate-pane --pane-id $id 2>$null | Out-Null } }
 # Đọc sổ đội; ô nào đã chết thì tìm lại theo tên ô (dự án + vai trong tiêu đề, vd sau Ctrl+Shift+O mở lại bố cục) rồi ghi lại sổ
 function Sync-Doi($proj) {
     $f = Join-Path $doiDir "$proj.json"
@@ -252,6 +256,7 @@ switch ($Cmd) {
             if ($tk) { $codexHome = "`$env:CODEX_HOME='$($tk.thuMuc)'; "; $tenTk = $tk.ten; Write-Host "🔑 $tenTk (tài khoản $so) cho $($proj.Name)" }
         }
         $psCmd = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; $codexHome$start (Get-Content -Raw -Encoding UTF8 '$taskFile')"
+        $focus = Get-Focus
         if ($Canh -and $env:WEZTERM_PANE) {
             $new = & $exe cli --no-auto-start split-pane --pane-id $env:WEZTERM_PANE --right --percent 50 --cwd $proj.FullName -- powershell -NoLogo -NoExit -Command $psCmd
         } else {
@@ -261,7 +266,7 @@ switch ($Cmd) {
         }
         if (-not $new) { Write-Error 'Không mở được ô mới.'; exit 1 }
         $new = $new.Trim()
-        if ($env:WEZTERM_PANE) { & $exe cli --no-auto-start activate-pane --pane-id $env:WEZTERM_PANE }   # giữ màn hình ở ô đang làm
+        Set-Focus $(if ($focus) { $focus } else { $env:WEZTERM_PANE })   # giữ màn hình ở ô bạn đang xem
         Set-PaneState $new 'work'
         Add-Viec $new $task
         Write-Host "📨 Đã giao cho $ai ở $($proj.Name) → ô $new" -ForegroundColor Cyan
@@ -322,6 +327,7 @@ switch ($Cmd) {
         $sesCu = @{}
         if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.session) { $sesCu[$m.vai] = "$($m.session)" } } }
         $thuc = if ("$($Rest[1])" -like 'thuc:*') { "$($Rest[1])".Substring(5) } else { $null }
+        $focus = Get-Focus   # đánh thức worker (do send gọi) xong thì trả màn hình về đây, không nhảy sang tab đội
         $launchDir = Join-Path $doiDir $def.du_an
         New-Item -ItemType Directory -Force $launchDir | Out-Null
         $bom = New-Object Text.UTF8Encoding $true
@@ -441,7 +447,7 @@ switch ($Cmd) {
         }
         [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
         & $exe cli --no-auto-start set-tab-title --pane-id $mo "$($def.logo) $($def.du_an) · đội"
-        & $exe cli --no-auto-start activate-pane --pane-id $mo
+        if ($thuc -and $focus) { Set-Focus $focus } else { Set-Focus $mo }   # mở đội bằng tay thì cho xem đội; tự thức thì giữ màn hình
         $ghiChu = if ($chungTab) { 'cả đội đã chung 1 tab, giữ nguyên' } else { "xếp lại: Manager trái, worker lưới bên phải · mở mới $moMoi ô" }
         Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " ($ghiChu)") -ForegroundColor Cyan
         if ($ws.Count) { Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`"" } else { Write-Host "   Gọi Manager: wez.ps1 send $($def.du_an).Manager `"việc`"" }

@@ -81,11 +81,18 @@ local function tu_ngu()
     end
   end
 end
+-- tab bạn đang nhìn trên màn hình (nil nếu chưa có cửa sổ)
+local function tab_dang_xem()
+  local ok, ws = pcall(function() return wezterm.gui.gui_windows() end)
+  local t = ok and ws and ws[1] and ws[1]:active_tab()
+  return t and t:tab_id()
+end
 local function open_board(beside, auto)
   local nb = beside:split { direction = 'Right', size = 0.45, top_level = true, cwd = HUB, args = BOARD } -- top_level: bảng chiếm trọn mép phải, không bóp 1 ô
   wezterm.GLOBAL.board_o, wezterm.GLOBAL.board_auto = tostring(nb:pane_id()), auto
   BOARD_MEMO.mo_luc = os.time()
-  beside:activate() -- giữ con trỏ ở ô bạn đang gõ
+  -- giữ con trỏ ở ô bạn đang gõ — chỉ khi ô đó ở tab đang xem, không thì màn hình nhảy sang tab Tổng quản (03/10)
+  if beside:tab():tab_id() == tab_dang_xem() then beside:activate() end
   return nb
 end
 local function auto_board()
@@ -111,7 +118,8 @@ local function auto_board()
   if busy then
     BOARD_MEMO.ranh_tu = nil
     -- phanh chống nháy (03/10): bảng vừa mở < 60 giây mà đã mất (lỗi / bạn tự đóng) → không mở lại ngay
-    if not b and os.time() - (BOARD_MEMO.mo_luc or 0) >= 60 then open_board(tq, true) end
+    -- chỉ tự mở khi bạn đang xem tab Tổng quản; ở tab khác thì đợi bạn quay về (mở ở tab nền làm bảng giành ô chọn)
+    if not b and os.time() - (BOARD_MEMO.mo_luc or 0) >= 60 and tq:tab():tab_id() == tab_dang_xem() then open_board(tq, true) end
   elseif b and wezterm.GLOBAL.board_auto then
     BOARD_MEMO.ranh_tu = BOARD_MEMO.ranh_tu or now
     if now - BOARD_MEMO.ranh_tu >= 180 then kill_pane(b); wezterm.GLOBAL.board_o = nil; BOARD_MEMO.ranh_tu = nil end
