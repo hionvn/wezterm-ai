@@ -6,7 +6,8 @@
 //   🌙 ĐÊM   — 22:00 → 06:30 chặn (push, deploy, merge PR, gửi email…); ban ngày thì hỏi người dùng
 //   Còn lại cho chạy.
 // Mở tạm cho việc ĐÊM (vd "tổng kết" sau 22h) — NGƯỜI DÙNG tự gõ trong ô Claude:
-//   ! node E:\AI\Hion\cai-dat\chan-lenh.js mo 30      (mở 30 phút; agent tự chạy lệnh này sẽ bị chặn)
+//   ! node E:/AI/Hion/cai-dat/chan-lenh.js mo 30      (mở 30 phút; agent tự chạy lệnh này sẽ bị chặn)
+//   (dấu / vì lệnh ! của Claude Code chạy bằng Git Bash — dấu \ bị nuốt)
 //   ! node E:\AI\Hion\cai-dat\chan-lenh.js dong
 // Thử: node chan-lenh.js thu "git push origin main"
 // Nhật ký chặn: %LOCALAPPDATA%\wez-ai\chan-lenh.log
@@ -62,6 +63,10 @@ const MCP_DEM = [
   [/Drive__share_file$/i, 'chia sẻ file Google Drive ra ngoài'],
 ];
 
+// Dự án được tự git push ban ngày (repo riêng tư) — khớp mục 8 "Đã cho phép" trong quy-trinh-lien-mach.md.
+// Đêm vẫn chặn; push ép / công khai repo vẫn CẤM.
+const TU_PUSH = [/[\\/]AI[\\/]Chatbot(?=[\\/\s"';&]|$)/i];
+
 function laDem(d = new Date()) {
   const p = d.getHours() * 60 + d.getMinutes();
   return p >= 22 * 60 || p < 6 * 60 + 30;
@@ -78,7 +83,10 @@ function ghiLog(muc, ly, lenh) {
 }
 
 // Trả { muc: 'cam'|'dem'|'hoi'|null, ly }
-function xet(tool, lenh) {
+function xet(tool, lenhGoc, cwd = '') {
+  // 04/10: bỏ tuỳ chọn chen giữa "git" và lệnh con (git -C <thư mục> push, git -c x=y push, --git-dir…) —
+  // trước đó dạng này lọt qua luật "git push" (phát hiện khi push lúc 02:45 không bị chặn)
+  const lenh = String(lenhGoc).replace(/\bgit(?:\.exe)?((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path)(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)|\s+--(?:no-pager|paginate|bare|literal-pathspecs|no-optional-locks|no-replace-objects)\b|\s+-[pP]\b)+)/gi, 'git');
   const timTrong = (ds, s) => { for (const [re, ly] of ds) if (re.test(s)) return ly; return null; };
   let cam, dem;
   if (/^mcp__/.test(tool)) { cam = timTrong(MCP_CAM, tool); dem = timTrong(MCP_DEM, tool); }
@@ -86,7 +94,10 @@ function xet(tool, lenh) {
   if (cam) return { muc: 'cam', ly: cam };
   if (dem) {
     if (dangMo()) return { muc: null, ly: dem };
-    return laDem() ? { muc: 'dem', ly: dem } : { muc: 'hoi', ly: dem };
+    if (laDem()) return { muc: 'dem', ly: dem };
+    const pushThuong = /\bgit\s+push\b/i.test(lenh) && !/\b(?:gh|vercel|netlify|firebase|wrangler|supabase)\b|send-mailmessage/i.test(lenh);
+    if (pushThuong && TU_PUSH.some((re) => re.test(cwd) || re.test(lenh))) return { muc: null, ly: dem };
+    return { muc: 'hoi', ly: dem };
   }
   return { muc: null };
 }
@@ -106,7 +117,7 @@ if (cmd === 'hook') {
     try { data = JSON.parse(input.replace(/^\uFEFF/, '')); } catch { return; }
     const tool = data.tool_name || '';
     const lenh = (data.tool_input && data.tool_input.command) || '';
-    const { muc, ly } = xet(tool, lenh);
+    const { muc, ly } = xet(tool, lenh, data.cwd || '');
     if (!muc) return;
     ghiLog(muc, ly, lenh || tool);
     if (muc === 'cam') {
@@ -142,7 +153,7 @@ if (cmd === 'hook') {
   }
 } else if (cmd === 'thu') {
   const lenh = process.argv.slice(3).join(' ');
-  const r = xet(/^mcp__/.test(lenh) ? lenh : 'Bash', lenh);
+  const r = xet(/^mcp__/.test(lenh) ? lenh : 'Bash', lenh, process.cwd());
   console.log({ cam: '⛔ CẤM', dem: '🌙 CHẶN (đêm)', hoi: '❓ HỎI (ngày)' }[r.muc] || '✅ cho chạy', r.ly ? '— ' + r.ly : '');
 } else {
   console.log('Dùng: chan-lenh.js hook | mo [phút] | dong | thu "<lệnh>"');
