@@ -31,7 +31,7 @@ local function tu_ngu()
     if type(v) == 'table' and not v.xong and not v.bo and v.o then con_viec[tostring(v.o)] = true end
   end
   local home = (os.getenv('USERPROFILE') or HOME)
-  for _, path in ipairs(wezterm.glob(AIDIR:gsub('\\', '/') .. '/doi/*.json')) do
+  for _, path in ipairs(so_doi_files()) do
     local r = read_json(path)
     if r and r.du_an and r.du_an ~= 'Hion' and type(r.worker) == 'table' and #r.worker > 0 then
       local doi_ghi = false

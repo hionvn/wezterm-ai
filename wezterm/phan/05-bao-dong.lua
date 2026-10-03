@@ -18,6 +18,13 @@ local function read_json(path)
 end
 -- Ghi sổ đội (wez-ai\doi\<dự án>.json). json_encode biến bảng RỖNG thành {} → đội chưa có worker bị ghi "worker": {}
 -- → ten-o.js gọi ws.map / ws.find lỗi, ô tên chết ngay khi mở → dựng lại liên tục (bắt được 04/10) → ép lại thành [].
+-- Danh sách file sổ đội (wez-ai\doi\*.json). wezterm.glob trên máy này ≈ 600–700 ms/lần (đo 04/10) → quét tối đa 2 phút/lần,
+-- tự ngủ (tu_ngu) + tự lưu (doi_map) dùng chung. Đội mới mở thì chậm nhất 2 phút mới được tính.
+local DOI_DS = { t = -1000, ds = {} }
+local function so_doi_files()
+  if os.time() - DOI_DS.t >= 120 then DOI_DS = { t = os.time(), ds = wezterm.glob(AIDIR:gsub('\\', '/') .. '/doi/*.json') } end
+  return DOI_DS.ds
+end
 local function ghi_so_doi_file(path, r)
   local s = wezterm.json_encode(r):gsub('"worker":%{%}', '"worker":[]')
   local f = io.open(path, 'w')
@@ -171,22 +178,29 @@ local function toast_click(window, pane_id, title, text)
   end
 end
 
+local ALERT_SCAN = { t = 0 }
 local function process_alerts(window)
   local T0, TT = ms(), { pinfo = 0, tt = 0, file = 0, n = 0 } -- đo từng phần (04/10)
   local focused = window:is_focused()
   local active = tostring(window:active_pane():pane_id())
+  TT.win = ms() - T0
   local alive, pane_tab, pane_proj = {}, {}, {}
   local stat = {} -- [tab] = { work = số ô đang làm, need = số ô cần duyệt } → hiện trên tên tab
   -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
   for _, mw in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(mw:tabs()) do
-      for _, p in ipairs(tab:panes()) do
+      local tp = ms()
+      local tab_panes = tab:panes()
+      TT.panes = (TT.panes or 0) + ms() - tp
+      for _, p in ipairs(tab_panes) do
+        TT.lap = ms()
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
         if not is_header(p) then -- ô tên 🏷: không có AI, khỏi hỏi Windows
           local ta = ms()
           local okp, x = pcall(pinfo, p)
           TT.pinfo, TT.n = TT.pinfo + ms() - ta, TT.n + 1
+          TT.hdr = (TT.hdr or 0) + (ta - (TT.lap or ta))
           pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
           local state, who = title_state(p)
           local tb = ms()
@@ -210,8 +224,18 @@ local function process_alerts(window)
       end
     end
   end
+  TT.loop = ms() - T0
   tab_alert = {}
-  for _, path in ipairs(wezterm.glob(ALERTS:gsub('\\', '/') .. '/*.json')) do
+  -- 04/10: đo thật lúc chạy 34 ô: wezterm.glob thư mục alerts mỗi nhịp ≈ 600 ms (phần còn lại của process_alerts chỉ vài ms).
+  -- Giờ: mỗi nhịp mở thẳng file của từng ô đang sống (io.open, rất nhanh); quét cả thư mục 2 phút/lần để dọn file của ô đã đóng.
+  local paths, quet = {}, os.time() - ALERT_SCAN.t >= 120
+  if quet then
+    ALERT_SCAN.t = os.time()
+    paths = wezterm.glob(ALERTS:gsub('\\', '/') .. '/*.json')
+  else
+    for id in pairs(alive) do if not hdr_map()[id] then paths[#paths + 1] = ALERTS .. '\\' .. id .. '.json' end end
+  end
+  for _, path in ipairs(paths) do
     local id = path:match('(%d+)%.json$')
     if id then
       if not alive[id] or (focused and id == active) then
@@ -242,11 +266,14 @@ local function process_alerts(window)
   TAB_STAT = stat
   local tong = ms() - T0
   if tong > 250 then
-    wezterm.log_warn(('process_alerts %.0fms: pinfo %.0fms (%d ô) · ghi/đọc trạng thái %.0fms · còn lại %.0fms'):format(tong, TT.pinfo, TT.n, TT.file, tong - TT.pinfo - TT.file))
+    wezterm.log_warn(('process_alerts %.0fms: window %.0f · tab:panes %.0f · đầu vòng(id/header) %.0f · pinfo %.0f (%d ô) · trạng thái %.0f · cả vòng %.0f · báo động %.0f'):format(
+      tong, TT.win or 0, TT.panes or 0, TT.hdr or 0, TT.pinfo, TT.n, TT.file, TT.loop or 0, tong - (TT.loop or 0)))
   end
   -- Dọn trạng thái của ô đã đóng (số ô có thể được dùng lại sau khi mở lại WezTerm)
-  for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
-    local id = path:match('(%d+)%.json$')
-    if id and not alive[id] then os.remove(path) end
+  if quet then -- cùng nhịp quét 2 phút
+    for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
+      local id = path:match('(%d+)%.json$')
+      if id and not alive[id] then os.remove(path) end
+    end
   end
 end

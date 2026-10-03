@@ -1,5 +1,6 @@
 -- Nhiên liệu: hạn mức 5 giờ / tuần đã dùng của Claude (statusline.js ghi) và Codex (file phiên gần nhất)
 local fuel_cache = { at = 0, cells = nil }
+local FUEL_GLOB = {} -- [số tài khoản Codex] = { t, files }: kết quả quét thư mục phiên gần nhất
 local FUEL_MEMO = {} -- [số tài khoản Codex] = { file, size, row }: file phiên chưa đổi thì không đọc lại
 local function pct_color(p)
   return p >= 80 and '#e06c75' or (p >= 50 and '#e5c07b' or '#98c379')
@@ -38,11 +39,18 @@ local function fuel_cells()
   local codex = {}
   for _, tk in ipairs(tks) do
     local files, root = {}, (tk.thuMuc or ''):gsub('\\', '/') .. '/sessions/'
-    for d = 0, 6 do -- thư mục sessions/YYYY/MM/DD: tìm ngày gần nhất có phiên (trước đây quét cả lịch sử → giật mỗi phút)
-      files = wezterm.glob(root .. os.date('%Y/%m/%d', os.time() - d * 86400) .. '/*.jsonl')
-      if #files > 0 then break end
+    -- 04/10: wezterm.glob ≈ 600 ms/lần trên máy này → chỉ quét lại thư mục mỗi 5 phút / tài khoản; giữa chừng dùng lại file phiên đã biết
+    local gm = FUEL_GLOB[tk.so or 0]
+    if gm and os.time() - gm.t < 300 then
+      files = gm.files
+    else
+      for d = 0, 6 do -- thư mục sessions/YYYY/MM/DD: tìm ngày gần nhất có phiên (trước đây quét cả lịch sử → giật mỗi phút)
+        files = wezterm.glob(root .. os.date('%Y/%m/%d', os.time() - d * 86400) .. '/*.jsonl')
+        if #files > 0 then break end
+      end
+      table.sort(files)
+      FUEL_GLOB[tk.so or 0] = { t = os.time(), files = files }
     end
-    table.sort(files)
     -- 03/10: file phiên không đổi cỡ thì dùng lại kết quả cũ; đọc 96KB cuối thay vì 256KB (mỗi phút × 3 tài khoản → giật)
     local f, size = files[#files] and io.open(files[#files], 'rb'), nil
     if f then size = f:seek('end') f:close() end

@@ -18,7 +18,7 @@ end
 -- Lưu vào bố cục để khi mở lại, ô đội có lại đúng tên, Remote Control, khoá chỉ đọc; sổ đội ghi số ô mới.
 local function doi_map()
   local m = {}
-  for _, path in ipairs(wezterm.glob(AIDIR:gsub('\\', '/') .. '/doi/*.json')) do
+  for _, path in ipairs(so_doi_files()) do
     local r = read_json(path)
     if r and r.du_an then
       local def = read_json(HUB .. '\\doi\\' .. r.du_an .. '.json') or {}
@@ -340,7 +340,17 @@ end)
 -- Menu `ai` chọn "2) Mở lại tất cả phiên đang làm dở" → PowerShell gửi biến wez_ai=mo-lai (OSC 1337 SetUserVar)
 -- → mở lại bố cục phiên trước (Claude tiếp đúng phiên, Codex resume) rồi đóng ô menu.
 wezterm.on('user-var-changed', function(window, pane, name, value)
-  if name ~= 'wez_ai' or value ~= 'mo-lai' then return end
+  if name ~= 'wez_ai' then return end
+  -- 04/10: "mo-file:<đường dẫn>" = mở lại từ một file bố cục bất kỳ (dùng để CHẠY THỬ cách mở 2 pha, vd bố cục giả không có AI)
+  local tep = value:match('^mo%-file:(.+)$')
+  if tep then
+    local d = read_json(tep)
+    if d and d.tabs and restore_layout(window, d, function(n)
+      window:toast_notification('WezTerm · đội AI', '✅ Chạy thử: đã mở ' .. n .. ' ô', nil, 4000)
+    end) > 0 then kill_pane(pane) end
+    return
+  end
+  if value ~= 'mo-lai' then return end
   local d
   for _, k in ipairs { 'prev', 'saved', 'auto' } do
     local x = read_json(LAYOUT[k])

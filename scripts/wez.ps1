@@ -49,7 +49,13 @@ function Sync-Doi($proj) {
     $doi = $false
     foreach ($m in @($d.manager) + @($d.worker)) {
         if (-not $m -or -not $m.vai) { continue }
-        if ($m.o -and ($panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" })) { continue }
+        # 04/10: số ô có thể đã bị dùng lại sau khởi động lại (sổ Aff ghi Manager = ô 22 trong khi ô 22 là Coolguy · Kiểm soát)
+        # → chỉ tin ô cũ khi ô đó đúng là của dự án này (thư mục ô nằm trong E:\AI\<dự án>, hoặc tiêu đề có tên dự án)
+        $cuP = if ($m.o) { $panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" } | Select-Object -First 1 }
+        if ($cuP) {
+            $cwdP = [uri]::UnescapeDataString("$($cuP.cwd)") -replace '\\', '/'
+            if ($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match [regex]::Escape($proj)) { continue }
+        }
         $ten = if ($m.ten) { $m.ten } else { $m.vai }   # tiêu đề ô mang tên hiển thị (có dấu)
         $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and $_.title -match "(^|[^\p{L}])$([regex]::Escape($ten))([^\p{L}]|$)" -and $_.title -notmatch 'ten-o' } | Select-Object -First 1
         $moi = if ($hit) { "$($hit.pane_id)" } else { '' }
