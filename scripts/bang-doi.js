@@ -84,7 +84,12 @@ function draw() {
 }
 function drawRaw() {
   let panes = [];
-  try { panes = JSON.parse(execFileSync(EXE, ['cli', '--no-auto-start', 'list', '--format', 'json'], { encoding: 'utf8', timeout: 4000 })); } catch { return; }
+  // 04/10 (gõ chữ chậm): `wezterm cli list` bắt WezTerm hỏi Windows thư mục của MỌI ô ngay trên luồng giao diện — 49 ô = 1–3 giây
+  // mỗi lần, gọi mỗi 3 giây → luồng giao diện bận gần hết. Giờ đọc wez-ai\o-list.json (Lua ghi sẵn trong update-status, ≤ 10 giây/lần);
+  // file thiếu / cũ quá 15 giây (WezTerm bản cũ, Lua lỗi) mới gọi cli list.
+  const OL = path.join(WEZAI, 'o-list.json');
+  try { if (Date.now() - fs.statSync(OL).mtimeMs < 15000) panes = JSON.parse(fs.readFileSync(OL, 'utf8')); } catch { panes = []; }
+  if (!panes.length) try { panes = JSON.parse(execFileSync(EXE, ['cli', '--no-auto-start', 'list', '--format', 'json'], { encoding: 'utf8', timeout: 4000 })); } catch { return; }
   const now = Math.floor(Date.now() / 1000);
   const cay = (readJson(path.join(HUB, 'cay-du-an.json')) || {}).cay || [];
   const projInfo = Object.fromEntries(cay.map((n) => [n.ten.toLowerCase(), n]));

@@ -183,6 +183,7 @@ local ALERT_SCAN = { t = 0 }
 -- khi ~20 ô AI quay tiêu đề liên tục. Giờ: ô đang chọn lấy từ tham số update-status (WezTerm truyền sẵn),
 -- cửa sổ có đang được chọn hay không thì nhớ qua sự kiện window-focus-changed (chỉ chạy khi đổi focus).
 local WIN_FOCUS = {}
+local OLIST_LAST, OLIST_T = nil, 0
 wezterm.on('window-focus-changed', function(window, pane) WIN_FOCUS[window:window_id()] = window:is_focused() end)
 local function process_alerts(window, apane)
   local T0, TT = ms(), { pinfo = 0, tt = 0, file = 0, n = 0 } -- đo từng phần (04/10)
@@ -191,6 +192,7 @@ local function process_alerts(window, apane)
   local active = tostring((apane or window:active_pane()):pane_id())
   TT.win = ms() - T0
   local alive, pane_tab, pane_proj = {}, {}, {}
+  local olist = {} -- 04/10: danh sách ô cho bang-doi.js (thay `wezterm cli list` mỗi 3 giây — mỗi lần 1–3 giây trên luồng giao diện)
   local stat = {} -- [tab] = { work = số ô đang làm, need = số ô cần duyệt } → hiện trên tên tab
   -- Duyệt mọi cửa sổ WezTerm (trước đây chỉ cửa sổ hiện tại → mở 2 cửa sổ thì xoá nhầm báo động của cửa sổ kia)
   for _, mw in ipairs(wezterm.mux.all_windows()) do
@@ -202,6 +204,7 @@ local function process_alerts(window, apane)
         TT.lap = ms()
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
+        olist[#olist + 1] = { id = p:pane_id(), tab = tab:tab_id(), p = p }
         if not is_header(p) then -- ô tên 🏷: không có AI, khỏi hỏi Windows
           local ta = ms()
           local okp, x = pcall(pinfo, p)
@@ -231,6 +234,20 @@ local function process_alerts(window, apane)
     end
   end
   TT.loop = ms() - T0
+  -- ghi wez-ai\o-list.json (dạng giống `wezterm cli list --format json`: pane_id, tab_id, title, cwd) — chỉ ghi khi đổi
+  pcall(function()
+    local arr = {}
+    for i, o in ipairs(olist) do
+      local x = PANE_LAST[tostring(o.id)]
+      arr[i] = { pane_id = o.id, tab_id = o.tab, title = x and x.title or (o.p:get_title() or ''),
+        cwd = x and x.dir and ('file:///' .. x.dir:gsub('\\', '/')) or '' }
+    end
+    local s = wezterm.json_encode(arr)
+    if s ~= OLIST_LAST or os.time() - OLIST_T >= 10 then
+      local f = io.open(AIDIR .. '\\o-list.json', 'w')
+      if f then f:write(s) f:close() OLIST_LAST, OLIST_T = s, os.time() end
+    end
+  end)
   tab_alert = {}
   -- 04/10: đo thật lúc chạy 34 ô: wezterm.glob thư mục alerts mỗi nhịp ≈ 600 ms (phần còn lại của process_alerts chỉ vài ms).
   -- Giờ: mỗi nhịp mở thẳng file của từng ô đang sống (io.open, rất nhanh); quét cả thư mục 2 phút/lần để dọn file của ô đã đóng.

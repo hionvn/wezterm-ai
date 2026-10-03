@@ -57,6 +57,13 @@ function paneAlive(id) {
   if (!/^\d+$/.test(String(id))) return true;
   if (!GUI) return false; // WezTerm không chạy → không ô nào còn mở
   if (!alivePanes) {
+    // 04/10: đọc wez-ai\o-list.json (Lua ghi ≤ 10 giây/lần) trước — cli list bắt WezTerm hỏi thư mục mọi ô trên luồng giao diện
+    try {
+      const ol = path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'o-list.json');
+      if (Date.now() - fs.statSync(ol).mtimeMs < 15000) alivePanes = new Set(JSON.parse(fs.readFileSync(ol, 'utf8')).map((p) => String(p.pane_id)));
+    } catch {}
+  }
+  if (!alivePanes) {
     try {
       let exe = 'C:\\Program Files\\WezTerm\\wezterm.exe';
       try { exe = JSON.parse(fs.readFileSync(path.join(process.env.USERPROFILE || '', '.wez-ai.json'), 'utf8')).wezterm || exe; } catch {}
