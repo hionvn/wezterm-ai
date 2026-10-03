@@ -1,4 +1,28 @@
+-- ===== Báo có bản cập nhật mới của đội AI trên GitHub (03/10/2026) =====
+-- Mỗi 6 giờ chạy ngầm cap-nhat-tu-github.ps1 -Kiem (git fetch, không đổi gì) → ghi wez-ai\ban-moi.json;
+-- có thay đổi mới → báo 1 lần / bản: "Ctrl+Shift+P → ⬆ Cập nhật đội AI". Máy chủ ("chuNhan": true) không báo.
+-- Tắt: "tuKiemCapNhat": false trong ~\.wez-ai.json.
+local REPO_DOI = machine.repo or (AI_ROOT .. '\\wezterm-ai')
+local function kiem_ban_moi(window)
+  if machine.chuNhan == true or machine.tuKiemCapNhat == false then return end
+  local now = os.time()
+  if now - (wezterm.GLOBAL.bm_doc or 0) < 60 then return end
+  wezterm.GLOBAL.bm_doc = now
+  if now - (wezterm.GLOBAL.bm_chay or 0) > 6 * 3600 then
+    wezterm.GLOBAL.bm_chay = now
+    wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
+      '-File', REPO_DOI .. '\\cap-nhat-tu-github.ps1', '-Kiem' }
+  end
+  local d = read_json(AIDIR .. '\\ban-moi.json')
+  if d and (tonumber(d.moi) or 0) > 0 and d.dau and d.dau ~= wezterm.GLOBAL.bm_bao then
+    wezterm.GLOBAL.bm_bao = d.dau
+    window:toast_notification('WezTerm · đội AI', '⬆ Có bản cập nhật mới (' .. d.moi .. ' thay đổi). Ctrl+Shift+P → "Cập nhật đội AI".', nil, 12000)
+  end
+end
+
 wezterm.on('update-status', function(window, pane)
+  local okbm, errbm = pcall(kiem_ban_moi, window)
+  if not okbm then wezterm.log_error('kiem_ban_moi: ' .. tostring(errbm)) end
   -- Thanh tên bật lại 02/10 22h sau khi thêm phanh (hdr_allow / hdr_note); tắt tạm 18:18 vì dựng ô liên tục
   local okh, errh = pcall(process_headers, window)
   if not okh then wezterm.log_error('process_headers: ' .. tostring(errh)) end

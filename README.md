@@ -59,6 +59,13 @@ powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI
 ```
 Mọi file cũ trên máy được sao lưu thành `*.bak-<ngày giờ>` trước khi ghi đè. Sau đó tự đăng nhập từng AI.
 
+## Cập nhật bản mới (nút bấm)
+- **Máy đã cài:** `Ctrl+Shift+P` → **⬆ Cập nhật đội AI**. Mở tab riêng: kéo bản mới từ GitHub (`git pull`), liệt kê thay đổi, cài lại bằng `khoi-phuc.ps1 -CapNhat`.
+  File giống hệt thì bỏ qua, file khác thì sao lưu `.bak-<giờ>` rồi ghi đè; cài đặt riêng trong `~\.wez-ai.json` và file của Tổng quản (`Hion\*.md`) giữ nguyên. File trong repo bị sửa tay được cất bằng `git stash`.
+- **Tự báo:** mỗi 6 giờ WezTerm kiểm ngầm (`cap-nhat-tu-github.ps1 -Kiem`, chỉ `git fetch`); có bản mới → thông báo Windows. Tắt: `"tuKiemCapNhat": false` trong `~\.wez-ai.json`.
+- Chạy tay: `powershell -ExecutionPolicy Bypass -File E:\AI\wezterm-ai\cap-nhat-tu-github.ps1`.
+- **Người phát hành (máy chủ, `"chuNhan": true`):** `cap-nhat.ps1` (chép cấu hình đang dùng vào repo + quét khoá) → commit → push. Máy chủ bấm nút chỉ hiện hướng dẫn này, không kéo về đè lên bản gốc.
+
 ### Sau khi cài: đặt vai cho cả đội (5 phút)
 1. Mở WezTerm, đăng nhập `claude` và `codex`.
 2. Đặt các thư mục dự án vào thư mục AI (mặc định `E:\AI`, hoặc chỗ bạn chọn bằng `-AIRoot`). Tạo dự án mới: `newproj <tên>` — có sẵn vai 🧭 Manager và sổ tiến độ để bàn giao.

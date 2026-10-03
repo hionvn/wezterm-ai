@@ -6,7 +6,9 @@
 # File nào đã có trên máy đều được sao lưu thành <tên>.bak-<ngày giờ> trước khi ghi đè.
 # Không chứa API key / mật khẩu: sau khi chạy, tự đăng nhập từng AI (claude, codex).
 #   -BoQuaPhanMem : không chạy winget (đã tự cài WezTerm, Node, Git, glow; hoặc chạy thử trong máy ảo)
-param([switch]$CaiAI, [string]$AIRoot, [switch]$BoQuaPhanMem)
+#   -CapNhat      : gọi từ cap-nhat-tu-github.ps1 (nút "Cập nhật đội AI") — bỏ winget + lời dặn cuối
+param([switch]$CaiAI, [string]$AIRoot, [switch]$BoQuaPhanMem, [switch]$CapNhat)
+if ($CapNhat) { $BoQuaPhanMem = $true }
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -25,7 +27,11 @@ $hubFwd = $hubScripts -replace '\\', '/'
 function Copy-Safe($src, $dst) {
     $dir = Split-Path $dst -Parent
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    if (Test-Path $dst) { Copy-Item $dst "$dst.bak-$stamp" }
+    if (Test-Path $dst) {
+        # Giống hệt bản đang có → bỏ qua (cập nhật nhiều lần không đẻ thêm .bak)
+        if ((Get-FileHash $src).Hash -eq (Get-FileHash $dst).Hash) { return }
+        Copy-Item $dst "$dst.bak-$stamp"
+    }
     Copy-Item $src $dst -Force
     Write-Host "  ✓ $dst" -ForegroundColor Green
 }
@@ -52,7 +58,13 @@ Write-Host "`n[2/9] Cấu hình chung của máy (~\.wez-ai.json)" -ForegroundCo
 $wezExe = 'C:\Program Files\WezTerm\wezterm.exe'
 if (-not (Test-Path $wezExe)) { $c = Get-Command wezterm -ErrorAction SilentlyContinue; if ($c) { $wezExe = $c.Source } }
 New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot 'Hion'), "$env:LOCALAPPDATA\wez-ai\alerts", "$env:LOCALAPPDATA\wez-ai\state" | Out-Null
-[IO.File]::WriteAllText("$HOME\.wez-ai.json", ([ordered]@{ aiRoot = $AIRoot; wezterm = $wezExe } | ConvertTo-Json), $utf8)
+# Giữ mọi cài đặt riêng đã có (caDem, nguSauPhut, tuMoLai, chuNhan…), chỉ đặt lại aiRoot + wezterm
+$may = [ordered]@{}
+if (Test-Path "$HOME\.wez-ai.json") {
+    try { (Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $may[$_.Name] = $_.Value } } catch {}
+}
+$may['aiRoot'] = $AIRoot; $may['wezterm'] = $wezExe
+[IO.File]::WriteAllText("$HOME\.wez-ai.json", ($may | ConvertTo-Json), $utf8)
 Write-Host "  ✓ dự án ở $AIRoot · WezTerm: $wezExe" -ForegroundColor Green
 
 Write-Host "`n[3/9] WezTerm" -ForegroundColor Cyan
@@ -138,6 +150,7 @@ if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path "$here\.git"
 Write-Host "`nKiểm tra lại toàn bộ:" -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $hubScripts 'kiem-tra.ps1')
 
+if ($CapNhat) { Write-Host "`n✅ Đã cài bản mới. WezTerm tự nạp lại cấu hình; ô Claude / Codex mở sau lúc này dùng bản mới." -ForegroundColor Green; return }
 Write-Host "`nXong. Việc còn lại:" -ForegroundColor Yellow
 Write-Host "  1. Mở WezTerm. Đăng nhập từng AI: gõ claude, codex và làm theo hướng dẫn."
 Write-Host "  2. Đặt các thư mục dự án vào $AIRoot (tạo mới: gõ newproj <tên>)."

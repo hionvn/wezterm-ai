@@ -30,6 +30,7 @@ local MENU_DOI = {
   { 'tab-trai', '◀  Dời tab đang xem sang trái', 'Ctrl+Shift+Alt+←' },
   { 'tab-phai', '▶  Dời tab đang xem sang phải', 'Ctrl+Shift+Alt+→' },
   { 'goc', '⚙  Bảng lệnh gốc của WezTerm', 'Ctrl+Shift+Alt+P' },
+  { 'cap-nhat', '⬆  Cập nhật đội AI (kéo bản mới từ GitHub)', 'mở tab riêng' },
 }
 wezterm.on('menu-doi', function(window, pane)
   local choices = {}
@@ -43,6 +44,8 @@ wezterm.on('menu-doi', function(window, pane)
         ['mo-du-an'] = project_menu, ['ban-duyet'] = toggle_doc, ['luu'] = save_layout, ['mo-lai'] = restore_menu,
         ['chia-deu'] = act.EmitEvent 'chia-deu', ['ten-o'] = act.EmitEvent 'ten-o-bat-tat', ['goc'] = act.ActivateCommandPalette,
         ['tab-trai'] = act.MoveTabRelative(-1), ['tab-phai'] = act.MoveTabRelative(1),
+        ['cap-nhat'] = act.SpawnCommandInNewTab { args = { 'powershell.exe', '-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass',
+          '-File', (machine.repo or (AI_ROOT .. '\\wezterm-ai')) .. '\\cap-nhat-tu-github.ps1' } },
       }
       if run[id] then w:perform_action(run[id], p) end
     end),
