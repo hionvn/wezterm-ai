@@ -342,10 +342,11 @@ switch ($Cmd) {
             if ($laManager) {
                 return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (cùng tab '$($def.logo) $($def.du_an) · đội' với bạn: bạn nửa trái, worker nửa phải; vai + quyền từng worker: E:\AI\Hion\doi\$($def.du_an).json).$quyen " +
                     "Giao việc bằng TÊN, không dùng số ô: E:\AI\Hion\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
-                    "Việc chạm khách/tiền/giá/đăng bài → duyet.js them, không tự làm. Bây giờ: đọc AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo ngắn việc đang làm / kẹt / đề xuất giao gì cho từng worker. CHƯA giao việc khi người dùng chưa đồng ý."
+                    "LUẬT VẬN HÀNH: E:\AI\Hion\quy-trinh-lien-mach.md (3 vùng quyền, không hỏi lại người dùng việc 🟢, không đứng chờ, brief 6 mục, báo cáo 5 trường). Việc 🔴 (tiền/gửi ra ngoài/xoá/push/đổi giá) → duyet.js them rồi làm tiếp việc khác. " +
+                    "Bây giờ: đọc file luật đó + AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo 3 dòng việc đang làm / kẹt, rồi TỰ giao việc 🟢 tiếp theo cho worker và làm tiếp."
             }
             return "Bạn là worker $($def.logo) $($def.du_an) · $($m.icon) $(TenVai $m). Phụ trách: $($m.viec). Manager của bạn: $($def.du_an).Manager.$quyen " +
-                "Luật chung: chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
+                "Luật chung: E:\AI\Hion\quy-trinh-lien-mach.md (làm việc 🟢 không hỏi lại; xong báo Manager đủ 5 trường: Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp). Chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
                 "Bây giờ: đọc AGENTS.md + tien-do của dự án, trả lời 3 dòng (bạn là ai, quyền của bạn tóm 1 dòng, sẵn sàng) rồi CHỜ việc. Chưa sửa file nào."
         }
         # Mở 1 ô; Claude đặt tên bằng -n (hiện trên statusline + tiêu đề ô), Codex đổi tên bằng /rename sau khi mở
