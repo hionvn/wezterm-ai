@@ -1,7 +1,7 @@
 // Đồng bộ công việc mọi dự án lên Linear (team HIO), lấy từ Company Brain (brain\brain.json) — chạy lại bao nhiêu lần cũng không tạo trùng.
 //   node linear-sync.js [--thu]     (--thu: chỉ in sẽ làm gì, không gửi)
-// Quy tắc:
-//   ⏳ "Đang làm" trong tien-do      → ticket cột In Progress · nhãn "Dự án: X"
+// Quy tắc (sửa 03/10/2026 theo cách thầy Sơn — Linear chỉ giữ VIỆC, không chép dòng trạng thái):
+//   ⏳ "Đang làm" trong tien-do      → KHÔNG đồng bộ nữa (là ghi chú trạng thái; việc thật tạo bằng linear.js tao từ brief)
 //   🧱 "Đang kẹt"                    → Todo · nhãn "Kẹt"
 //   🔔 việc chờ Hion duyệt (ô 📋)    → Todo · nhãn "Cần Hion" · ưu tiên High
 //   Việc đã có ticket mà không còn trong nguồn (đã xong / đã duyệt) → chuyển Done + bình luận.
@@ -48,7 +48,6 @@ async function q(query, variables = {}) {
     want.push({ k, duAn, loai, title: cut(sach, 120), desc: sach });
   };
   for (const p of b.duAn) {
-    for (const x of p.lam) them(p.ten, 'lam', x);
     for (const x of p.ket) them(p.ten, 'ket', x);
   }
   for (const c of b.choDuyet) {
@@ -59,8 +58,9 @@ async function q(query, variables = {}) {
   let map = {};
   try { map = JSON.parse(fs.readFileSync(MAP, 'utf8')); } catch {}
   const moi = want.filter((w) => !map[w.k]);
-  const het = Object.entries(map).filter(([k, v]) => !want.some((w) => w.k === k) && v.cot !== 'xong');
-  const doiCot = want.filter((w) => map[w.k] && map[w.k].loai !== w.loai);
+  // 'lam' cũ đã huỷ khi dọn 03/10 (cot 'huy') → bỏ qua, không đóng / đổi cột lại
+  const het = Object.entries(map).filter(([k, v]) => !want.some((w) => w.k === k) && v.cot !== 'xong' && v.cot !== 'huy' && v.loai !== 'lam');
+  const doiCot = want.filter((w) => map[w.k] && map[w.k].loai !== w.loai && map[w.k].cot !== 'huy');
   console.log(`Nguồn: ${want.length} việc · tạo mới ${moi.length} · chuyển Done ${het.length} · đổi cột ${doiCot.length}`);
   if (THU) { moi.slice(0, 15).forEach((w) => console.log(`  + [${w.duAn}/${w.loai}] ${w.title}`)); return; }
 
@@ -78,6 +78,8 @@ async function q(query, variables = {}) {
     return (nhan[ten] = r.issueLabelCreate.issueLabel.id);
   };
   const UU = { lam: 3, ket: 2, duyet: 2 };
+  const PROJECT = { Chatbot: '💬 Chatbot', Sino: '🛏️ Sino', Coolguy: '💈 Coolguy', Aff: '🎯 Aff Radar', '1Bill': '💰 1Bill', Hion: '👑 Hệ thống đội AI', 'wezterm-ai': '👑 Hệ thống đội AI' };
+  const pj = Object.fromEntries((await q('{ projects(first:50){ nodes { id name } } }')).projects.nodes.map((p) => [p.name, p.id]));
 
   // 4) Tạo mới
   for (const w of moi) {
@@ -85,7 +87,7 @@ async function q(query, variables = {}) {
     if (w.loai === 'ket') labels.push(await lay('Kẹt', '#eb5757'));
     if (w.loai === 'duyet') labels.push(await lay('Cần Hion', '#f2c94c'));
     const r = await q('mutation($i:IssueCreateInput!){ issueCreate(input:$i){ issue { identifier } } }',
-      { i: { teamId: t.id, title: w.title, description: `${w.desc}\n\n_Tự đồng bộ từ Company Brain (Hion\\brain) — sửa ở file tiến độ của dự án, không sửa ở đây._`, priority: UU[w.loai], stateId: cot[w.loai], labelIds: labels } });
+      { i: { teamId: t.id, title: w.title, description: `${w.desc}\n\n_Tự đồng bộ từ Company Brain (Hion\\brain) — sửa ở file tiến độ của dự án, không sửa ở đây._`, priority: UU[w.loai], stateId: cot[w.loai], labelIds: labels, ...(pj[PROJECT[w.duAn]] ? { projectId: pj[PROJECT[w.duAn]] } : {}) } });
     map[w.k] = { id: r.issueCreate.issue.identifier, loai: w.loai, cot: w.loai };
     console.log(`  + ${r.issueCreate.issue.identifier} [${w.duAn}/${w.loai}] ${cut(w.title, 70)}`);
   }
