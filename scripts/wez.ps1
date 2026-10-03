@@ -126,6 +126,51 @@ function Resolve-Id($s, [switch]$Thuc) {
     return "$($m.o)"
 }
 
+# ===== Codex trước, Claude dự phòng (04/10/2026, Hion: "ưu tiên dùng Codex trước") =====
+# Vai định nghĩa ai=codex: giao việc lúc tài khoản Codex của vai đó ≥ 90% (5 giờ) hoặc ≥ 95% (tuần) → vai TẠM chạy Claude
+# (cùng quyền, cùng khoá); Codex hồi lại (< 80% / < 90%) → về Codex. Ghi ở wez-ai\doi\ai-tam.json { "Sino.Bot": {ai, tu, ly} }.
+# Chuyển AI khác loại theo vai — KHÔNG nhảy giữa các tài khoản Codex (luật 02/10). Ngưỡng: "codexChuyenClaude" trong ~\.wez-ai.json.
+$aiTamF = Join-Path $env:LOCALAPPDATA 'wez-ai\ai-tam.json'   # ngoài thư mục doi\ (script khác đọc mọi *.json ở đó như sổ đội)
+function Read-AiTam { if (Test-Path $aiTamF) { try { return (Get-Content $aiTamF -Raw -Encoding UTF8 | ConvertFrom-Json) } catch {} }; return [pscustomobject]@{} }
+function Save-AiTam($o) { New-Item -ItemType Directory -Force (Split-Path $aiTamF) | Out-Null; [IO.File]::WriteAllText($aiTamF, ($o | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false)) }
+function Get-CodexFuel($proj, $w) {
+    $bang = Join-Path $HOME '.codex-tai-khoan.json'; $fuelF = Join-Path $env:LOCALAPPDATA 'wez-ai\fuel-codex.json'
+    if (-not (Test-Path $bang) -or -not (Test-Path $fuelF)) { return $null }
+    $b = Get-Content -Raw -Encoding UTF8 $bang | ConvertFrom-Json
+    $so = if ($w.tk) { [int]$w.tk } else { $b.duAn.$proj }
+    $tk = $b.taiKhoan | Where-Object { $_.so -eq $so } | Select-Object -First 1
+    if (-not $tk) { return $null }
+    $ds = Get-Content -Raw -Encoding UTF8 $fuelF | ConvertFrom-Json   # PS 5.1: mảng JSON ra 1 khối → gán biến rồi mới lọc
+    $f = $ds | Where-Object { $_.ten -eq $tk.ten } | Select-Object -First 1
+    if ($f) { return [pscustomobject]@{ ten = $tk.ten; five = [double]$f.five; week = [double]$f.week } }; return $null
+}
+function Chon-AI($s) {
+    if ("$s" -notmatch '^([^./]+)[./](.+)$') { return }
+    $proj = $Matches[1]; $vai = $Matches[2]
+    $defF = Join-Path $PSScriptRoot "..\doi\$proj.json"; if (-not (Test-Path $defF)) { return }
+    $def = Get-Content $defF -Raw -Encoding UTF8 | ConvertFrom-Json
+    $w = @($def.worker) | Where-Object { $_ -and ($_.vai -eq $vai -or $_.ten -eq $vai) } | Select-Object -First 1
+    if (-not $w -or $w.ai -ne 'codex') { return }
+    $f = Get-CodexFuel $proj $w; if (-not $f) { return }
+    $ng = if ($cfg -and $cfg.codexChuyenClaude) { $cfg.codexChuyenClaude } else { [pscustomobject]@{ nam = 90; tuan = 95 } }
+    $key = "$proj.$($w.vai)"; $tam = Read-AiTam; $dangTam = $tam.PSObject.Properties[$key]
+    $het = $f.five -ge $ng.nam -or $f.week -ge $ng.tuan
+    $hoi = $f.five -lt ($ng.nam - 10) -and $f.week -lt ($ng.tuan - 5)
+    if ($het -and -not $dangTam) { $muon = 'claude'; $ly = "$($f.ten) 5 giờ $([math]::Round($f.five))% · tuần $([math]::Round($f.week))%" }
+    elseif ($dangTam -and $hoi) { $muon = 'codex'; $ly = "$($f.ten) đã hồi ($([math]::Round($f.five))%)" }
+    else { return }
+    if ($env:WEZ_CHON_AI_THU) { Write-Host "[thử] $proj.$($w.vai): $(if ($muon -eq 'claude') { '↪ Claude' } else { '↩ Codex' }) ($ly)"; return }
+    # ô đang làm dở thì không đổi giữa chừng
+    $d = Sync-Doi $proj; $m = if ($d) { @($d.worker) | Where-Object { $_.vai -eq $w.vai } | Select-Object -First 1 } else { $null }
+    if ($m -and $m.o) { $st = Get-PaneState "$($m.o)"; if ($st -and $st.state -eq 'work') { return } }
+    if ($muon -eq 'claude') { $tam | Add-Member -NotePropertyName $key -NotePropertyValue ([ordered]@{ ai = 'claude'; tu = (Get-Date -Format 'yyyy-MM-dd HH:mm'); ly = $ly }) -Force }
+    else { $tam.PSObject.Properties.Remove($key) }
+    Save-AiTam $tam
+    Write-Host "🔀 $key → $(if ($muon -eq 'claude') { '↪ Claude dự phòng' } else { '↩ về Codex' }) ($ly)" -ForegroundColor Cyan
+    if ($m -and $m.o) { & $exe cli --no-auto-start kill-pane --pane-id $m.o 2>$null | Out-Null }
+    & $PSCommandPath doi $proj "thuc:$($w.vai)" | Out-Null
+}
+
 $sock = Get-ChildItem "$HOME\.local\share\wezterm\gui-sock-*" -ErrorAction SilentlyContinue |
     Where-Object { Get-Process -Id ($_.Name -replace 'gui-sock-', '') -ErrorAction SilentlyContinue } |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -192,7 +237,10 @@ switch ($Cmd) {
             }
         } | Format-Table -AutoSize | Out-String -Width 200
     }
+    # chon-ai <DựÁn.Vai>: chỉ chạy bước chọn AI (thử: đặt WEZ_CHON_AI_THU=1 để chỉ in quyết định, không đổi ô)
+    'chon-ai' { Chon-AI $Rest[0] }
     'send' {
+        Chon-AI $Rest[0]   # vai Codex mà tài khoản sắp hết → tạm chuyển Claude (và ngược lại khi Codex hồi)
         $id = Resolve-Id $Rest[0] -Thuc; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')   # -Thuc: worker đang ngủ thì tự đánh thức
         $s = Get-PaneState $id
         if (-not $Ep -and $s -and $s.state -in 'work', 'need') {
@@ -317,6 +365,14 @@ switch ($Cmd) {
         $defF = Join-Path (Split-Path $PSScriptRoot) "doi\$proj.json"
         if (-not (Test-Path $defF)) { Write-Error "Chưa có định nghĩa đội: $defF"; exit 1 }
         $def = Get-Content $defF -Raw -Encoding UTF8 | ConvertFrom-Json
+        # vai đang tạm chạy Claude vì tài khoản Codex sắp hết (ai-tam.json) → mở bằng Claude, lời giao vai có ghi chú dự phòng
+        $tamAi = Read-AiTam
+        foreach ($w in @($def.worker)) {
+            if ($w -and $tamAi.PSObject.Properties["$($def.du_an).$($w.vai)"]) {
+                $w.ai = 'claude'
+                $w.viec = "$($w.viec) [ĐANG DỰ PHÒNG: bạn là bản Claude thay tạm bản Codex của vai này (Codex hết hạn mức) — không nhớ hội thoại của bản Codex: đọc brief + tien-do để nắm việc dở, ghi kết quả vào file như thường]"
+            }
+        }
         $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
         $projDir = Join-Path $aiRoot $def.du_an
         New-Item -ItemType Directory -Force $doiDir | Out-Null
@@ -382,7 +438,8 @@ switch ($Cmd) {
                 # "chan" (vai chỉ đọc: Kiểm soát / Security) → sandbox read-only; "timWeb" → bật tìm web (--search)
                 $sb = if ("$($m.chan)" -match '\bWrite\b') { ' -s read-only' } else { '' }   # chỉ vai bị chặn ghi file (Kiểm soát/Security)
                 $web = if ($m.timWeb) { ' --search' } else { '' }
-                if ($ngu) { $l += "codex.cmd --no-daemon resume$sb '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon resume$sb --last }`r`n" }
+                # 04/10: không tìm thấy phiên theo tên (vd vai đổi tài khoản) → mở MỚI kèm lời giao vai; KHÔNG dùng "resume --last" (vớ nhầm phiên vai khác cùng tài khoản)
+                if ($ngu) { $l += "codex.cmd --no-daemon resume$sb '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon$sb$web (Get-Content -Raw -Encoding UTF8 '$loiF') }`r`n" }
                 else { $l += "codex.cmd --no-daemon$sb$web`r`n" }
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
@@ -411,6 +468,13 @@ switch ($Cmd) {
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"; Start-Sleep -Milliseconds 900
                 & $exe cli --no-auto-start send-text --pane-id $id (Get-Content -Raw -Encoding UTF8 $loiF); Start-Sleep -Milliseconds 400
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
+                # 04/10: lời dài bị Codex gom thành "[Pasted Content …]" và Enter đầu có khi trôi → kiểm, còn nằm ở ô nhập thì Enter lại
+                for ($k = 0; $k -lt 4; $k++) {
+                    Start-Sleep -Milliseconds 1200
+                    $man = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
+                    if ($man -notmatch '(?m)^\s*›\s*\S.*(Pasted Content|Bạn là)') { break }
+                    & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
+                }
             }
             return $id
         }
