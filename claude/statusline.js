@@ -58,7 +58,12 @@ process.stdin.on('end', () => {
     const w = pane && ws.find((x) => String(x.o) === pane);
     if (w) { role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`; isWorker = true; }
     // 03/10: dự án đã có đội mà ô này không phải Manager / worker (vd phiên review, phiên mở thêm) → không gắn nhãn Manager
-    else if (pane && doi.manager && String(doi.manager.o) !== pane) role = `🔹 PHIÊN PHỤ ${project.toUpperCase()}`;
+    // 04/10: sau khởi động lại sổ có thể còn số ô Manager cũ (Hion ghi ô 4 trong khi Tổng quản là ô 0) → Manager là Claude
+    // mà ô đó không còn file trạng thái (wez-ai\state\<ô>.json, hook Claude ghi) thì coi như ô chết, không gắn "phiên phụ"
+    else if (pane && doi.manager && String(doi.manager.o) !== pane) {
+      const chet = doi.manager.ai === 'claude' && !fs.existsSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'state', String(doi.manager.o) + '.json'));
+      if (!chet) role = `🔹 PHIÊN PHỤ ${project.toUpperCase()}`;
+    }
   } catch {}
   let where = `${pc}${bold}${role}${R}  ${logo} ${pc}${bold}${project}${R}`;
   const rel = path.relative(projDir, dir);
