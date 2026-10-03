@@ -46,12 +46,13 @@ local function ghi_cham(DO, tong)
   end
 end
 
+local RIGHT_CLEARED = false
 local function cap_nhat(window, pane, do_rieng)
   chay(do_rieng, 'kiem_ban_moi', kiem_ban_moi, window)
   -- Thanh tên bật lại 02/10 22h sau khi thêm phanh (hdr_allow / hdr_note); tắt tạm 18:18 vì dựng ô liên tục
-  chay(do_rieng, 'process_headers', process_headers, window)
+  chay(do_rieng, 'process_headers', process_headers, window, pane)
   chay(do_rieng, 'morning_report', morning_report)
-  chay(do_rieng, 'process_alerts', process_alerts, window)
+  chay(do_rieng, 'process_alerts', process_alerts, window, pane)
   chay(do_rieng, 'process_open', process_open, window)
   chay(do_rieng, 'auto_board', auto_board)
   chay(do_rieng, 'tu_ngu', tu_ngu) -- worker rảnh lâu → tự ngủ (đóng ô, nhớ phiên)
@@ -93,7 +94,7 @@ local function cap_nhat(window, pane, do_rieng)
   -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).
   chay(do_rieng, 'fuel_cells', fuel_cells)
   chay(do_rieng, 'codex_warn', codex_warn, window)
-  window:set_right_status('')
+  if not RIGHT_CLEARED then window:set_right_status(''); RIGHT_CLEARED = true end -- 04/10: chỉ 1 lần, khỏi gửi lệnh cho giao diện mỗi lượt
 
   -- Góc trái: báo khi đang ở chế độ phím đặc biệt (copy mode…)
   local kt = window:active_key_table()
@@ -105,8 +106,20 @@ end
 -- → dựng thêm thanh tên thứ 2 cho cùng ô, rồi 2 lượt ghi đè sổ của nhau → thanh thừa tự thoát, ô lệch, dựng lại…
 -- = lỗi "dựng quá 8 ô / phút" trong log + giật GUI. Giờ: đang có lượt chạy dở thì lượt mới bỏ qua (nhịp sau 2 giây làm tiếp).
 local US_DANG = 0 -- giờ bắt đầu lượt đang chạy dở (0 = không có); kẹt quá 15 giây thì coi như đã xong
+-- GIỚI HẠN NHỊP (04/10/2026, chuột đơ): ngoài nhịp 2 giây, WezTerm còn gọi update-status MỖI LẦN tiêu đề ô đổi — ~20 ô Claude/Codex
+-- quay ◐◓◑◒ liên tục → đo thật 45 lượt / 10 giây (đáng lẽ 5), mỗi lượt 0,3–3 giây trên luồng giao diện → chuột / gõ phím đơ.
+-- Giờ: phần nặng chạy tối đa 1 lần / US_NHIP ms; lượt chen giữa chỉ làm việc rẻ: bấm vào ô tên 🏷 → nhảy xuống ô AI ngay.
+local US_LAST, US_NHIP = 0, 1800
 wezterm.on('update-status', function(window, pane)
+  PERF.goi = (PERF.goi or 0) + 1
   if US_DANG > 0 and os.time() - US_DANG < 15 then return end
+  if ms() - US_LAST < US_NHIP then
+    local t = hdr_map()[tostring(pane:pane_id())]
+    local ai = t and wezterm.mux.get_pane(tonumber(t))
+    if ai then ai:activate() end
+    return
+  end
+  US_LAST = ms()
   US_DANG = os.time()
   local do_rieng, t0 = {}, ms()
   local ok, err = pcall(cap_nhat, window, pane, do_rieng)
@@ -114,4 +127,18 @@ wezterm.on('update-status', function(window, pane)
   if not ok then wezterm.log_error('update-status: ' .. tostring(err)) end
   local tong = ms() - t0
   if tong > CHAM_MS then pcall(ghi_cham, do_rieng, tong) end
+  PERF.us_n, PERF.us_ms = (PERF.us_n or 0) + 1, (PERF.us_ms or 0) + tong
+  if os.time() - PERF.t >= 10 then
+    local DV = AIDIR .. '\\dem-ve.log' -- giữ lại để theo dõi "đơ" về sau; > 200 KB thì ghi lại từ đầu
+    local f0 = io.open(DV, 'rb')
+    local cu = f0 and f0:seek('end') or 0
+    if f0 then f0:close() end
+    local f = io.open(DV, cu > 204800 and 'w' or 'a')
+    if f then
+      f:write(('%s  %ds · vẽ tên tab %d lần %.0fms CPU · tiêu đề cửa sổ %d lần · update-status gọi %d · chạy đủ %d lượt %.0fms\n'):format(
+        os.date('%H:%M:%S'), os.time() - PERF.t, PERF.tab_n, PERF.tab_ms, PERF.win_n, PERF.goi or 0, PERF.us_n, PERF.us_ms))
+      f:close()
+    end
+    PERF.tab_n, PERF.tab_ms, PERF.win_n, PERF.us_n, PERF.us_ms, PERF.goi, PERF.t = 0, 0, 0, 0, 0, 0, os.time()
+  end
 end)

@@ -7,6 +7,11 @@ config.show_new_tab_button_in_tab_bar = false -- bỏ nút "+" cho thanh tab g�
 config.colors = config.colors or {}
 config.colors.tab_bar = { background = '#15181c' } -- nền thanh tab tối hẳn để các khối màu dự án nổi lên
 config.status_update_interval = 2000
+-- 04/10/2026 (chuột đơ khi ~35 ô AI chạy): luồng giao diện WezTerm đo 71% một nhân → bớt việc vẽ:
+-- 30 khung/giây (mặc định 60, chữ vẫn mượt) · không vẽ hiệu ứng chuyển mờ · con trỏ không nhấp nháy (nhấp nháy = vẽ lại mọi ô)
+config.max_fps = 30
+config.animation_fps = 1
+config.cursor_blink_rate = 0
 
 -- Màu + logo riêng từng dự án: lấy từ Hion\cay-du-an.json (trường "mau", "logo"); dự án lạ → màu theo tên, logo 📁
 local proj_colors = { hion = '#e5c07b', sino = '#e06c75', coolguy = '#61afef', chatbot = '#c678dd' }

@@ -70,7 +70,7 @@ end
 if wezterm.GLOBAL.ten_o_tu_tat or (wezterm.GLOBAL.ten_o_tat and not wezterm.GLOBAL.ten_o_tat_bang_tay) then
   wezterm.GLOBAL.ten_o_tu_tat, wezterm.GLOBAL.ten_o_tat, wezterm.GLOBAL.ten_o_last = nil, false, nil
 end
-local function process_headers(window)
+local function process_headers(window, apane)
   local g = wezterm.GLOBAL
   local map = hdr_copy()
   -- ô nào còn sống, nằm ở tab nào
@@ -174,7 +174,7 @@ local function process_headers(window)
   end
   hdr_save(map)
   -- bấm vào ô tên → chuyển sang ô AI bên dưới
-  local ap = window:active_pane()
+  local ap = apane or window:active_pane() -- 04/10: ô đang chọn do update-status truyền sẵn (khỏi chờ luồng giao diện)
   local target = ap and map[tostring(ap:pane_id())]
   if target and alive[target] then alive[target].pane:activate() end
   -- ghi thông tin cho ten-o.js

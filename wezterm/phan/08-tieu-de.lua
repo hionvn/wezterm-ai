@@ -1,4 +1,4 @@
-wezterm.on('format-tab-title', function(tab, tabs)
+local function fmt_tab(tab, tabs)
   -- chạy rất dày → chỉ tra bảng PANE_LAST (update-status cập nhật mỗi 2 giây), không hỏi Windows
   local proj, logo, title, x = tab_info(tab)
   local label = title
@@ -40,11 +40,20 @@ wezterm.on('format-tab-title', function(tab, tabs)
     { Foreground = { Color = '#c8ccd4' } }, { Text = logo .. ' ' .. label .. ' ' },
     { Background = { Color = '#15181c' } }, { Text = ' ' },
   }
+end
+-- Đo tải vẽ (04/10): đếm số lần + thời gian CPU (os.clock) của hàm vẽ tên tab / tiêu đề cửa sổ → wez-ai\dem-ve.log mỗi 10 giây
+local PERF = { tab_n = 0, tab_ms = 0, win_n = 0, win_ms = 0, t = os.time() }
+wezterm.on('format-tab-title', function(tab, tabs)
+  local c0 = os.clock()
+  local r = fmt_tab(tab, tabs)
+  PERF.tab_n, PERF.tab_ms = PERF.tab_n + 1, PERF.tab_ms + (os.clock() - c0) * 1000
+  return r
 end)
 
 -- Tiêu đề cửa sổ (thanh trên cùng + thanh tác vụ Windows) — 03/10 làm gọn: chỉ ghi tab đang xem + tổng báo động,
 -- vd "💬 Chatbot · đội  —  🔔 1 cần duyệt · ✅ 2 xong" (trước đây liệt kê mọi AI trong tab → dài, rối)
 wezterm.on('format-window-title', function(tab, pane, tabs, panes)
+  PERF.win_n = PERF.win_n + 1
   local proj, logo, title = tab_info(tab)
   local s = logo .. ' ' .. proj .. ((title ~= '' and title ~= proj) and (' · ' .. title) or '')
   local need, done = 0, 0

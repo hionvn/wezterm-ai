@@ -179,10 +179,16 @@ local function toast_click(window, pane_id, title, text)
 end
 
 local ALERT_SCAN = { t = 0 }
-local function process_alerts(window)
+-- 04/10 (chuột đơ): window:is_focused() / window:active_pane() phải chờ luồng giao diện trả lời — đo thật 300–1250 ms/lượt
+-- khi ~20 ô AI quay tiêu đề liên tục. Giờ: ô đang chọn lấy từ tham số update-status (WezTerm truyền sẵn),
+-- cửa sổ có đang được chọn hay không thì nhớ qua sự kiện window-focus-changed (chỉ chạy khi đổi focus).
+local WIN_FOCUS = {}
+wezterm.on('window-focus-changed', function(window, pane) WIN_FOCUS[window:window_id()] = window:is_focused() end)
+local function process_alerts(window, apane)
   local T0, TT = ms(), { pinfo = 0, tt = 0, file = 0, n = 0 } -- đo từng phần (04/10)
-  local focused = window:is_focused()
-  local active = tostring(window:active_pane():pane_id())
+  local focused = WIN_FOCUS[window:window_id()]
+  if focused == nil then focused = window:is_focused(); WIN_FOCUS[window:window_id()] = focused end
+  local active = tostring((apane or window:active_pane()):pane_id())
   TT.win = ms() - T0
   local alive, pane_tab, pane_proj = {}, {}, {}
   local stat = {} -- [tab] = { work = số ô đang làm, need = số ô cần duyệt } → hiện trên tên tab
