@@ -10,7 +10,7 @@ config.status_update_interval = 2000
 -- 04/10/2026 (chuột đơ khi ~35 ô AI chạy): luồng giao diện WezTerm đo 71% một nhân → bớt việc vẽ:
 -- KHÔNG hạ max_fps: lỗi WezTerm Windows (wm_paint không ValidateRect) làm luồng giao diện quay vòng trong lúc chờ khung kế — fps càng thấp quay càng lâu
 -- (04/10 thử 30 → CPU luồng giao diện 66–89%). Con trỏ không nhấp nháy, không hiệu ứng chuyển mờ, không tự kiểm bản mới.
-config.max_fps = 60
+config.max_fps = 120 -- đo 04/10: 30 → 43% · 60 → 23–28% · 120 → 15–20% (CPU luồng giao diện)
 config.animation_fps = 1
 config.cursor_blink_rate = 0
 config.check_for_updates = false
