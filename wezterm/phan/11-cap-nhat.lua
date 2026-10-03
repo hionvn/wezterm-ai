@@ -20,24 +20,42 @@ local function kiem_ban_moi(window)
   end
 end
 
-wezterm.on('update-status', function(window, pane)
-  local okbm, errbm = pcall(kiem_ban_moi, window)
-  if not okbm then wezterm.log_error('kiem_ban_moi: ' .. tostring(errbm)) end
+-- Đo thời gian từng việc của update-status (04/10/2026): lượt nào > CHAM_MS mili giây thì ghi wez-ai\cham.log
+-- (giờ · tổng · việc chậm nhất) → biết đích xác việc nào làm GUI đứng hình. File tự cắt khi > 200 KB.
+local CHAM_MS, CHAM_LOG = 300, AIDIR .. '\\cham.log'
+local function chay(DO, ten, fn, ...)
+  local t0 = ms()
+  local ok, err = pcall(fn, ...)
+  if not ok then wezterm.log_error(ten .. ': ' .. tostring(err)) end
+  table.insert(DO, { ten, ms() - t0 })
+  return ok, err
+end
+local function ghi_cham(DO, tong)
+  table.sort(DO, function(a, b) return a[2] > b[2] end)
+  local parts = {}
+  for i = 1, math.min(4, #DO) do parts[i] = DO[i][1] .. ' ' .. math.floor(DO[i][2]) .. 'ms' end
+  local so_o = 0
+  for _, mw in ipairs(wezterm.mux.all_windows()) do for _, t in ipairs(mw:tabs()) do so_o = so_o + #t:panes() end end
+  local f = io.open(CHAM_LOG, 'rb')
+  local cu = f and f:seek('end') or 0
+  if f then f:close() end
+  f = io.open(CHAM_LOG, cu > 204800 and 'w' or 'a')
+  if f then
+    f:write(os.date('%Y-%m-%d %H:%M:%S') .. '  tổng ' .. math.floor(tong) .. 'ms  · ' .. so_o .. ' ô' .. (dang_xep() and ' · đang xếp' or '') .. '  · ' .. table.concat(parts, ' · ') .. '\n')
+    f:close()
+  end
+end
+
+local function cap_nhat(window, pane, do_rieng)
+  chay(do_rieng, 'kiem_ban_moi', kiem_ban_moi, window)
   -- Thanh tên bật lại 02/10 22h sau khi thêm phanh (hdr_allow / hdr_note); tắt tạm 18:18 vì dựng ô liên tục
-  local okh, errh = pcall(process_headers, window)
-  if not okh then wezterm.log_error('process_headers: ' .. tostring(errh)) end
-  local okr, errr = pcall(morning_report)
-  if not okr then wezterm.log_error('morning_report: ' .. tostring(errr)) end
-  local oka, erra = pcall(process_alerts, window)
-  if not oka then wezterm.log_error('process_alerts: ' .. tostring(erra)) end
-  local oko, erro = pcall(process_open, window)
-  if not oko then wezterm.log_error('process_open: ' .. tostring(erro)) end
-  local okb, errb = pcall(auto_board)
-  if not okb then wezterm.log_error('auto_board: ' .. tostring(errb)) end
-  local okn, errn = pcall(tu_ngu) -- worker rảnh lâu → tự ngủ (đóng ô, nhớ phiên)
-  if not okn then wezterm.log_error('tu_ngu: ' .. tostring(errn)) end
-  local oks, errs = pcall(autosave)
-  if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
+  chay(do_rieng, 'process_headers', process_headers, window)
+  chay(do_rieng, 'morning_report', morning_report)
+  chay(do_rieng, 'process_alerts', process_alerts, window)
+  chay(do_rieng, 'process_open', process_open, window)
+  chay(do_rieng, 'auto_board', auto_board)
+  chay(do_rieng, 'tu_ngu', tu_ngu) -- worker rảnh lâu → tự ngủ (đóng ô, nhớ phiên)
+  chay(do_rieng, 'autosave', autosave)
   if wezterm.GLOBAL.hint_restore then
     wezterm.GLOBAL.hint_restore = false
     -- 03/10 (người dùng yêu cầu): mở WezTerm lên → HỎI "Resume phiên trước" hay "Mở mới", không tự mở lại nữa.
@@ -51,9 +69,11 @@ wezterm.on('update-status', function(window, pane)
       local so_o = 0
       for _, t in ipairs(d.tabs) do so_o = so_o + #(t.panes or {}) end
       local function resume(w)
-        local n = restore_layout(w, d)
-        kill_pane(menu) -- đóng ô menu `ai` lúc mở
-        w:toast_notification('WezTerm · đội AI', '⏮ Đã mở lại ' .. n .. ' tab của phiên trước. Ô nào đang làm dở sẽ tự làm tiếp.', nil, 8000)
+        -- mở lần lượt từng ô (04/10) → ô đầu tiên mở ngay, đóng ô menu được luôn; báo khi mở xong hết
+        local n = restore_layout(w, d, function(so)
+          w:toast_notification('WezTerm · đội AI', '✅ Đã mở lại ' .. so .. ' ô của phiên trước. Ô nào đang làm dở sẽ tự làm tiếp.', nil, 8000)
+        end)
+        if n > 0 then kill_pane(menu) end -- đóng ô menu `ai` lúc mở
       end
       if machine.tuMoLai == true then resume(window) return end
       window:perform_action(act.InputSelector {
@@ -71,13 +91,27 @@ wezterm.on('update-status', function(window, pane)
   end
   -- 03/10: BỎ phần thông tin bên phải thanh tab (⛽ hạn mức, AI, dự án, nhánh, số ô, giờ) để các tab có thêm chỗ
   -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).
-  local okf, fc = pcall(fuel_cells)
-  if not okf then wezterm.log_error('fuel_cells: ' .. tostring(fc)) end
-  local okw, errw = pcall(codex_warn, window)
-  if not okw then wezterm.log_error('codex_warn: ' .. tostring(errw)) end
+  chay(do_rieng, 'fuel_cells', fuel_cells)
+  chay(do_rieng, 'codex_warn', codex_warn, window)
   window:set_right_status('')
 
   -- Góc trái: báo khi đang ở chế độ phím đặc biệt (copy mode…)
   local kt = window:active_key_table()
   window:set_left_status(kt and wezterm.format { { Background = { Color = '#e5c07b' } }, { Foreground = { Color = '#000000' } }, { Text = ' ⌨ ' .. kt .. ' ' } } or '')
+end
+
+-- CHỐNG CHẠY CHỒNG (04/10/2026): tách ô / mở tab trong Lua (pane:split, spawn_tab) là lệnh "nhường lượt" — trong lúc chờ,
+-- WezTerm chạy luôn một lượt update-status khác (đo thật: 1 nhịp ghi 2 lần process_alerts). Lượt sau đọc sổ thanh tên CŨ
+-- → dựng thêm thanh tên thứ 2 cho cùng ô, rồi 2 lượt ghi đè sổ của nhau → thanh thừa tự thoát, ô lệch, dựng lại…
+-- = lỗi "dựng quá 8 ô / phút" trong log + giật GUI. Giờ: đang có lượt chạy dở thì lượt mới bỏ qua (nhịp sau 2 giây làm tiếp).
+local US_DANG = 0 -- giờ bắt đầu lượt đang chạy dở (0 = không có); kẹt quá 15 giây thì coi như đã xong
+wezterm.on('update-status', function(window, pane)
+  if US_DANG > 0 and os.time() - US_DANG < 15 then return end
+  US_DANG = os.time()
+  local do_rieng, t0 = {}, ms()
+  local ok, err = pcall(cap_nhat, window, pane, do_rieng)
+  US_DANG = 0
+  if not ok then wezterm.log_error('update-status: ' .. tostring(err)) end
+  local tong = ms() - t0
+  if tong > CHAM_MS then pcall(ghi_cham, do_rieng, tong) end
 end)

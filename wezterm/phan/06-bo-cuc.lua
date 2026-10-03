@@ -136,13 +136,35 @@ local function safe_cwd(dir)
   return HUB
 end
 
-local function restore_tab(mw, t)
+-- 04/10/2026: mở lại theo 2 PHA, lần lượt từng ô. Trước đây cả bố cục (vd 6 tab, 20 ô) dựng trong MỘT lượt chạy Lua:
+--   GUI đứng hình suốt lúc đó (con trỏ quay mãi) · 20 PowerShell + 20 Claude/Codex khởi động cùng lúc giành CPU/ổ đĩa ·
+--   mỗi lần tách ô sau làm ô AI có sẵn đổi cỡ → Claude/Codex vẽ lại CẢ hội thoại (phiên dài = rất nặng), lặp n² lần ·
+--   thanh tên 🏷 / bảng 📊 chen vào tách ô giữa chừng → dựng đi dựng lại (log 04/10 03:40: "dựng quá 8 ô / phút").
+-- Giờ: PHA 1 dựng khung — mỗi ô một nhịp GAP_KHUNG giây, ô AI chỉ là PowerShell "⏳ chờ tới lượt" (nhẹ, đổi cỡ thoải mái);
+--      PHA 2 bật AI — xếp xong mới thả từng ô một (ghi file mo-*.go cho ô đó), cách nhau GAP_AI giây.
+-- Trong lúc xếp: dang_xep() = true → tạm dừng thanh tên, bảng 📊, tự ngủ, tự lưu. Giữa các nhịp GUI vẫn chạy bình thường.
+local GAP_KHUNG, GAP_AI = 0.25, 2.0
+local GO_N = 0
+local function la_ai(it) return it.kind == 'claude' or it.kind == 'codex' end
+-- Bọc lệnh của ô AI: đợi file .go xuất hiện rồi mới chạy (args = PS()/PSN(): phần tử cuối là câu lệnh)
+local function cho_luot(args)
+  GO_N = GO_N + 1
+  local go = AIDIR .. '\\mo-' .. wezterm.procinfo.pid() .. '-' .. os.time() .. '-' .. GO_N .. '.go'
+  local a = {}
+  for i, v in ipairs(args) do a[i] = v end
+  a[#a] = '$go = ' .. q(go) .. "; Write-Host '⏳ Chờ tới lượt mở (đang xếp ô)…' -ForegroundColor DarkGray; "
+    .. 'while (-not (Test-Path -LiteralPath $go)) { Start-Sleep -Milliseconds 300 }; Remove-Item -LiteralPath $go -ErrorAction SilentlyContinue; Clear-Host; '
+    .. a[#a]
+  return a, go
+end
+
+-- Kế hoạch một tab: danh sách bước theo thứ tự; bước 1 mở tab, các bước sau tách từ ô của bước `from`
+local function plan_tab(t)
   local keep = {} -- bỏ ô không có thư mục (ô tên 🏷 lỡ bị lưu ở bản cũ)
   for _, it in ipairs(t.panes or {}) do if it.cwd or it.kind ~= 'shell' then table.insert(keep, it) end end
-  t = { title = t.title, panes = keep }
-  if #t.panes == 0 then return end
+  if #keep == 0 then return nil end
   local cols, by_left = {}, {}
-  for _, it in ipairs(t.panes) do -- gom ô thành cột theo mép trái
+  for _, it in ipairs(keep) do -- gom ô thành cột theo mép trái
     local c = by_left[it.left]
     if not c then
       c = { left = it.left, width = it.width, items = {} }
@@ -155,36 +177,31 @@ local function restore_tab(mw, t)
   table.sort(cols, function(a, b) return a.left < b.left end)
   for _, c in ipairs(cols) do table.sort(c.items, function(a, b) return a.top < b.top end) end
 
-  local made = {} -- { it, ô mới } → ghi số ô mới vào sổ đội
-  local first = cols[1].items[1]
-  local tab, root = mw:spawn_tab { cwd = safe_cwd(first.cwd), args = restore_args(first) }
-  made[#made + 1] = { first, root }
-  if t.title and t.title ~= '' then tab:set_title(t.title) end
-  local heads, cur = { root }, root
+  local steps, head = { { it = cols[1].items[1] } }, { 1 }
   for i = 2, #cols do -- tách dần sang phải, giữ tỉ lệ chiều rộng
     local rest = 0
     for j = i, #cols do rest = rest + cols[j].width end
-    local it = cols[i].items[1]
-    cur = cur:split { direction = 'Right', size = rest / (rest + cols[i - 1].width), cwd = safe_cwd(it.cwd), args = restore_args(it) }
-    made[#made + 1] = { it, cur }
-    heads[i] = cur
+    table.insert(steps, { it = cols[i].items[1], from = head[i - 1], dir = 'Right', size = rest / (rest + cols[i - 1].width) })
+    head[i] = #steps
   end
   for i, c in ipairs(cols) do -- trong mỗi cột: tách dần xuống dưới
-    local p = heads[i]
+    local from = head[i]
     for k = 2, #c.items do
       local rest = 0
       for j = k, #c.items do rest = rest + c.items[j].height end
-      local it = c.items[k]
-      p = p:split { direction = 'Bottom', size = rest / (rest + c.items[k - 1].height), cwd = safe_cwd(it.cwd), args = restore_args(it) }
-      made[#made + 1] = { it, p }
+      table.insert(steps, { it = c.items[k], from = from, dir = 'Bottom', size = rest / (rest + c.items[k - 1].height) })
+      from = #steps
     end
   end
-  root:activate()
-  -- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (Chatbot.Engineer…) trỏ đúng
+  return { title = t.title, steps = steps, made = {} }
+end
+
+-- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (Chatbot.Engineer…) trỏ đúng
+local function ghi_so_doi(plan)
   local by_doi = {}
-  for _, m in ipairs(made) do
-    local it = m[1]
-    if it.doi then by_doi[it.doi] = by_doi[it.doi] or {}; by_doi[it.doi][it.vai] = tostring(m[2]:pane_id()) end
+  for k, s in ipairs(plan.steps) do
+    local p = plan.made[k]
+    if p and s.it.doi then by_doi[s.it.doi] = by_doi[s.it.doi] or {}; by_doi[s.it.doi][s.it.vai] = tostring(p:pane_id()) end
   end
   for du_an, vai_o in pairs(by_doi) do
     local path = AIDIR .. '\\doi\\' .. du_an .. '.json'
@@ -192,24 +209,99 @@ local function restore_tab(mw, t)
     if r then
       if r.manager and vai_o[r.manager.vai] then r.manager.o = vai_o[r.manager.vai] end
       for _, w in ipairs(r.worker or {}) do if vai_o[w.vai] then w.o = vai_o[w.vai] end end
-      local f = io.open(path, 'w')
-      if f then f:write(wezterm.json_encode(r)) f:close() end
+      ghi_so_doi_file(path, r)
     end
   end
 end
 
--- Mở lại cả bố cục đã lưu vào cửa sổ (dùng cho Ctrl+Shift+O, menu `ai`, và tự mở lại khi khởi động)
-local function restore_layout(window, d)
-  -- 03/10: tạm dừng dựng thanh tên 🏷 trong 25 giây — mở lại nhiều ô cùng lúc làm thanh tên bị dựng/xoá liên tục
-  -- → phanh an toàn hiểu nhầm là lỗi và tự tắt thanh tên (sau khởi động lại thấy 0 thanh tên)
-  wezterm.GLOBAL.ten_o_hoan = os.time() + 25
-  wezterm.GLOBAL.phien_da_mo = {} -- mỗi lần mở lại: đếm lại phiên nào đã có ô giữ (chống 2 ô cùng một phiên)
-  local n = 0
-  for _, t in ipairs(d and d.tabs or {}) do
-    local ok, err = pcall(restore_tab, window:mux_window(), t)
-    if ok then n = n + 1 else wezterm.log_error('restore_tab: ' .. tostring(err)) end
+-- Mở lại cả bố cục đã lưu vào cửa sổ — đường DUY NHẤT cho Resume lúc mở WezTerm, Ctrl+Shift+O và menu `ai`.
+-- Trả về số tab sẽ mở; xong hết (cả 2 pha) thì gọi xong(số ô đã mở).
+local function restore_layout(window, d, xong)
+  local g = wezterm.GLOBAL
+  if (g.xep_den or 0) > os.time() and g.dang_mo_lai then
+    window:toast_notification('WezTerm · đội AI', '⏳ Đang mở lại phiên trước, đợi xong rồi hãy mở tiếp', nil, 4000)
+    return 0
   end
-  return n
+  local mw = window:mux_window()
+  local plans, tong, so_ai = {}, 0, 0
+  for _, t in ipairs(d and d.tabs or {}) do
+    local ok, plan = pcall(plan_tab, t)
+    if not ok then wezterm.log_error('plan_tab: ' .. tostring(plan))
+    elseif plan then
+      table.insert(plans, plan)
+      for _, s in ipairs(plan.steps) do tong = tong + 1; if la_ai(s.it) then so_ai = so_ai + 1 end end
+    end
+  end
+  if #plans == 0 then return 0 end
+  g.phien_da_mo = {} -- mỗi lần mở lại: đếm lại phiên nào đã có ô giữ (chống 2 ô cùng một phiên)
+  g.dang_mo_lai = true
+  -- tạm dừng thanh tên 🏷 / bảng 📊 / tự ngủ / tự lưu trong lúc xếp; mỗi nhịp gia hạn thêm
+  local function giu(sec) g.xep_den = os.time() + sec; g.ten_o_hoan = os.time() + sec + 15 end
+  giu(30)
+  local giay = math.ceil(tong * GAP_KHUNG + so_ai * GAP_AI)
+  if giay >= 3 then
+    window:toast_notification('WezTerm · đội AI', '⏮ Đang mở lại ' .. tong .. ' ô: xếp khung trước, rồi bật AI lần lượt (~' .. giay .. ' giây) — cứ để yên', nil, 8000)
+  end
+  local cho = {} -- file .go của các ô AI, theo đúng thứ tự mở
+  local da_mo = 0
+
+  -- PHA 2: thả từng ô AI một
+  local function bat_ai(k)
+    local go = cho[k]
+    if not go then -- xong hết
+      g.dang_mo_lai = nil
+      g.xep_den = os.time() + 3
+      g.ten_o_hoan = os.time() + 12 -- đợi bố cục ổn định rồi mới dựng thanh tên
+      if xong then pcall(xong, da_mo) end
+      return
+    end
+    local f = io.open(go, 'w')
+    if f then f:write('go') f:close() end
+    giu(30)
+    wezterm.time.call_after(GAP_AI, function() bat_ai(k + 1) end)
+  end
+
+  -- PHA 1: dựng khung từng ô một
+  local pi, si = 1, 1
+  local function buoc()
+    local plan = plans[pi]
+    if not plan then
+      wezterm.time.call_after(1.0, function() bat_ai(1) end) -- 1 giây cho bố cục ổn định rồi mới bật AI
+      return
+    end
+    local s = plan.steps[si]
+    local ok, err = pcall(function()
+      local it = s.it
+      local args, go = restore_args(it), nil
+      if la_ai(it) then args, go = cho_luot(args) end
+      local p
+      if not s.from then
+        local tab
+        tab, p = mw:spawn_tab { cwd = safe_cwd(it.cwd), args = args }
+        plan.tab = tab
+        if plan.title and plan.title ~= '' then tab:set_title(plan.title) end
+      else
+        local parent = plan.made[s.from] or plan.made[1] -- ô cha lỗi → tách từ ô đầu tab cho khỏi mất ô
+        if not parent then error('tab chưa mở được ô đầu') end
+        p = parent:split { direction = s.dir, size = s.size, cwd = safe_cwd(it.cwd), args = args }
+      end
+      plan.made[si] = p
+      if go then table.insert(cho, go) end
+    end)
+    if ok then da_mo = da_mo + 1 else wezterm.log_error('restore: ' .. tostring(err)) end
+    if not ok and not s.from then si = #plan.steps end -- không mở được tab thì bỏ cả tab
+    si = si + 1
+    if si > #plan.steps then
+      pcall(function() if plan.made[1] then plan.made[1]:activate() end end)
+      local okd, errd = pcall(ghi_so_doi, plan)
+      if not okd then wezterm.log_error('ghi_so_doi: ' .. tostring(errd)) end
+      pi, si = pi + 1, 1
+    end
+    giu(30)
+    wezterm.time.call_after(GAP_KHUNG, buoc)
+  end
+  buoc()
+  return #plans
 end
 
 -- Ctrl+Shift+S: lưu bố cục hiện tại
@@ -238,11 +330,9 @@ restore_menu = wezterm.action_callback(function(window, pane)
     choices = choices,
     action = wezterm.action_callback(function(w, _, id)
       if not id then return end
-      local d = read_json(LAYOUT[id])
-      for _, t in ipairs(d and d.tabs or {}) do
-        local ok, err = pcall(restore_tab, w:mux_window(), t)
-        if not ok then wezterm.log_error('restore_tab: ' .. tostring(err)) end
-      end
+      restore_layout(w, read_json(LAYOUT[id]), function(n)
+        w:toast_notification('WezTerm · đội AI', '✅ Đã mở lại ' .. n .. ' ô', nil, 4000)
+      end)
     end),
   }, pane)
 end)
@@ -260,17 +350,14 @@ wezterm.on('user-var-changed', function(window, pane, name, value)
     window:toast_notification('WezTerm · đội AI', 'Chưa có phiên nào được lưu để mở lại', nil, 4000)
     return
   end
-  for _, t in ipairs(d.tabs) do
-    local ok, err = pcall(restore_tab, window:mux_window(), t)
-    if not ok then wezterm.log_error('restore_tab: ' .. tostring(err)) end
-  end
-  kill_pane(pane) -- đóng đúng ô menu (CloseCurrentPane có thể đóng nhầm ô đang chọn sau khi mở lại các tab)
+  if restore_layout(window, d) > 0 then kill_pane(pane) end -- đóng đúng ô menu (CloseCurrentPane có thể đóng nhầm ô đang chọn sau khi mở lại các tab)
 end)
 
 -- Tự lưu mỗi 30 giây (03/10: trước là 1 phút — trạng thái "đang làm" mới hơn khi mở lại), chỉ khi có từ 2 ô (để một lần mở thử 1 ô không đè mất bố cục cũ)
 local last_autosave = 0
 local function autosave()
   if os.time() - last_autosave < 30 then return end
+  if dang_xep() then return end -- đang mở lại / xếp đội: bố cục dở dang, lưu lúc này sẽ đè mất bản đầy đủ
   last_autosave = os.time()
   local n = 0
   for _, mw in ipairs(wezterm.mux.all_windows()) do
@@ -294,7 +381,11 @@ wezterm.on('gui-startup', function()
   -- 03/10: dọn rác mỗi lần mở WezTerm (chạy ngầm, không làm chậm lúc mở): giữ 5 log WezTerm mới nhất;
   -- xoá file tạm cũ hơn 1 ngày ở wez-ai\giao (câu giao việc), wez-ai\git-nho (nhớ git của statusline), ntfy-*.txt
   wezterm.background_child_process { 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-Command',
-    "$d = \"$HOME\\.local\\share\\wezterm\"; Get-ChildItem $d -Filter '*log*' -File | Sort-Object LastWriteTime -Descending | Select-Object -Skip 5 | Remove-Item -ErrorAction SilentlyContinue; "
+    -- 04/10: log GUI (wezterm-gui.exe-log-*) giữ 5 bản mới nhất; log lệnh cli (rất nhiều, mỗi lệnh wez.ps1 một file) xoá sau 1 ngày.
+    -- Trước đây gộp chung "giữ 5 file" → log cli đẩy mất log GUI của phiên trước, không tra được lỗi treo.
+    "$d = \"$HOME\\.local\\share\\wezterm\"; Get-ChildItem $d -Filter 'wezterm-gui*log*' -File | Sort-Object LastWriteTime -Descending | Select-Object -Skip 5 | Remove-Item -ErrorAction SilentlyContinue; "
+    .. "Get-ChildItem $d -Filter 'wezterm.exe-log*' -File | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } | Remove-Item -ErrorAction SilentlyContinue; "
     .. "$w = \"$env:LOCALAPPDATA\\wez-ai\"; Get-ChildItem \"$w\\giao\",\"$w\\git-nho\" -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } | Remove-Item -ErrorAction SilentlyContinue; "
-    .. "Get-ChildItem $w -Filter 'ntfy-*.txt' -File -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue" }
+    .. "Get-ChildItem $w -Filter 'ntfy-*.txt' -File -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue; "
+    .. "Get-ChildItem $w -Filter 'mo-*.go' -File -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue" } -- vé mở ô (04/10) của ô đã đóng trước khi tới lượt
 end)

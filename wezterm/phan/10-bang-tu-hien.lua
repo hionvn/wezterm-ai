@@ -22,6 +22,7 @@ local NGU_PHUT = tonumber(machine.nguSauPhut) or 20
 local NGU_RANH, NGU_MEMO = {}, { t = 0 }
 local function tu_ngu()
   if NGU_PHUT <= 0 then return end
+  if dang_xep() then return end -- đang mở lại / xếp đội: số ô trong sổ đang đổi, đừng đóng nhầm
   local now = os.time()
   if now - NGU_MEMO.t < 30 then return end -- soát mỗi 30 giây là đủ
   NGU_MEMO.t = now
@@ -74,10 +75,7 @@ local function tu_ngu()
           end
         end
       end
-      if doi_ghi then
-        local f = io.open(path, 'w')
-        if f then f:write(wezterm.json_encode(r)) f:close() end
-      end
+      if doi_ghi then ghi_so_doi_file(path, r) end
     end
   end
 end
@@ -97,6 +95,7 @@ local function open_board(beside, auto)
 end
 local function auto_board()
   if machine.bangTuDong == false then return end
+  if dang_xep() then return end -- đang mở lại / xếp đội: đừng tách thêm ô bảng giữa chừng
   local r = read_json(AIDIR .. '\\doi\\Hion.json')
   local tq = r and r.manager and pane_or_nil(r.manager.o)
   if not tq then return end

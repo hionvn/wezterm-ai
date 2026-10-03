@@ -31,7 +31,9 @@ function roleOfRaw(pane) {
     let d;
     try { d = JSON.parse(fs.readFileSync(path.join(DOI_DIR, f), 'utf8').replace(/^﻿/, '')); } catch { continue; }
     const m = d.manager;
-    const ws = d.worker || [];
+    // 04/10: đội chưa có worker có lúc bị ghi "worker": {} (không phải mảng) → ws.map / ws.find lỗi → ô tên CHẾT ngay khi mở
+    // → WezTerm dựng lại → chết… (thủ phạm "dựng quá 8 ô / phút" + giật). Chấp nhận cả mảng, 1 đối tượng, hoặc {} rỗng.
+    const ws = Array.isArray(d.worker) ? d.worker : (d.worker && d.worker.vai ? [d.worker] : []);
     if (m && String(m.o) === String(pane)) {
       return { vai: '🧭 Manager', mau: m.mau, them: `→ ${ws.length} worker: ô ${ws.map(w => w.o).join(',')}` };
     }
@@ -79,12 +81,26 @@ function draw() {
   if (out !== last) { process.stdout.write(out); last = out; }
 }
 
+// 04/10: ghi lý do thoát vào wez-ai\ten-o-thoat.log (ô tên tự chết sau ~30 giây → thanh tên dựng lại liên tục, chưa rõ vì sao)
+const BAT_DAU = Date.now();
+function ghiThoat(lyDo) {
+  try {
+    const f = path.join(WEZAI, 'ten-o-thoat.log');
+    try { if (fs.statSync(f).size > 200000) fs.writeFileSync(f, ''); } catch {}
+    fs.appendFileSync(f, `${new Date().toISOString()} ô ${ME} sống ${Math.round((Date.now() - BAT_DAU) / 1000)}s: ${lyDo}\n`);
+  } catch {}
+}
+process.on('uncaughtException', (e) => { ghiThoat('lỗi ' + String(e && e.stack || e).slice(0, 300)); process.exit(1); });
+
 function tick() {
   let data = null;
   try { data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { /* file đang được ghi: thử lại lần sau */ return; }
   const it = data && !data.tat && data.o && data.o[ME];
   if (!it) {
-    if (++missing >= 2) { process.stdout.write(`${ESC}[0m${ESC}[?25h`); process.exit(0); } // ~1 giây không thấy → tự đóng (WezTerm bỏ ô khỏi sổ = lệnh đóng)
+    if (++missing >= 2) { // ~1 giây không thấy → tự đóng (WezTerm bỏ ô khỏi sổ = lệnh đóng)
+      ghiThoat(data && data.tat ? 'thanh tên đang tắt' : `không có trong ten-o.json (có ${Object.keys((data && data.o) || {}).join(',') || 'trống'})`);
+      process.stdout.write(`${ESC}[0m${ESC}[?25h`); process.exit(0);
+    }
     return;
   }
   missing = 0;

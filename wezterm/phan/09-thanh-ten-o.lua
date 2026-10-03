@@ -45,7 +45,7 @@ end
 -- Phanh chống dựng ô tên liên tục (lỗi 18:16 02/10: tab bị thu còn 14 cột → "No space for split!" mỗi giây,
 -- ô tên đặt sai chỗ bị đóng rồi dựng lại → ô AI bị bóp nhỏ dần):
 --   mỗi ô AI: cách nhau ≥ 30 giây, tối đa 3 lần / 10 phút · mỗi lượt chỉ dựng 1 ô · ≥ 8 lần / phút → tự TẮT thanh tên.
-local HDR_TRY, HDR_RATE = {}, {}
+local HDR_TRY, HDR_RATE, HDR_FIX = {}, {}, {} -- HDR_FIX[ô tên] = { t, n }: số lần đã thu ô tên bị giãn cao
 local function hdr_allow(id)
   local now = os.time()
   local x = HDR_TRY[id]
@@ -82,12 +82,15 @@ local function process_headers(window)
   end
   local has = {}
   for h, t in pairs(map) do -- bỏ cặp đã mất ô, hoặc ô AI đã bị đẩy sang tab khác
-    if not alive[h] or not alive[t] or alive[h].tab ~= alive[t].tab then map[h] = nil else has[t] = h end
+    if not alive[h] or not alive[t] or alive[h].tab ~= alive[t].tab then
+      if not g.ten_o_tat then wezterm.log_warn('ten-o bỏ ' .. h .. '/' .. t .. ': ' .. (not alive[h] and 'ô tên đã mất' or not alive[t] and 'ô AI đã đóng' or 'khác tab')) end
+      map[h] = nil
+    else has[t] = h end
   end
   if g.ten_o_tu_tat and os.time() - g.ten_o_tu_tat >= 300 then -- phanh tự tắt quá 5 phút → thử bật lại
     g.ten_o_tu_tat, g.ten_o_tat, g.ten_o_last = nil, false, nil
   end
-  local paused = (g.ten_o_hoan or 0) > os.time()
+  local paused = (g.ten_o_hoan or 0) > os.time() or dang_xep() -- 04/10: đang mở lại / xếp đội → chưa dựng thanh tên
   local made = false
   for _, tab in ipairs(not g.ten_o_tat and not paused and window:mux_window():tabs() or {}) do
     local infos = tab:panes_with_info()
@@ -143,7 +146,30 @@ local function process_headers(window)
       local hi, ti = pos[h], pos[tid]
       local sai_cho = hi and ti and (hi.left ~= ti.left or hi.top + hi.height + 1 ~= ti.top)
       local cao = hi and hi.height > 1 and not paused
-      if (sai_cho or cao) and hdr_allow(tid) then map[h] = nil end
+      -- 04/10: ô tên đúng chỗ nhưng bị giãn cao (đóng ô bên cạnh / đổi cỡ cửa sổ chia thêm dòng cho mọi ô) → THU LẠI 1 dòng
+      -- (đường ranh dưới ô tên dịch lên) thay vì phá đi dựng lại: dựng lại = 2 lần đổi cỡ ô AI = Claude/Codex vẽ lại cả hội thoại 2 lần.
+      -- Thu 2 lần không được thì mới bỏ để dựng lại như cũ.
+      if cao and not sai_cho then
+        local k = HDR_FIX[h]
+        if not k or os.time() - k.t >= 4 then
+          if not k or k.n < 2 then
+            HDR_FIX[h] = { t = os.time(), n = (k and k.n or 0) + 1 }
+            wezterm.background_child_process { wezterm.executable_dir .. '\\wezterm.exe', 'cli', '--no-auto-start',
+              'adjust-pane-size', '--pane-id', h, '--amount', tostring(hi.height - 1), 'Up' }
+            cao = false
+          end
+        else
+          cao = false -- vừa thu, đợi WezTerm cập nhật cỡ
+        end
+      elseif hi and hi.height == 1 then
+        HDR_FIX[h] = nil
+      end
+      if (sai_cho or cao) and hdr_allow(tid) then
+        -- 04/10: ghi lý do vào log GUI để biết vì sao thanh tên bị dựng lại (phanh "dựng quá 8 ô / phút")
+        wezterm.log_warn(('ten-o bỏ %s/%s: %s · tên %dx%d@%d,%d · AI %dx%d@%d,%d'):format(h, tid, sai_cho and 'sai chỗ' or 'giãn cao',
+          hi.width, hi.height, hi.left, hi.top, ti and ti.width or -1, ti and ti.height or -1, ti and ti.left or -1, ti and ti.top or -1))
+        map[h] = nil; HDR_FIX[h] = nil
+      end
     end
   end
   hdr_save(map)

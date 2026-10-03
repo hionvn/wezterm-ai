@@ -16,6 +16,35 @@ local function read_json(path)
   local ok, v = pcall(wezterm.json_parse, s)
   return ok and v or nil
 end
+-- Ghi sổ đội (wez-ai\doi\<dự án>.json). json_encode biến bảng RỖNG thành {} → đội chưa có worker bị ghi "worker": {}
+-- → ten-o.js gọi ws.map / ws.find lỗi, ô tên chết ngay khi mở → dựng lại liên tục (bắt được 04/10) → ép lại thành [].
+local function ghi_so_doi_file(path, r)
+  local s = wezterm.json_encode(r):gsub('"worker":%{%}', '"worker":[]')
+  local f = io.open(path, 'w')
+  if f then f:write(s) f:close() end
+end
+
+-- "Đang xếp ô" (04/10/2026): lúc mở lại phiên / mở đội, WezTerm phải dựng nhiều ô liên tục. Trong lúc đó các việc nền
+-- của update-status (dựng thanh tên 🏷, bảng 📊 tự hiện, worker tự ngủ, tự lưu bố cục) chen vào tách / đóng ô
+-- → bố cục giành nhau, GUI đứng hình (con trỏ quay mãi). Cờ: wezterm.GLOBAL.xep_den (Lua tự đặt khi mở lại phiên)
+-- hoặc file wez-ai\dang-xep.txt = giờ hết hạn (wez.ps1 doi ghi khi mở đội). Hết hạn thì tự bỏ, không cần dọn.
+local XEP_MEMO = { t = -1, den = 0 }
+local function dang_xep()
+  local now = os.time()
+  if (wezterm.GLOBAL.xep_den or 0) > now then return true end
+  if XEP_MEMO.t ~= now then -- đọc file tối đa 1 lần / giây
+    XEP_MEMO.t = now
+    local f = io.open(AIDIR .. '\\dang-xep.txt', 'rb')
+    XEP_MEMO.den = f and tonumber((f:read('*a') or ''):match('%d+')) or 0
+    if f then f:close() end
+  end
+  return XEP_MEMO.den > now
+end
+-- Đồng hồ mili giây (đo việc nào làm GUI chậm)
+local function ms()
+  local ok, v = pcall(function() return tonumber(wezterm.time.now():format('%s%.3f')) end)
+  return (ok and v or os.time()) * 1000
+end
 
 -- Báo động: Claude ghi file qua hooks (cai-dat\wez-alert.js); Codex thì đoán từ tiêu đề ô.
 -- File: %LOCALAPPDATA%\wez-ai\alerts\<PANEID>.json = { kind = 'need' | 'done', text, t }
@@ -70,17 +99,29 @@ end
 -- 03/10: tiến trình + thư mục (2 câu hỏi chậm) chỉ hỏi lại mỗi PANE_SLOW giây / ô; tiêu đề (nhanh) vẫn mỗi giây.
 -- Trước đây cứ 2 giây hỏi lại cả 2 cho MỌI ô (kể cả ô tên 🏷) → 20 ô = 40 lần hỏi Windows / 2 giây → giật.
 local PANE_NOW, PANE_LAST, PANE_SLOWC = { t = -1, m = {} }, {}, {}
-local PANE_SLOW = 6
+local PANE_SLOW = 30 -- 04/10: 6 → 30 giây. Đo thật: 14 ô = process_alerts 450–650 ms mỗi nhịp 2 giây (GUI khựng đều).
+                    -- Loại AI + trạng thái đã đọc từ TIÊU ĐỀ ô (nhanh, mỗi giây); tiến trình + thư mục hiếm khi đổi.
+-- 04/10: mỗi câu hỏi chậm trên Windows chụp lại CẢ cây tiến trình (claude/codex kéo theo nhiều node MCP) → vài chục ms/lần,
+-- chạy ngay trên luồng GUI. Mở lại phiên 20 ô thì các ô hết hạn cùng một nhịp → dồn 40 câu hỏi vào 1 lượt → đứng hình.
+-- Giới hạn: làm mới tối đa SLOW_MAX ô mỗi giây (ô MỚI chưa có gì thì vẫn hỏi ngay); ô chưa tới lượt dùng tạm bản cũ.
+local SLOW_MAX, SLOW_BUDGET = 2, { t = -1, n = 0 }
 local function pinfo(p)
   local now = os.time()
   if PANE_NOW.t ~= now then PANE_NOW = { t = now, m = {} } end
+  if SLOW_BUDGET.t ~= now then SLOW_BUDGET.t, SLOW_BUDGET.n = now, 0 end
   local id = p:pane_id()
   local x = PANE_NOW.m[id]
   if x then return x end
   local sc = PANE_SLOWC[id]
-  if not sc or now - sc.t >= PANE_SLOW then
-    sc = { t = now, proc = p:get_foreground_process_name() or '', cwd = p:get_current_working_dir() }
+  if not sc or (now - sc.t >= PANE_SLOW and SLOW_BUDGET.n < SLOW_MAX) then
+    SLOW_BUDGET.n = SLOW_BUDGET.n + 1
+    local t0 = ms()
+    local proc = p:get_foreground_process_name() or ''
+    local t1 = ms()
+    sc = { t = now, proc = proc, cwd = p:get_current_working_dir() }
     PANE_SLOWC[id] = sc
+    local t2 = ms() -- đo thật mỗi câu hỏi Windows (04/10): chậm > 80 ms thì ghi log GUI
+    if t2 - t0 > 80 then wezterm.log_warn(('pinfo chậm: ô %d · tiến trình %.0fms · thư mục %.0fms'):format(id, t1 - t0, t2 - t1)) end
   end
   x = { title = p:get_title() or '', proc = sc.proc, cwd = sc.cwd }
   x.dir = pane_dir { current_working_dir = x.cwd }
@@ -94,8 +135,7 @@ end
 local function title_state(p)
   local x = pinfo(p)
   local title = x.title
-  local proc = x.proc:lower()
-  if proc:find('codex') then
+  if x.ai == 'Codex' then -- which_ai: theo tiến trình HOẶC tiêu đề "| Ready |"… (tiến trình giờ chỉ hỏi lại mỗi 30 giây)
     local low = title:lower()
     if low:find('approv') or low:find('waiting') then return 'need', '🧩 Codex' end
     if title:find('Ready') then return 'idle', '🧩 Codex' end
@@ -132,6 +172,7 @@ local function toast_click(window, pane_id, title, text)
 end
 
 local function process_alerts(window)
+  local T0, TT = ms(), { pinfo = 0, tt = 0, file = 0, n = 0 } -- đo từng phần (04/10)
   local focused = window:is_focused()
   local active = tostring(window:active_pane():pane_id())
   local alive, pane_tab, pane_proj = {}, {}, {}
@@ -143,9 +184,12 @@ local function process_alerts(window)
         local id = tostring(p:pane_id())
         alive[id], pane_tab[id] = true, tostring(tab:tab_id())
         if not is_header(p) then -- ô tên 🏷: không có AI, khỏi hỏi Windows
+          local ta = ms()
           local okp, x = pcall(pinfo, p)
+          TT.pinfo, TT.n = TT.pinfo + ms() - ta, TT.n + 1
           pane_proj[id] = (okp and x.proj ~= '?') and x.proj or nil
           local state, who = title_state(p)
+          local tb = ms()
           -- đếm cho tên tab: Claude đang làm = tiêu đề có dấu quay ◐◓◑◒; Codex đang làm = 'work'
           local t1 = okp and x.title:match('^(%S+)') or ''
           local busy = state == 'work' or (not state and (t1 == '◐' or t1 == '◓' or t1 == '◑' or t1 == '◒'))
@@ -161,6 +205,7 @@ local function process_alerts(window)
           else
             fix_claude_state(id, okp and x.title or '')
           end
+          TT.file = TT.file + ms() - tb
         end
       end
     end
@@ -195,6 +240,10 @@ local function process_alerts(window)
     end
   end
   TAB_STAT = stat
+  local tong = ms() - T0
+  if tong > 250 then
+    wezterm.log_warn(('process_alerts %.0fms: pinfo %.0fms (%d ô) · ghi/đọc trạng thái %.0fms · còn lại %.0fms'):format(tong, TT.pinfo, TT.n, TT.file, tong - TT.pinfo - TT.file))
+  end
   -- Dọn trạng thái của ô đã đóng (số ô có thể được dùng lại sau khi mở lại WezTerm)
   for _, path in ipairs(wezterm.glob(STATE:gsub('\\', '/') .. '/*.json')) do
     local id = path:match('(%d+)%.json$')

@@ -382,6 +382,12 @@ switch ($Cmd) {
             if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.o) { & $exe cli --no-auto-start kill-pane --pane-id $m.o } } }
             Write-Host "🛑 Đã tắt đội $($def.du_an)"; break
         }
+        # 04/10: báo WezTerm "đang xếp ô" → tạm dừng thanh tên 🏷 / bảng 📊 / tự ngủ / tự lưu cho tới khi xếp + bật AI xong
+        # (trước đây chúng chen vào tách / đóng ô giữa lúc đang xếp đội → bố cục giành nhau, WezTerm đứng hình)
+        $xepF = Join-Path $env:LOCALAPPDATA 'wez-ai\dang-xep.txt'
+        function Giu-Xep($giay) { try { [IO.File]::WriteAllText($xepF, "$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + $giay)") } catch {} }
+        Giu-Xep 120
+        $choBat = New-Object System.Collections.ArrayList   # ô AI đã dựng khung, chờ tới lượt bật (pha 2)
         $oCu = @{}
         if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.o) { $oCu[$m.vai] = "$($m.o)" } } }
         # Worker đang NGỦ (WezTerm tự đóng khi rảnh lâu, nhớ phiên trong sổ): "doi X" mở lại tất cả đúng phiên cũ;
@@ -425,6 +431,13 @@ switch ($Cmd) {
             $loiF = Join-Path $launchDir "$($m.vai).txt"
             [IO.File]::WriteAllText($loiF, (Loi $m $laManager), $bom)
             $l = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item`r`n"
+            # 04/10: PHA 1 chỉ dựng khung — ô đợi file .go (pha 2 thả lần lượt) rồi mới chạy AI. Ô AI mở sẵn mà bị tách / đổi cỡ
+            # thì Claude/Codex vẽ lại cả hội thoại mỗi lần → mở đội 5 ô = hàng chục lần vẽ lại cùng lúc → WezTerm giật / đứng hình.
+            $go = Join-Path $launchDir "mo-$($m.vai).go"
+            Remove-Item -LiteralPath $go -ErrorAction SilentlyContinue
+            $l += "Write-Host '⏳ Chờ tới lượt mở (đang xếp đội)…' -ForegroundColor DarkGray`r`n"
+            $l += "`$go = '$go'; `$i = 0; while (-not (Test-Path -LiteralPath `$go) -and `$i -lt 1200) { Start-Sleep -Milliseconds 300; `$i++ }`r`n"   # tối đa 6 phút rồi tự chạy
+            $l += "Remove-Item -LiteralPath `$go -ErrorAction SilentlyContinue; Clear-Host`r`n"
             $ngu = $nguInfo[$m.vai]   # đang ngủ → mở lại ĐÚNG phiên cũ (nhớ hết việc trước), không gửi lời giao vai lại
             if ($m.ai -eq 'codex') {
                 $bang = Join-Path $HOME '.codex-tai-khoan.json'
@@ -454,7 +467,12 @@ switch ($Cmd) {
             $id = if ($splitFrom) { & $exe cli --no-auto-start split-pane --pane-id $splitFrom $huong --percent $pct --cwd $projDir -- @a }
                   else { & $exe cli --no-auto-start spawn --cwd $projDir -- @a }
             $id = "$id".Trim()
-            if ($m.ai -eq 'codex' -and $id -and -not $ngu) {   # Codex thức dậy thì đã có tên + vai trong phiên cũ
+            if ($id) { [void]$choBat.Add(@{ id = $id; go = $go; codexMoi = ($m.ai -eq 'codex' -and -not $ngu); ten = $ten; loiF = $loiF }) }
+            return $id
+        }
+        # PHA 2: Codex mới mở → đợi sẵn sàng, /rename, gửi lời giao vai (Claude nhận lời giao vai ngay trong lệnh mở)
+        function KhoiDong-Codex($id, $ten, $loiF) {   # chỉ Codex MỚI (Codex thức dậy thì đã có tên + vai trong phiên cũ)
+            & {
                 # đợi Codex sẵn sàng (bỏ qua hộp hỏi cập nhật bằng Esc) → /rename → gửi lời nhắn
                 for ($i = 0; $i -lt 40; $i++) {
                     Start-Sleep -Milliseconds 750
@@ -476,7 +494,6 @@ switch ($Cmd) {
                     & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
                 }
             }
-            return $id
         }
         $so = [ordered]@{ du_an = $def.du_an; logo = $def.logo; cap_nhat = (Get-Date -Format 'yyyy-MM-dd HH:mm'); manager = $null; worker = @() }
         # Bố cục (người dùng chốt 03/10): cả đội chung 1 tab — Manager nửa trái, worker nửa phải chia lưới 2 cột
@@ -535,6 +552,18 @@ switch ($Cmd) {
         $ghiChu = if ($chungTab) { 'cả đội đã chung 1 tab, giữ nguyên' } else { "xếp lại: Manager trái, worker lưới bên phải · mở mới $moMoi ô" }
         Write-Host ("👥 Đội $($def.du_an): Manager ô $mo · " + (($so.worker | ForEach-Object { "$($_.vai) ô $($_.o)" }) -join ' · ') + " ($ghiChu)") -ForegroundColor Cyan
         if ($ws.Count) { Write-Host "   Gọi bằng tên: wez.ps1 send $($def.du_an).$($ws[0].vai) `"việc`"" } else { Write-Host "   Gọi Manager: wez.ps1 send $($def.du_an).Manager `"việc`"" }
+        # PHA 2 (04/10): khung đã xếp xong → bật AI từng ô một, cách nhau ~2 giây (Codex mới thì đợi nó sẵn sàng rồi mới sang ô sau)
+        if ($choBat.Count) {
+            Write-Host "   ⏳ Bật AI lần lượt $($choBat.Count) ô…" -ForegroundColor DarkGray
+            Start-Sleep -Milliseconds 800   # cho bố cục ổn định
+            foreach ($c in $choBat) {
+                Giu-Xep 90
+                [IO.File]::WriteAllText($c.go, 'go')
+                if ($c.codexMoi) { KhoiDong-Codex $c.id $c.ten $c.loiF } else { Start-Sleep -Seconds 2 }
+            }
+            Write-Host "   ✅ Đã bật xong $($choBat.Count) ô" -ForegroundColor Green
+        }
+        Giu-Xep 5   # xong: 5 giây nữa WezTerm dựng lại thanh tên / bảng như thường
     }
     # don: liệt kê ô / tab thừa có thể đóng (tài liệu 📄, phiên phụ đang rảnh, PowerShell trống) — KHÔNG tự đóng.
     # don dong 1,3 : đóng các mục số 1 và 3 trong danh sách vừa liệt kê (03/10/2026)
