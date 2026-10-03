@@ -98,6 +98,8 @@ else {
     [IO.File]::WriteAllLines($ct, [string[]]$lines, $utf8)
     Write-Host "  ✓ $ct" -ForegroundColor Green
 }
+# Luật chặn lệnh nguy hiểm cho mọi tài khoản Codex (~\.codex*\rules\default.rules)
+if (Get-Command node -ErrorAction SilentlyContinue) { node (Join-Path $hubScripts 'chan-lenh.js') cai-codex }
 
 Write-Host "`n[7/9] Lệnh tắt PowerShell (ai, ai2, hion, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
 Copy-Safe "$here\powershell\Microsoft.PowerShell_profile.ps1" $PROFILE

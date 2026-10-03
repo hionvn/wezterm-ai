@@ -43,6 +43,15 @@
                                                            "command":  "node \"E:/AI/Hion/cai-dat/khoa.js\" hook-truoc"
                                                        }
                                                    ]
+                                     },
+                                     {
+                                         "matcher":  "Bash|PowerShell|mcp__.*Gmail__(send_message|reply|forward|delete_label)|mcp__.*Drive__(share_file|trash_file)",
+                                         "hooks":  [
+                                                       {
+                                                           "type":  "command",
+                                                           "command":  "node \"E:/AI/Hion/cai-dat/chan-lenh.js\" hook"
+                                                       }
+                                                   ]
                                      }
                                  ],
                   "PostToolUse":  [

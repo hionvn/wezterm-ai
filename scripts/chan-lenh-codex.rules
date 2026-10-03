@@ -1,0 +1,17 @@
+# === chan-lenh (Hion, 03/10/2026) — Codex KHÔNG được chạy các lệnh dưới (YOLO vẫn bị chặn) ===
+# Bản gốc: E:\AI\Hion\cai-dat\chan-lenh-codex.rules · cài vào mọi CODEX_HOME: node E:\AI\Hion\cai-dat\chan-lenh.js cai-codex
+# Codex là worker: không push / deploy / phát hành — việc đó của Manager (Claude, có hook chan-lenh.js).
+prefix_rule(pattern=["git", "push"], decision="forbidden", justification="Worker Codex không push. Báo Manager / ghi duyet.js them.")
+prefix_rule(pattern=["git", "clean", ["-fdx", "-fxd", "-xdf", "-xfd", "-dfx", "-dxf", "-fx", "-xf", "-x"]], decision="forbidden", justification="git clean -x xoá cả .env và dữ liệu bị gitignore.")
+prefix_rule(pattern=["gh", "repo", ["delete", "archive", "edit", "rename"]], decision="forbidden", justification="Không đổi / xoá repo GitHub.")
+prefix_rule(pattern=["gh", "pr", "merge"], decision="forbidden", justification="Merge PR là việc của Manager sau khi soát.")
+prefix_rule(pattern=["gh", "release"], decision="forbidden", justification="Không phát hành.")
+prefix_rule(pattern=[["npm", "pnpm", "yarn"], "publish"], decision="forbidden", justification="Không đăng gói công khai.")
+prefix_rule(pattern=["vercel", ["--prod", "deploy", "promote", "remove", "rm", "projects", "domains"]], decision="forbidden", justification="Không deploy / xoá trên Vercel.")
+prefix_rule(pattern=[["netlify", "firebase", "wrangler", "fly", "railway"], "deploy"], decision="forbidden", justification="Không deploy.")
+prefix_rule(pattern=["supabase", "db", ["reset", "push"]], decision="forbidden", justification="Không đổi / reset database thật.")
+prefix_rule(pattern=["supabase", "projects", "delete"], decision="forbidden", justification="Không xoá dự án Supabase.")
+prefix_rule(pattern=[["diskpart", "Format-Volume", "Clear-Disk", "Initialize-Disk", "Stop-Computer", "Restart-Computer"]], decision="forbidden", justification="Lệnh ổ đĩa / tắt máy bị cấm.")
+prefix_rule(pattern=["format"], decision="forbidden", justification="Không định dạng ổ đĩa.")
+prefix_rule(pattern=["reg", "delete"], decision="forbidden", justification="Không xoá registry.")
+# === hết chan-lenh ===
