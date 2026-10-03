@@ -204,6 +204,16 @@ switch ($Cmd) {
         & $exe cli --no-auto-start send-text --pane-id $id -- ($text -replace '"', '\"')   # dán nguyên câu (kể cả tiếng Việt)
         Start-Sleep -Milliseconds 300
         & $exe cli --no-auto-start send-text --pane-id $id --no-paste "`r"   # nhấn Enter
+        # 04/10: câu dài → Enter đôi khi tới trước khi ô nhận xong chữ (Codex / Claude để nguyên chữ ở ô nhập,
+        # ca đêm báo "đã giao" mà không chạy). Kiểm 3 lần: chữ đầu câu còn nằm ở dòng nhập (› hoặc ❯) → Enter lại.
+        $dau = ($text -replace '\s+', ' ').Trim(); $dau = $dau.Substring(0, [Math]::Min(25, $dau.Length))
+        for ($k = 0; $k -lt 3; $k++) {
+            Start-Sleep -Milliseconds 1200
+            $man = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
+            $conNhap = $man -split "`n" | Where-Object { $_ -match '^\s*[›❯>]\s' -and ($_ -replace '\s+', ' ').Contains($dau) }
+            if (-not $conNhap) { break }
+            & $exe cli --no-auto-start send-text --pane-id $id --no-paste "`r"
+        }
         Set-PaneState $id 'work'   # để `cho` biết là vừa giao việc
         Add-Viec $id $text
     }
@@ -322,7 +332,11 @@ switch ($Cmd) {
         # "doi X thuc:<Vai>" (do send gọi) chỉ đánh thức vai đó, các vai khác ngủ tiếp (03/10/2026)
         $nguInfo = @{}
         # không có ô mà còn nhớ phiên (ngủ, hoặc đã đóng) → coi là đánh thức được, mở lại đúng phiên đó
-        if ($cu) { foreach ($m in @($cu.worker)) { if ($m -and $m.vai -and -not $m.o -and ($m.ngu -or $m.session)) { $nguInfo[$m.vai] = $m } } }
+        if ($cu) { foreach ($m in @($cu.worker)) { if ($m -and $m.vai -and -not $m.o -and ($m.ngu -or $m.session)) {
+            # 04/10: vai đã đổi AI (vd Claude → Codex) thì phiên cũ không dùng được → mở mới, tránh "resume --last" vớ nhầm phiên vai khác
+            $dn = @($def.worker) | Where-Object { $_.vai -eq $m.vai } | Select-Object -First 1
+            if ($dn -and $m.ai -and $dn.ai -ne $m.ai) { continue }
+            $nguInfo[$m.vai] = $m } } }
         # phiên theo VAI (nguồn chuẩn trong sổ đội) — giữ lại khi ghi sổ, để mở lại / ngủ / thức luôn đúng phiên
         $sesCu = @{}
         if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.session) { $sesCu[$m.vai] = "$($m.session)" } } }
@@ -360,11 +374,16 @@ switch ($Cmd) {
                 $bang = Join-Path $HOME '.codex-tai-khoan.json'
                 if (Test-Path $bang) {
                     $b = Get-Content -Raw -Encoding UTF8 $bang | ConvertFrom-Json
-                    $tk = $b.taiKhoan | Where-Object { $_.so -eq $b.duAn.($def.du_an) } | Select-Object -First 1
+                    # 04/10: vai có "tk" → dùng đúng tài khoản đó (chia theo loại việc); không có → tài khoản của dự án
+                    $soTk = if ($m.tk) { [int]$m.tk } else { $b.duAn.($def.du_an) }
+                    $tk = $b.taiKhoan | Where-Object { $_.so -eq $soTk } | Select-Object -First 1
                     if ($tk) { $l += "`$env:CODEX_HOME = '$($tk.thuMuc)'`r`n" }
                 }
-                if ($ngu) { $l += "codex.cmd --no-daemon resume '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon resume --last }`r`n" }
-                else { $l += "codex.cmd --no-daemon`r`n" }
+                # "chan" (vai chỉ đọc: Kiểm soát / Security) → sandbox read-only; "timWeb" → bật tìm web (--search)
+                $sb = if ("$($m.chan)" -match '\bWrite\b') { ' -s read-only' } else { '' }   # chỉ vai bị chặn ghi file (Kiểm soát/Security)
+                $web = if ($m.timWeb) { ' --search' } else { '' }
+                if ($ngu) { $l += "codex.cmd --no-daemon resume$sb '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon resume$sb --last }`r`n" }
+                else { $l += "codex.cmd --no-daemon$sb$web`r`n" }
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
                 $chan = if ($m.chan) { " '--disallowedTools=$(($m.chan -split ' ') -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
