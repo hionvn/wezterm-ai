@@ -22,12 +22,14 @@ local function doi_map()
     local r = read_json(path)
     if r and r.du_an then
       local def = read_json(HUB .. '\\doi\\' .. r.du_an .. '.json') or {}
-      local chan = {}
-      for _, w in ipairs(def.worker or {}) do chan[w.vai] = w.chan end
+      local chan, tk = {}, {}
+      for _, w in ipairs(def.worker or {}) do chan[w.vai] = w.chan; tk[w.vai] = w.tk end
       if def.manager then chan[def.manager.vai or 'Manager'] = def.manager.chan end
+      -- 04/10: tài khoản Codex của vai (trường "tk"; không có thì theo dự án) — mở lại phiên Codex phải đúng CODEX_HOME
+      local tk_du_an = ((read_json(HOME .. '\\.codex-tai-khoan.json') or {}).duAn or {})[r.du_an]
       local function add(x)
         if x and x.o and tostring(x.o) ~= '' then
-          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai], doi_ai = tostring(x.ai or ''):lower(), session = (x.session ~= '' and x.session) or nil } -- session: NGUỒN CHUẨN phiên của vai (03/10)
+          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai], doi_ai = tostring(x.ai or ''):lower(), session = (x.session ~= '' and x.session) or nil, tk = tk[x.vai] or tk_du_an } -- session: NGUỒN CHUẨN phiên của vai (03/10)
         end
       end
       add(r.manager)
@@ -119,12 +121,21 @@ local function restore_args(it)
   end
   if it.kind == 'codex' then
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or ''
-    -- ô Codex trong đội: mở lại đúng phiên theo tên (/rename lúc mở đội); không thấy tên thì lấy phiên gần nhất
-    if it.doi then
-      return PS('codex resume ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten) .. tiep
-        .. '; if ($LASTEXITCODE) { codex resume --last' .. tiep .. ' }')
+    -- 04/10: BỎ "codex resume --last" và mở theo tên: Codex tự đổi tên phiên ("Đọc POS và báo cáo…") nên mở theo tên luôn
+    -- thất bại → tụt xuống --last = phiên gần nhất của tài khoản → 4 worker Sino cùng mở MỘT phiên, 6 ô Aff cùng một phiên.
+    -- Giờ: ô trong đội mở lại theo MÃ PHIÊN (UUID, sổ đội trường session) với đúng CODEX_HOME của vai; mỗi mã chỉ mở ở 1 ô.
+    local DA_MO = wezterm.GLOBAL.phien_da_mo or {}
+    local sid = it.session and tostring(it.session):match('^%x+%-%x+%-%x+%-%x+%-%x+$')
+    if it.doi and sid and not DA_MO[sid] then
+      DA_MO[sid] = true
+      wezterm.GLOBAL.phien_da_mo = DA_MO
+      local home = ''
+      for _, t in ipairs((read_json(HOME .. '\\.codex-tai-khoan.json') or {}).taiKhoan or {}) do
+        if tostring(t.so) == tostring(it.tk) then home = '$env:CODEX_HOME = ' .. q(t.thuMuc) .. '; ' end
+      end
+      return PS(home .. 'codex.cmd --no-daemon resume ' .. sid .. tiep, true)
     end
-    return PS('codex resume --last' .. tiep)
+    return PS("Write-Host 'Ô Codex này chưa có mã phiên riêng (hoặc phiên đã mở ở ô khác) nên không tự mở lại — tránh nhiều ô cùng một phiên. Cần thì: wez.ps1 doi <dự án>, hoặc gõ codex resume rồi chọn đúng phiên.' -ForegroundColor DarkGray")
   end
   if it.kind == 'canduyet' then return VIEWER end
   if it.kind == 'board' then return BOARD end

@@ -656,6 +656,7 @@ switch ($Cmd) {
         $s = @"
 `$log = '$dir\nhat-ky.txt'
 "`$(Get-Date -Format 'HH:mm:ss') bắt đầu" | Out-File `$log -Encoding utf8
+schtasks /delete /tn 'WezAI-KhoiDongLai' /f 2>&1 | Out-Null   # 04/10: tác vụ hẹn "once sau 5 phút" + /run ngay → không xoá thì 5 phút sau khởi động lại LẦN NỮA
 Start-Sleep 3
 taskkill /IM wezterm-gui.exe /T /F 2>&1 | Out-File `$log -Append -Encoding utf8
 Start-Sleep 3
@@ -666,7 +667,10 @@ Start-Process '$gui'
 "@
         [IO.File]::WriteAllText("$dir\chay.ps1", $s, (New-Object Text.UTF8Encoding $true))
         $st = (Get-Date).AddMinutes(5).ToString('HH:mm')
-        schtasks /create /tn 'WezAI-KhoiDongLai' /sc once /st $st /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\chay.ps1`"" /f | Out-Null
+        # 04/10: WezTerm chạy quyền Administrator → tác vụ quyền thường bị "Access is denied" khi taskkill → chạy tác vụ quyền cao nhất (người gọi cũng là admin)
+        $laAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $rl = if ($laAdmin) { @('/rl', 'HIGHEST') } else { @() }
+        schtasks /create /tn 'WezAI-KhoiDongLai' /sc once /st $st /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\chay.ps1`"" @rl /f | Out-Null
         Write-Host "🔄 Bản lưu $((Get-Item $f).LastWriteTime.ToString('HH:mm:ss')) · khởi động lại sau ~3 giây; mở lên sẽ tự mở lại mọi phiên. Nhật ký: $dir\nhat-ky.txt" -ForegroundColor Cyan
         schtasks /run /tn 'WezAI-KhoiDongLai' | Out-Null
     }
