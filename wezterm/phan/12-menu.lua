@@ -27,6 +27,8 @@ local MENU_DOI = {
   { 'mo-lai', '⏮  Mở lại bố cục', 'Ctrl+Shift+O' },
   { 'chia-deu', '⇔  Chia đều các ô', 'Ctrl+Shift+E' },
   { 'ten-o', '🏷  Bật/tắt thanh tên ô', 'Ctrl+Shift+D' },
+  { 'tab-trai', '◀  Dời tab đang xem sang trái', 'Ctrl+Shift+Alt+←' },
+  { 'tab-phai', '▶  Dời tab đang xem sang phải', 'Ctrl+Shift+Alt+→' },
   { 'goc', '⚙  Bảng lệnh gốc của WezTerm', 'Ctrl+Shift+Alt+P' },
 }
 wezterm.on('menu-doi', function(window, pane)
@@ -40,6 +42,7 @@ wezterm.on('menu-doi', function(window, pane)
         ['tong-quan'] = act.EmitEvent 'tong-quan', ['nhay-o'] = act.EmitEvent 'nhay-o', ['tat-du-an'] = act.EmitEvent 'tat-du-an',
         ['mo-du-an'] = project_menu, ['ban-duyet'] = toggle_doc, ['luu'] = save_layout, ['mo-lai'] = restore_menu,
         ['chia-deu'] = act.EmitEvent 'chia-deu', ['ten-o'] = act.EmitEvent 'ten-o-bat-tat', ['goc'] = act.ActivateCommandPalette,
+        ['tab-trai'] = act.MoveTabRelative(-1), ['tab-phai'] = act.MoveTabRelative(1),
       }
       if run[id] then w:perform_action(run[id], p) end
     end),

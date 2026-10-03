@@ -39,6 +39,9 @@ config.keys = {
   { key = 'p', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
   { key = 'P', mods = 'CTRL|SHIFT|ALT', action = act.ActivateCommandPalette },
   { key = 'Space', mods = 'CTRL|SHIFT', action = act.EmitEvent 'nhay-o' }, -- nhảy tới ô theo tên (03/10)
+  -- Dời tab trên thanh tab sang trái/phải (bản WezTerm này không kéo thả tab bằng chuột được) (03/10)
+  { key = 'LeftArrow', mods = 'CTRL|SHIFT|ALT', action = act.MoveTabRelative(-1) },
+  { key = 'RightArrow', mods = 'CTRL|SHIFT|ALT', action = act.MoveTabRelative(1) },
   -- Chuyển ô: Alt + mũi tên
   { key = 'LeftArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Left' },
   { key = 'RightArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Right' },
