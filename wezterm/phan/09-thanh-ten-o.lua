@@ -70,6 +70,10 @@ end
 if wezterm.GLOBAL.ten_o_tu_tat or (wezterm.GLOBAL.ten_o_tat and not wezterm.GLOBAL.ten_o_tat_bang_tay) then
   wezterm.GLOBAL.ten_o_tu_tat, wezterm.GLOBAL.ten_o_tat, wezterm.GLOBAL.ten_o_last = nil, false, nil
 end
+-- 04/10: "thanhTenO": false trong ~\.wez-ai.json → tắt hẳn thanh tên cho nhẹ (Ctrl+Shift+D vẫn bật tạm được)
+if machine.thanhTenO == false and not wezterm.GLOBAL.ten_o_tat then
+  wezterm.GLOBAL.ten_o_tat, wezterm.GLOBAL.ten_o_tat_bang_tay, wezterm.GLOBAL.ten_o_last = true, true, nil
+end
 local function process_headers(window, apane)
   local g = wezterm.GLOBAL
   local map = hdr_copy()
