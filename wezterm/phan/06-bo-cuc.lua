@@ -98,15 +98,24 @@ local function restore_args(it)
     return (khong_profile and PSN or PS0)(cmd)
   end
   if it.kind == 'claude' then
+    -- 03/10 (lần 2): ô không có mã phiên từng dùng `--continue` → vớ phiên mới nhất trong thư mục = phiên của ô KHÁC
+    -- (ra 3 ô Security, 3 Sino Manager, 2 Tổng quản cùng một phiên). Luật mới: mỗi phiên chỉ mở ở MỘT ô;
+    -- không có mã phiên / phiên đã có ô khác giữ → mở PowerShell trống (không chạy AI, không tốn hạn mức).
+    local DA_MO = wezterm.GLOBAL.phien_da_mo or {}
+    if not it.session or DA_MO[it.session] then
+      return PS("Write-Host 'Ô này không có phiên Claude riêng (hoặc phiên đã mở ở ô khác) nên không tự mở lại AI. Cần thì: wez.ps1 doi <dự án> hoặc gõ claudeRC.' -ForegroundColor DarkGray")
+    end
+    DA_MO[it.session] = true
+    wezterm.GLOBAL.phien_da_mo = DA_MO
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or '' -- đang làm dở → tự làm tiếp
     if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
-      return PS((it.session and ('claude --resume ' .. it.session) or 'claude --continue')
+      return PS(('claude --resume ' .. it.session)
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
         .. ' --remote-control ' .. q(it.doi .. '-' .. it.vai)
         .. (it.chan and (' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ',')))) or '') .. tiep, true)
     end
     -- ô ngoài đội + Tổng quản Hion: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
-    return PS((it.session and ('claudeRC --resume ' .. it.session) or 'claudeRC --continue') .. tiep)
+    return PS('claudeRC --resume ' .. it.session .. tiep)
   end
   if it.kind == 'codex' then
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or ''
@@ -194,6 +203,7 @@ local function restore_layout(window, d)
   -- 03/10: tạm dừng dựng thanh tên 🏷 trong 25 giây — mở lại nhiều ô cùng lúc làm thanh tên bị dựng/xoá liên tục
   -- → phanh an toàn hiểu nhầm là lỗi và tự tắt thanh tên (sau khởi động lại thấy 0 thanh tên)
   wezterm.GLOBAL.ten_o_hoan = os.time() + 25
+  wezterm.GLOBAL.phien_da_mo = {} -- mỗi lần mở lại: đếm lại phiên nào đã có ô giữ (chống 2 ô cùng một phiên)
   local n = 0
   for _, t in ipairs(d and d.tabs or {}) do
     local ok, err = pcall(restore_tab, window:mux_window(), t)
