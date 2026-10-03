@@ -92,6 +92,20 @@ function decide(verb, key, note) {
   console.log(`${VERB[verb]}: ${tag}${it.text.slice(0, 80)}`);
 }
 
+// 04/10/2026: duyệt / sửa / bỏ xong → 60 giây sau tự chạy linear-sync.js (đóng ticket "Cần Hion" đã quyết),
+// thay vì chờ tới 12:00. Duyệt nhiều việc liền nhau thì chỉ hẹn 1 lần (khoá 3 phút). Tắt: biến DUYET_KHONG_SYNC=1.
+function hẹnĐồngBộLinear() {
+  if (process.env.DUYET_KHONG_SYNC) return;
+  try {
+    const khoa = path.join(process.env.LOCALAPPDATA || '.', 'wez-ai', 'linear-sync-hen');
+    if (fs.existsSync(khoa) && Date.now() - fs.statSync(khoa).mtimeMs < 3 * 60000) return;
+    fs.writeFileSync(khoa, String(Date.now()));
+    const sync = path.join(__dirname, 'linear-sync.js');
+    const code = `setTimeout(()=>{try{require('child_process').execFileSync(process.execPath,[${JSON.stringify(sync)}],{stdio:'ignore',timeout:300000})}catch{}try{require('fs').unlinkSync(${JSON.stringify(khoa)})}catch{}},60000)`;
+    require('child_process').spawn(process.execPath, ['-e', code], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch {}
+}
+
 const [cmd = 'list', a, ...rest] = process.argv.slice(2);
 switch (cmd) {
   case 'list': {
@@ -120,6 +134,7 @@ switch (cmd) {
   }
   case 'ok': case 'sua': case 'bo':
     decide(cmd, a, rest.join(' ').trim());
+    hẹnĐồngBộLinear();
     break;
   default:
     console.error('Lệnh: list | them | ok | sua | bo | json');
