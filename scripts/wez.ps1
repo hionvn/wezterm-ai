@@ -90,7 +90,7 @@ function Add-Viec($id, $text) {
 }
 
 # "24" → 24 · "Chatbot.Engineer" / "chatbot/manager" → số ô theo sổ đội
-function Resolve-Id($s) {
+function Resolve-Id($s, [switch]$Thuc) {
     $s = "$s"
     if ($s -match '^\d+$') { return $s }
     if ($s -notmatch '^([^./]+)[./](.+)$') { Write-Error "Không hiểu ô '$s' (dùng số ô hoặc DựÁn.Vai, vd Chatbot.Engineer)"; exit 1 }
@@ -99,7 +99,26 @@ function Resolve-Id($s) {
     if (-not $d) { Write-Error "Chưa có sổ đội $proj — mở đội: wez.ps1 doi $proj"; exit 1 }
     $m = @($d.manager) + @($d.worker) | Where-Object { $_ -and ($_.vai -eq $vai -or $_.ten -eq $vai) } | Select-Object -First 1
     if (-not $m) { Write-Error "Đội $proj không có vai '$vai'"; exit 1 }
-    if (-not $m.o) { Write-Error "$proj.$vai đang tắt — mở lại: wez.ps1 doi $proj"; exit 1 }
+    if (-not $m.o) {
+        # worker đang NGỦ (tự đóng khi rảnh lâu, 03/10/2026) → giao việc thì tự đánh thức: mở lại đúng phiên cũ, đợi sẵn sàng
+        if (($m.ngu -or $m.session) -and $Thuc -and $m -ne $d.manager) {
+            Write-Host "💤→⏰ $proj.$($m.vai) đang ngủ, đánh thức (mở lại đúng phiên cũ)…" -ForegroundColor DarkCyan
+            & $PSCommandPath doi $proj "thuc:$($m.vai)" | Out-Host
+            $d = Sync-Doi $proj
+            $m = @($d.worker) | Where-Object { $_.vai -eq $m.vai } | Select-Object -First 1
+            if (-not $m.o) { Write-Error "Không đánh thức được $proj.$vai"; exit 1 }
+            for ($i = 0; $i -lt 120; $i++) {   # đợi tối đa ~90 giây tới khi AI sẵn sàng nhận lệnh
+                Start-Sleep -Milliseconds 750
+                $t = (& $exe cli --no-auto-start get-text --pane-id $m.o) -join "`n"
+                if ($t -match 'Update available|Skip until next') { & $exe cli --no-auto-start send-text --no-paste --pane-id $m.o ([string][char]27); continue }
+                if ($t -match 'Ask Codex|for shortcuts|❯|auto mode|bypass permissions') { break }
+            }
+            Start-Sleep 2
+            return "$($m.o)"
+        }
+        $goi = if ($m.ngu) { "đang ngủ 💤 — tự thức khi giao việc bằng wez.ps1 send $proj.$vai, hoặc mở ngay: wez.ps1 doi $proj" } else { "đang tắt — mở lại: wez.ps1 doi $proj" }
+        Write-Error "$proj.$vai $goi"; exit 1
+    }
     return "$($m.o)"
 }
 
@@ -170,7 +189,7 @@ switch ($Cmd) {
         } | Format-Table -AutoSize | Out-String -Width 200
     }
     'send' {
-        $id = Resolve-Id $Rest[0]; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')
+        $id = Resolve-Id $Rest[0] -Thuc; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')   # -Thuc: worker đang ngủ thì tự đánh thức
         $s = Get-PaneState $id
         if (-not $Ep -and $s -and $s.state -in 'work', 'need') {
             Write-Host "Ô ${id}: $($label[$s.state]) → chưa gửi (tránh gõ chen vào giữa chừng)." -ForegroundColor Yellow
@@ -294,10 +313,19 @@ switch ($Cmd) {
         }
         $oCu = @{}
         if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.o) { $oCu[$m.vai] = "$($m.o)" } } }
+        # Worker đang NGỦ (WezTerm tự đóng khi rảnh lâu, nhớ phiên trong sổ): "doi X" mở lại tất cả đúng phiên cũ;
+        # "doi X thuc:<Vai>" (do send gọi) chỉ đánh thức vai đó, các vai khác ngủ tiếp (03/10/2026)
+        $nguInfo = @{}
+        # không có ô mà còn nhớ phiên (ngủ, hoặc đã đóng) → coi là đánh thức được, mở lại đúng phiên đó
+        if ($cu) { foreach ($m in @($cu.worker)) { if ($m -and $m.vai -and -not $m.o -and ($m.ngu -or $m.session)) { $nguInfo[$m.vai] = $m } } }
+        # phiên theo VAI (nguồn chuẩn trong sổ đội) — giữ lại khi ghi sổ, để mở lại / ngủ / thức luôn đúng phiên
+        $sesCu = @{}
+        if ($cu) { foreach ($m in @($cu.manager) + @($cu.worker)) { if ($m -and $m.vai -and $m.session) { $sesCu[$m.vai] = "$($m.session)" } } }
+        $thuc = if ("$($Rest[1])" -like 'thuc:*') { "$($Rest[1])".Substring(5) } else { $null }
         $launchDir = Join-Path $doiDir $def.du_an
         New-Item -ItemType Directory -Force $launchDir | Out-Null
         $bom = New-Object Text.UTF8Encoding $true
-        $ws = @($def.worker)
+        $ws = @($def.worker | Where-Object { -not ($thuc -and $nguInfo[$_.vai] -and $_.vai -ne $thuc) })   # bỏ các vai ngủ tiếp khỏi bố cục
         $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
         if (-not $tenWorker) { $tenWorker = "chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
         # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
@@ -320,6 +348,7 @@ switch ($Cmd) {
             $loiF = Join-Path $launchDir "$($m.vai).txt"
             [IO.File]::WriteAllText($loiF, (Loi $m $laManager), $bom)
             $l = "Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item`r`n"
+            $ngu = $nguInfo[$m.vai]   # đang ngủ → mở lại ĐÚNG phiên cũ (nhớ hết việc trước), không gửi lời giao vai lại
             if ($m.ai -eq 'codex') {
                 $bang = Join-Path $HOME '.codex-tai-khoan.json'
                 if (Test-Path $bang) {
@@ -327,11 +356,13 @@ switch ($Cmd) {
                     $tk = $b.taiKhoan | Where-Object { $_.so -eq $b.duAn.($def.du_an) } | Select-Object -First 1
                     if ($tk) { $l += "`$env:CODEX_HOME = '$($tk.thuMuc)'`r`n" }
                 }
-                $l += "codex.cmd --no-daemon`r`n"
+                if ($ngu) { $l += "codex.cmd --no-daemon resume '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon resume --last }`r`n" }
+                else { $l += "codex.cmd --no-daemon`r`n" }
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
                 $chan = if ($m.chan) { " '--disallowedTools=$(($m.chan -split ' ') -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
-                $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n"
+                if ($ngu -and $ngu.session) { $l += "claude --resume $($ngu.session) --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan`r`n" }
+                else { $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n" }
             }
             $lf = Join-Path $launchDir "mo-$($m.vai).ps1"
             [IO.File]::WriteAllText($lf, $l, $bom)
@@ -340,7 +371,7 @@ switch ($Cmd) {
             $id = if ($splitFrom) { & $exe cli --no-auto-start split-pane --pane-id $splitFrom $huong --percent $pct --cwd $projDir -- @a }
                   else { & $exe cli --no-auto-start spawn --cwd $projDir -- @a }
             $id = "$id".Trim()
-            if ($m.ai -eq 'codex' -and $id) {
+            if ($m.ai -eq 'codex' -and $id -and -not $ngu) {   # Codex thức dậy thì đã có tên + vai trong phiên cũ
                 # đợi Codex sẵn sàng (bỏ qua hộp hỏi cập nhật bằng Esc) → /rename → gửi lời nhắn
                 for ($i = 0; $i -lt 40; $i++) {
                     Start-Sleep -Milliseconds 750
@@ -365,7 +396,9 @@ switch ($Cmd) {
         $tabOf = @{}; foreach ($p in $panes) { $tabOf["$($p.pane_id)"] = "$($p.tab_id)" }
         $mg = $def.manager
         $idsCu = @($oCu[$mg.vai]) + @($ws | ForEach-Object { $oCu[$_.vai] })
-        $chungTab = ($idsCu | Where-Object { -not $_ }).Count -eq 0 -and (@($idsCu | ForEach-Object { if ($_) { $tabOf[$_] } } | Select-Object -Unique)).Count -eq 1
+        # đếm vai THIẾU ô tường minh (03/10: mảng có $null bị PowerShell bỏ qua khi đếm → tưởng đủ đội, không mở vai đang ngủ)
+        $thieu = @($ws | Where-Object { -not $oCu[$_.vai] }).Count + $(if ($oCu[$mg.vai]) { 0 } else { 1 })
+        $chungTab = $thieu -eq 0 -and (@($idsCu | ForEach-Object { if ($_) { $tabOf[$_] } } | Select-Object -Unique)).Count -eq 1
         if ("$($Rest[1])" -eq 'xep') { $chungTab = $false }   # doi <dự án> xep: ép xếp lại bố cục chuẩn (vd sau khi bị lệch)
         $moMoi = 0
         # Đặt 1 vai vào chỗ: tách từ ô $from theo $huong; ô cũ còn sống thì chuyển nó vào (--move-pane-id), không thì mở mới
@@ -401,8 +434,11 @@ switch ($Cmd) {
                 }
             }
         }
-        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau }
-        foreach ($w in $ws) { $so.worker += [ordered]@{ o = $ids[$w.vai]; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec } }
+        $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau; session = $sesCu[$mg.vai] }
+        foreach ($w in @($def.worker)) {   # giữ thứ tự định nghĩa; vai đang ngủ tiếp thì ghi lại để lần sau đánh thức đúng phiên
+            if ($ids.ContainsKey($w.vai)) { $so.worker += [ordered]@{ o = $ids[$w.vai]; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; session = $sesCu[$w.vai] } }
+            elseif ($nguInfo[$w.vai]) { $n0 = $nguInfo[$w.vai]; $so.worker += [ordered]@{ o = ''; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; ngu = $true; session = $n0.session; ngu_luc = $n0.ngu_luc } }
+        }
         [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
         & $exe cli --no-auto-start set-tab-title --pane-id $mo "$($def.logo) $($def.du_an) · đội"
         & $exe cli --no-auto-start activate-pane --pane-id $mo

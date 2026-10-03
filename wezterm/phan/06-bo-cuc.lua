@@ -27,7 +27,7 @@ local function doi_map()
       if def.manager then chan[def.manager.vai or 'Manager'] = def.manager.chan end
       local function add(x)
         if x and x.o and tostring(x.o) ~= '' then
-          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai], doi_ai = tostring(x.ai or ''):lower() }
+          m[tostring(x.o)] = { doi = r.du_an, logo = r.logo or def.logo or '', vai = x.vai, ten = x.ten or x.vai, icon = x.icon or '', chan = chan[x.vai], doi_ai = tostring(x.ai or ''):lower(), session = (x.session ~= '' and x.session) or nil } -- session: NGUỒN CHUẨN phiên của vai (03/10)
         end
       end
       add(r.manager)

@@ -10,6 +10,8 @@ wezterm.on('update-status', function(window, pane)
   if not oko then wezterm.log_error('process_open: ' .. tostring(erro)) end
   local okb, errb = pcall(auto_board)
   if not okb then wezterm.log_error('auto_board: ' .. tostring(errb)) end
+  local okn, errn = pcall(tu_ngu) -- worker rảnh lâu → tự ngủ (đóng ô, nhớ phiên)
+  if not okn then wezterm.log_error('tu_ngu: ' .. tostring(errn)) end
   local oks, errs = pcall(autosave)
   if not oks then wezterm.log_error('autosave: ' .. tostring(errs)) end
   if wezterm.GLOBAL.hint_restore then

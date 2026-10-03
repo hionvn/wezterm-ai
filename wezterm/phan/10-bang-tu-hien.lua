@@ -13,6 +13,74 @@ local function board_pane()
   local o = wezterm.GLOBAL.board_o
   return pane_or_nil(o)
 end
+
+-- ===== Worker tự NGỦ khi rảnh lâu (03/10/2026) — đỡ RAM + hạn mức khi chạy nhiều dự án =====
+-- Worker 🟢 rảnh liên tục NGU_PHUT phút, không còn việc ☐ dở (viec.json), không chờ bạn (🔔) → ghi phiên vào sổ đội
+-- (ngu = true, session) rồi đóng ô. Giao việc bằng `wez.ps1 send DựÁn.Vai` → tự thức, mở lại ĐÚNG phiên cũ.
+-- Manager + Tổng quản không bao giờ ngủ. Đổi thời gian: "nguSauPhut" trong ~\.wez-ai.json (0 = tắt tự ngủ).
+local NGU_PHUT = tonumber(machine.nguSauPhut) or 20
+local NGU_RANH, NGU_MEMO = {}, { t = 0 }
+local function tu_ngu()
+  if NGU_PHUT <= 0 then return end
+  local now = os.time()
+  if now - NGU_MEMO.t < 30 then return end -- soát mỗi 30 giây là đủ
+  NGU_MEMO.t = now
+  local con_viec = {}
+  for _, v in ipairs(read_json(AIDIR .. '\\viec.json') or {}) do
+    if type(v) == 'table' and not v.xong and not v.bo and v.o then con_viec[tostring(v.o)] = true end
+  end
+  local home = (os.getenv('USERPROFILE') or HOME)
+  for _, path in ipairs(wezterm.glob(AIDIR:gsub('\\', '/') .. '/doi/*.json')) do
+    local r = read_json(path)
+    if r and r.du_an and r.du_an ~= 'Hion' and type(r.worker) == 'table' and #r.worker > 0 then
+      local doi_ghi = false
+      for _, w in ipairs(r.worker) do
+        local id = w.o and tostring(w.o) or ''
+        local p = id ~= '' and pane_or_nil(id) or nil
+        if p then
+          local t = (PANE_LAST[id] and PANE_LAST[id].title) or ''
+          local ranh = t:find('✳', 1, true) or t:find('| Ready |', 1, true)
+          local al = read_json(ALERTS .. '\\' .. id .. '.json')
+          if ranh and not con_viec[id] and not (al and al.kind == 'need') then
+            NGU_RANH[id] = NGU_RANH[id] or now
+            if now - NGU_RANH[id] >= NGU_PHUT * 60 then
+              -- phiên Claude: lấy từ file trạng thái, CHỈ tin khi bản ghi phiên nằm đúng thư mục dự án
+              -- (03/10: số ô bị dùng lại sau khởi động lại từng làm lẫn phiên Tổng quản sang ô Design)
+              -- ưu tiên phiên ghi trong sổ đội (nguồn chuẩn theo VAI); file trạng thái theo số ô có thể lẫn sau khởi động lại
+              local st = read_json(STATE .. '\\' .. id .. '.json')
+              local sid = (w.session ~= '' and w.session) or (st and st.session)
+              if not sid or sid == '' then
+                -- chưa có file trạng thái (vd vừa Resume, chưa làm gì) → lấy mã phiên từ lệnh đang chạy: claude --resume <mã>
+                local okf, fp = pcall(function() return p:get_foreground_process_info() end)
+                if okf and fp and fp.argv then
+                  for i, a in ipairs(fp.argv) do if a == '--resume' and fp.argv[i + 1] then sid = fp.argv[i + 1] end end
+                end
+              end
+              if sid and sid ~= '' then
+                local f = io.open(home .. '\\.claude\\projects\\E--AI-' .. r.du_an .. '\\' .. sid .. '.jsonl', 'rb')
+                if f then f:close() else sid = nil end
+              end
+              if tostring(w.ai or ''):lower() == 'codex' or sid then -- Codex mở lại theo tên phiên, không cần sid
+                w.session = sid or w.session
+                w.ngu, w.ngu_luc, w.o = true, now, ''
+                kill_pane(p)
+                doi_ghi = true
+                wezterm.log_warn('tu_ngu: ' .. r.du_an .. '.' .. tostring(w.vai) .. ' ngủ (ô ' .. id .. ')')
+              end
+              NGU_RANH[id] = nil
+            end
+          else
+            NGU_RANH[id] = nil
+          end
+        end
+      end
+      if doi_ghi then
+        local f = io.open(path, 'w')
+        if f then f:write(wezterm.json_encode(r)) f:close() end
+      end
+    end
+  end
+end
 local function open_board(beside, auto)
   local nb = beside:split { direction = 'Right', size = 0.45, top_level = true, cwd = HUB, args = BOARD } -- top_level: bảng chiếm trọn mép phải, không bóp 1 ô
   wezterm.GLOBAL.board_o, wezterm.GLOBAL.board_auto = tostring(nb:pane_id()), auto
