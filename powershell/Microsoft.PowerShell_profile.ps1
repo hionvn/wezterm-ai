@@ -44,6 +44,22 @@ function codextk {
     Write-Host '  Dang nhap lai: vao thu muc du an (vd cd E:\AI\Sino) roi go: codex login' -ForegroundColor DarkGray
 }
 
+# deepseek [args] : Claude Code running on DeepSeek (04/10/2026). Key = user env var DEEPSEEK_API_KEY (never stored in a file).
+#   Model names per api-docs.deepseek.com/quick_start/agent_integrations/claude_code. Env vars are restored after exit.
+function deepseek {
+    $k = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User')
+    if (-not $k) { Write-Host 'Chua co DEEPSEEK_API_KEY (xem huong dan trong So tay / hoi Tong quan)' -ForegroundColor Yellow; return }
+    $vars = [ordered]@{
+        ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'; ANTHROPIC_AUTH_TOKEN = $k; ANTHROPIC_API_KEY = $null
+        ANTHROPIC_MODEL = 'deepseek-flash[1m]'; ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-flash[1m]'; ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-flash[1m]'
+        ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-flash'; CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-flash'; CLAUDE_CODE_AUTO_COMPACT_WINDOW = '786432'
+    }
+    $old = @{}
+    foreach ($n in $vars.Keys) { $old[$n] = [Environment]::GetEnvironmentVariable($n, 'Process'); [Environment]::SetEnvironmentVariable($n, $vars[$n], 'Process') }
+    try { Write-Host '  Claude Code · DeepSeek (deepseek-flash)' -ForegroundColor DarkGray; claude @args }
+    finally { foreach ($n in $old.Keys) { [Environment]::SetEnvironmentVariable($n, $old[$n], 'Process') } }
+}
+
 # ai2 [path] [-Yolo] : open 2 side-by-side panes Claude | Codex in a folder  (ai3 = old name, still works)
 #   -Yolo : let both AIs run commands without asking for approval
 function ai2 {
