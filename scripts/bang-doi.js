@@ -98,12 +98,13 @@ function drawRaw() {
   for (const f of (() => { try { return fs.readdirSync(path.join(WEZAI, 'doi')).filter((x) => x.endsWith('.json')); } catch { return []; } })()) {
     const d = readJson(path.join(WEZAI, 'doi', f)); if (!d) continue;
     const tam = readJson(path.join(WEZAI, 'ai-tam.json')) || {}; // vai Codex đang tạm chạy Claude (tài khoản Codex sắp hết)
-    const add = (x, laManager) => { if (x && x.o) role[String(x.o)] = { du_an: d.du_an, icon: x.icon || (laManager ? '🧭' : '•'), ten: (x.ten || x.vai) + (tam[`${d.du_an}.${x.vai}`] ? ' ↪Claude' : ''), manager: laManager }; };
+    const add = (x, laManager) => { if (x && x.o) role[String(x.o)] = { du_an: d.du_an, icon: x.icon || (laManager ? '🧭' : '•'), vai: x.vai, ten: (x.ten || x.vai) + (tam[`${d.du_an}.${x.vai}`] ? ' ↪Claude' : ''), manager: laManager }; };
     add(d.manager, true); arr(d.worker).forEach((w) => add(w, false));
-    arr(d.worker).forEach((w) => { if (w && w.ngu && !w.o) ngu.push({ du_an: d.du_an, label: `${w.icon || '•'} ${w.ten || w.vai}`, since: w.ngu_luc ? now - w.ngu_luc : null }); });
+    arr(d.worker).forEach((w) => { if (w && w.ngu && !w.o) ngu.push({ du_an: d.du_an, vai: w.vai, label: `${w.icon || '•'} ${w.ten || w.vai}`, since: w.ngu_luc ? now - w.ngu_luc : null }); });
   }
   // gom ô theo dự án
   const groups = {}, docs = [];
+  const coMat = new Set(ngu.map((z) => `${z.du_an}.${z.vai}`)); // vai đang có ô hoặc đang ngủ
   for (const z of ngu) (groups[z.du_an] = groups[z.du_an] || []).push({ id: '', tabNo: 99, label: z.label, state: 'ngu', since: z.since, manager: false, inTeam: true });
   const tabOrder = [...new Set(panes.map((p) => p.tab_id))];
   for (const p of panes) {
@@ -126,7 +127,16 @@ function drawRaw() {
     else if (SPIN.some((s) => t.startsWith(s)) || /Working/.test(t)) state = 'work';
     const since = st && st.t ? now - st.t : null;
     const label = r ? `${r.icon} ${r.ten}` : `🔹 ${shortTitle(t)}`;
+    if (r) coMat.add(`${r.du_an}.${r.vai}`);
     (groups[proj] = groups[proj] || []).push({ id, tabNo, label, state, since, manager: r && r.manager, inTeam: !!r });
+  }
+  // 04/10 tối (người dùng: "còn nhiều dự án nữa mà?"): liệt kê ĐỦ mọi agent đã định nghĩa trong Hiondoi*.json —
+  // vai không có ô và không ngủ (đội chưa mở / đã đóng) hiện ⚫ tắt, để bảng luôn thấy toàn bộ đội của mọi dự án.
+  for (const f of (() => { try { return fs.readdirSync(path.join(HUB, 'doi')).filter((x) => x.endsWith('.json')); } catch { return []; } })()) {
+    const d = readJson(path.join(HUB, 'doi', f)); if (!d || !d.du_an) continue;
+    const them = (x, laManager) => { if (!x || coMat.has(`${d.du_an}.${x.vai || 'Manager'}`)) return;
+      (groups[d.du_an] = groups[d.du_an] || []).push({ id: '', tabNo: 100, label: `${x.icon || (laManager ? '🧭' : '•')} ${x.ten || x.vai || 'Manager'}`, state: 'tat', since: null, manager: laManager, inTeam: true }); };
+    them(d.manager, true); arr(d.worker).forEach((w) => them(w, false));
   }
   // vẽ
   const cols = process.stdout.columns || 100;
@@ -148,17 +158,18 @@ function drawRaw() {
   const cat = (s, n) => { let o = '', w = 0; for (const ch of s) { const cw = width(ch); if (w + cw > n) return o + '…'; o += ch; w += cw; } return o; };
   const blocks = [];
   const order = [...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
-  let total = { work: 0, need: 0, idle: 0, ngu: 0 };
+  let total = { work: 0, need: 0, idle: 0, ngu: 0, tat: 0 };
   for (const name of order) {
     const g = groups[name]; if (!g) continue;
     const info = projInfo[name.toLowerCase()] || {};
     const c = rgb(info.mau || '#9aa0a6');
-    const n = { work: 0, need: 0, ngu: 0 }; g.forEach((x) => { if (x.state !== 'idle') n[x.state]++; total[x.state]++; });
+    const n = { work: 0, need: 0, ngu: 0, tat: 0 }; g.forEach((x) => { if (x.state !== 'idle') n[x.state]++; total[x.state]++; });
     const b = [`${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '')];
     g.sort((a, b) => (b.manager - a.manager) || (b.inTeam - a.inTeam) || (a.tabNo - b.tabNo));
     for (const x of g) {
       const ten = pad(cat(x.label, 24), 26);
       const t = x.since != null ? ago(x.since) : '';
+      if (x.state === 'tat') { b.push(' ' + `${DIM}${ten}${pad('⚫ tắt', 9)}${R}`); continue; } // đội chưa mở: wez.ps1 doi <dự án>
       if (x.state === 'ngu') { b.push(' ' + `${DIM}${ten}${pad('💤 ngủ', 9)}${t}${R}`); continue; } // không có ô để nhảy
       const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
       b.push(' ' + link(x.id, ten + pad(s, 9) + `${DIM}${t}${R}`));
@@ -174,7 +185,7 @@ function drawRaw() {
     for (let i = 0; i < Math.max(trai.length, phai.length); i++) out.push(pad(trai[i] || '', W + 2) + (phai[i] || ''));
   } else for (const b of blocks) out.push(...b);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh · 💤 ${total.ngu} ngủ   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
+  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh · 💤 ${total.ngu} ngủ · ⚫ ${total.tat} tắt   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
   const s = out.join('\n');
   if (s !== draw.last) { draw.last = s; process.stdout.write(`${E}[H${E}[2J${s}\n`); }
 }
