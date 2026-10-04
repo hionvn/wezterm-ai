@@ -50,18 +50,25 @@ function Sync-Doi($proj) {
     $d = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
     $panes = @(Get-Panes)
     $doi = $false
-    foreach ($m in @($d.manager) + @($d.worker)) {
-        if (-not $m -or -not $m.vai) { continue }
+    $ds = @(@($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai })
+    # tên vai đúng nguyên chữ: "Săn" KHÔNG khớp "Săn 2" (04/10: Aff.San và Aff.San2 cùng trỏ ô 47 vì "Săn" khớp tiêu đề "🔎 Săn 2")
+    function KhopTen($title, $m) { $t = if ($m.ten) { $m.ten } else { $m.vai }; "$title" -match "(^|[^\p{L}])$([regex]::Escape($t))(?!\s*\p{N})([^\p{L}\p{N}]|$)" }
+    $daGiu = @{}   # ô đã thuộc một vai → không gán thêm cho vai khác
+    foreach ($m in $ds) {
         # 04/10: số ô có thể đã bị dùng lại sau khởi động lại (sổ Aff ghi Manager = ô 22 trong khi ô 22 là Coolguy · Kiểm soát)
         # → chỉ tin ô cũ khi ô đó đúng là của dự án này (thư mục ô nằm trong E:\AI\<dự án>, hoặc tiêu đề có tên dự án)
+        #   và tiêu đề không mang tên một vai KHÁC của đội
         $cuP = if ($m.o) { $panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" } | Select-Object -First 1 }
-        if ($cuP) {
+        if ($cuP -and -not $daGiu["$($m.o)"]) {
             $cwdP = [uri]::UnescapeDataString("$($cuP.cwd)") -replace '\\', '/'
-            if ($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match [regex]::Escape($proj)) { continue }
+            $vaiKhac = $ds | Where-Object { $_ -ne $m -and (KhopTen $cuP.title $_) } | Select-Object -First 1
+            if (($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match [regex]::Escape($proj)) -and (-not $vaiKhac -or (KhopTen $cuP.title $m))) {
+                $daGiu["$($m.o)"] = $true; continue
+            }
         }
-        $ten = if ($m.ten) { $m.ten } else { $m.vai }   # tiêu đề ô mang tên hiển thị (có dấu)
-        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and $_.title -match "(^|[^\p{L}])$([regex]::Escape($ten))([^\p{L}]|$)" -and $_.title -notmatch 'ten-o' } | Select-Object -First 1
+        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and (KhopTen $_.title $m) -and $_.title -notmatch 'ten-o' -and -not $daGiu["$($_.pane_id)"] } | Select-Object -First 1
         $moi = if ($hit) { "$($hit.pane_id)" } else { '' }
+        if ($moi) { $daGiu[$moi] = $true }
         if ("$($m.o)" -ne $moi) { $m.o = $moi; $doi = $true }
     }
     if ($doi) { [IO.File]::WriteAllText($f, ($d | ConvertTo-Json -Depth 5), $utf8) }
