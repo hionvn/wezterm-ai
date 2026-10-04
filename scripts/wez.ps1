@@ -33,6 +33,9 @@ if (-not (Test-Path $exe)) { $c = Get-Command wezterm -ErrorAction SilentlyConti
 $stateDir = Join-Path $env:LOCALAPPDATA 'wez-ai\state'
 $doiDir = Join-Path $env:LOCALAPPDATA 'wez-ai\doi'   # sổ đội lúc chạy: số ô của Manager + từng worker
 $utf8 = New-Object Text.UTF8Encoding $false
+# 04/10: worker "ai": "deepseek" — dòng PowerShell đặt biến cho Claude Code chạy bằng DeepSeek (giống hàm deepseek trong profile).
+# Key lấy từ biến người dùng lúc ô chạy, không nằm trong file. Giữ giống DEEPSEEK_ENV trong ~\.wezterm\06-bo-cuc.lua.
+$DEEPSEEK_ENV = "`$env:ANTHROPIC_AUTH_TOKEN = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User'); `$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'; Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue; `$env:ANTHROPIC_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-flash'; `$env:CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-flash'; `$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '786432'"
 
 # PowerShell 5.1: ConvertFrom-Json trả cả mảng thành 1 phần tử → foreach để trải ra từng ô
 function Get-Panes { $r = (& $exe cli --no-auto-start list --format json) -join "`n" | ConvertFrom-Json; foreach ($p in $r) { $p } }
@@ -463,8 +466,12 @@ switch ($Cmd) {
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
                 $chan = if ($m.chan) { " '--disallowedTools=$(($m.chan -split ' ') -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
-                if ($ngu -and $ngu.session) { $l += "claude --resume $($ngu.session) --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan`r`n" }
-                else { $l += "claude --remote-control '$($def.du_an)-$($m.vai)' -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n" }
+                # 04/10: "ai": "deepseek" = Claude Code chạy bằng DeepSeek (cổng tương thích Anthropic). Key đọc từ biến người dùng
+                # DEEPSEEK_API_KEY lúc chạy — KHÔNG ghi key vào file mở ô. Không --remote-control (cần đăng nhập claude.ai).
+                $rc = " --remote-control '$($def.du_an)-$($m.vai)'"
+                if ($m.ai -eq 'deepseek') { $l += $DEEPSEEK_ENV + "`r`n"; $rc = '' }
+                if ($ngu -and $ngu.session) { $l += "claude --resume $($ngu.session)$rc -n '$ten'$chan`r`n" }
+                else { $l += "claude$rc -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n" }
             }
             $lf = Join-Path $launchDir "mo-$($m.vai).ps1"
             [IO.File]::WriteAllText($lf, $l, $bom)

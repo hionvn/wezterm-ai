@@ -70,7 +70,7 @@ local function capture_layout()
             for k, v in pairs(d) do it[k] = v end
             -- ô trong đội: loại AI theo sổ đội (tiêu đề / tiến trình có lúc không nhận ra)
             if d.doi_ai == 'codex' and it.kind == 'shell' then it.kind = 'codex'; it.state = it.state or title_state(p) end
-            if d.doi_ai == 'claude' and it.kind == 'shell' then it.kind = 'claude' end
+            if (d.doi_ai == 'claude' or d.doi_ai == 'deepseek') and it.kind == 'shell' then it.kind = 'claude' end
           end
           table.insert(panes, it)
           n = n + 1
@@ -90,6 +90,8 @@ local function write_layout(path)
 end
 
 local function q(s) return "'" .. (tostring(s):gsub("'", "''")) .. "'" end
+-- 04/10: giống $DEEPSEEK_ENV trong Hion\cai-dat\wez.ps1 (Claude Code chạy bằng DeepSeek; key lấy từ biến người dùng lúc chạy)
+local DEEPSEEK_ENV = "$env:ANTHROPIC_AUTH_TOKEN = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User'); $env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'; Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue; $env:ANTHROPIC_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-flash'; $env:CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-flash'; $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '786432'"
 local TIEP = 'Tiếp tục việc đang làm dở trước khi WezTerm khởi động lại (đọc lại tiến độ nếu cần).'
 local function restore_args(it)
   -- 03/10: lần khởi động lại thật, các ô Claude mở lại bị chạy trong E:\AI\Hion thay vì thư mục dự án
@@ -111,9 +113,11 @@ local function restore_args(it)
     wezterm.GLOBAL.phien_da_mo = DA_MO
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or '' -- đang làm dở → tự làm tiếp
     if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
-      return PS(('claude --resume ' .. it.session)
+      -- 04/10: vai "deepseek" = Claude Code chạy bằng DeepSeek: đặt biến (key đọc lúc chạy, không ghi file), bỏ Remote Control
+      local ds = it.doi_ai == 'deepseek'
+      return PS((ds and (DEEPSEEK_ENV .. '; ') or '') .. ('claude --resume ' .. it.session)
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
-        .. ' --remote-control ' .. q(it.doi .. '-' .. it.vai)
+        .. (ds and '' or (' --remote-control ' .. q(it.doi .. '-' .. it.vai)))
         .. (it.chan and (' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ',')))) or '') .. tiep, true)
     end
     -- ô ngoài đội + Tổng quản Hion: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
