@@ -94,11 +94,9 @@ local function cap_nhat(window, pane, do_rieng)
   -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).
   chay(do_rieng, 'fuel_cells', fuel_cells)
   chay(do_rieng, 'codex_warn', codex_warn, window)
-  if not RIGHT_CLEARED then window:set_right_status(''); RIGHT_CLEARED = true end -- 04/10: chỉ 1 lần, khỏi gửi lệnh cho giao diện mỗi lượt
-
-  -- Góc trái: báo khi đang ở chế độ phím đặc biệt (copy mode…)
-  local kt = window:active_key_table()
-  window:set_left_status(kt and wezterm.format { { Background = { Color = '#e5c07b' } }, { Foreground = { Color = '#000000' } }, { Text = ' ⌨ ' .. kt .. ' ' } } or '')
+  -- 04/10: chỉ 1 lần, khỏi gửi lệnh cho giao diện mỗi lượt. 06/10: BỎ chữ ⌨ góc trái (báo copy mode) — active_key_table +
+  -- set_left_status mỗi lượt phải chờ luồng giao diện: đo 150–950 ms/lượt = thủ phạm chính làm WezTerm chậm khi ~22 ô chạy
+  if not RIGHT_CLEARED then window:set_right_status(''); window:set_left_status(''); RIGHT_CLEARED = true end
 end
 
 -- CHỐNG CHẠY CHỒNG (04/10/2026): tách ô / mở tab trong Lua (pane:split, spawn_tab) là lệnh "nhường lượt" — trong lúc chờ,
@@ -123,6 +121,8 @@ wezterm.on('update-status', function(window, pane)
   US_DANG = os.time()
   local do_rieng, t0 = {}, ms()
   local ok, err = pcall(cap_nhat, window, pane, do_rieng)
+  local t_do = 0; for _, x in ipairs(do_rieng) do t_do = t_do + x[2] end
+  table.insert(do_rieng, { 'chua_do', ms() - t0 - t_do }) -- 06/10: phần thời gian nằm ngoài mọi việc đã đo
   US_DANG = 0
   if not ok then wezterm.log_error('update-status: ' .. tostring(err)) end
   local tong = ms() - t0

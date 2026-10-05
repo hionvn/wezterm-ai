@@ -2,6 +2,7 @@
 local fuel_cache = { at = 0, cells = nil }
 local FUEL_GLOB = {} -- [số tài khoản Codex] = { t, files }: kết quả quét thư mục phiên gần nhất
 local FUEL_MEMO = {} -- [số tài khoản Codex] = { file, size, row }: file phiên chưa đổi thì không đọc lại
+local FUEL_FILE = {} -- [đường dẫn file phiên] = { size, p5, r5, pw, rw }: số hạn mức đã đọc của từng file
 local function pct_color(p)
   return p >= 80 and '#e06c75' or (p >= 50 and '#e5c07b' or '#98c379')
 end
@@ -65,17 +66,27 @@ local function fuel_cells()
       -- nhiều ô cùng tài khoản chạy song song → file mới nhất theo tên chưa chắc có số mới nhất: gom 10 phiên cuối,
       -- lấy khung có giờ làm mới muộn nhất, trong khung đó lấy % cao nhất (trong 1 khung % chỉ tăng)
       for i = #files, math.max(1, #files - 9), -1 do
-        local t = read_file(files[i], 98304)
-        if t then
-          for u, r in t:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
-            u, r = tonumber(u), tonumber(r)
-            if not s or r > s.r5 or (r == s.r5 and u > s.p5) then s = s or {}; s.p5, s.r5 = u, r end
+        -- 06/10: file chưa đổi cỡ thì dùng lại kết quả (trước đọc lại cả 10 file mỗi lần → lượt cập nhật giật 2,4 giây)
+        local fh, sz = io.open(files[i], 'rb'), nil
+        if fh then sz = fh:seek('end') fh:close() end
+        local c = FUEL_FILE[files[i]]
+        if not c or c.size ~= sz then
+          c = { size = sz }
+          local t = read_file(files[i], 98304)
+          if t then
+            for u, r in t:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
+              u, r = tonumber(u), tonumber(r)
+              if not c.r5 or r > c.r5 or (r == c.r5 and u > c.p5) then c.p5, c.r5 = u, r end
+            end
+            for u, r in t:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
+              u, r = tonumber(u), tonumber(r)
+              if not c.rw or r > c.rw or (r == c.rw and u > c.pw) then c.pw, c.rw = u, r end
+            end
           end
-          for u, r in t:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
-            u, r = tonumber(u), tonumber(r)
-            if s and (not s.rw or r > s.rw or (r == s.rw and u > s.pw)) then s.pw, s.rw = u, r end
-          end
+          FUEL_FILE[files[i]] = c
         end
+        if c.r5 and (not s or c.r5 > s.r5 or (c.r5 == s.r5 and c.p5 > s.p5)) then s = s or {}; s.p5, s.r5 = c.p5, c.r5 end
+        if s and c.rw and (not s.rw or c.rw > s.rw or (c.rw == s.rw and c.pw > s.pw)) then s.pw, s.rw = c.pw, c.rw end
       end
       if not s and memo and memo.row then table.insert(codex, memo.row) end -- vẫn chưa có → giữ số cũ
     end
