@@ -51,7 +51,7 @@ const DEM = [
   // 05/10: chỉ bắt khi `vercel` là LỆNH thật (đầu lệnh / sau ; & | ( / sau npx…), bỏ qua chữ "vercel" trong chuỗi có dấu nháy
   // (lời nhắn giao việc, mẫu grep "deploy|vercel") — trước đó chặn nhầm Manager + Security Chatbot đứng chờ 8 tiếng.
   [{ test: (s) => /(?:^|[;&|(\n]\s*|\b(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+)vercel(?:\.cmd)?(?:\s+[^;|&\n]*?(?:--prod\b|\bdeploy\b|\bpromote\b)|\s*(?:$|[;&|)\n]))/i.test(s.replace(/"[^"]*"|'[^']*'/g, '""'))
-      || /\bdeploy-env\.cjs\b[^;|&\n]*--vercel\b/i.test(s) }, 'deploy Vercel'],
+      || /\bdeploy-env\.cjs\b[^;|&\n]*--vercel\b/i.test(s.replace(/"[^"]*"|'[^']*'/g, '""')) }, 'deploy Vercel'],
   [/\b(?:netlify|firebase|wrangler|fly|railway)\s+deploy\b/i, 'deploy'],
   [/\bsupabase\s+(?:db\s+push|migration\s+up|functions\s+deploy)\b/i, 'đổi cấu trúc database / deploy Supabase'],
   [/\bsend-mailmessage\b/i, 'gửi email'],
