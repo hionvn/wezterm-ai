@@ -52,7 +52,13 @@ function Sync-Doi($proj) {
     $doi = $false
     $ds = @(@($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai })
     # tên vai đúng nguyên chữ: "Săn" KHÔNG khớp "Săn 2" (04/10: Aff.San và Aff.San2 cùng trỏ ô 47 vì "Săn" khớp tiêu đề "🔎 Săn 2")
-    function KhopTen($title, $m) { $t = if ($m.ten) { $m.ten } else { $m.vai }; "$title" -match "(^|[^\p{L}])$([regex]::Escape($t))(?!\s*\p{N})([^\p{L}\p{N}]|$)" }
+    # 05/10: phân biệt hoa thường + tên dài thắng: "Bot" không lấy ô "🛠️ Áp bot" của ApBot (Sino.Bot từng chiếm ô 57 → ApBot bị mở trùng phiên)
+    function KhopTen1($title, $m) { $t = if ($m.ten) { $m.ten } else { $m.vai }; "$title" -cmatch "(^|[^\p{L}])$([regex]::Escape($t))(?!\s*\p{N})([^\p{L}\p{N}]|$)" }
+    function KhopTen($title, $m) {
+        if (-not (KhopTen1 $title $m)) { return $false }
+        $dai = $ds | Where-Object { KhopTen1 $title $_ } | Sort-Object { "$(if ($_.ten) { $_.ten } else { $_.vai })".Length } -Descending | Select-Object -First 1
+        return ($dai -eq $m)
+    }
     $daGiu = @{}   # ô đã thuộc một vai → không gán thêm cho vai khác
     foreach ($m in $ds) {
         # 04/10: số ô có thể đã bị dùng lại sau khởi động lại (sổ Aff ghi Manager = ô 22 trong khi ô 22 là Coolguy · Kiểm soát)
@@ -124,13 +130,21 @@ function Resolve-Id($s, [switch]$Thuc) {
         if (($m.ngu -or $m.session) -and $Thuc -and $m -ne $d.manager) {
             Write-Host "💤→⏰ $proj.$($m.vai) đang ngủ, đánh thức (mở lại đúng phiên cũ)…" -ForegroundColor DarkCyan
             & $PSCommandPath doi $proj "thuc:$($m.vai)" | Out-Host
-            $d = Sync-Doi $proj
-            $m = @($d.worker) | Where-Object { $_.vai -eq $m.vai } | Select-Object -First 1
+            # 05/10: ô vừa mở chưa kịp có tiêu đề → tìm lại vài lần (trước báo "không đánh thức được" rồi lần gửi sau mở trùng ô thứ 2)
+            $vaiThuc = $m.vai
+            for ($k = 0; $k -lt 10; $k++) {
+                $d = Sync-Doi $proj
+                $m = @($d.worker) | Where-Object { $_.vai -eq $vaiThuc } | Select-Object -First 1
+                if ($m.o) { break }; Start-Sleep 2
+            }
             if (-not $m.o) { Write-Error "Không đánh thức được $proj.$vai"; exit 1 }
             for ($i = 0; $i -lt 120; $i++) {   # đợi tối đa ~90 giây tới khi AI sẵn sàng nhận lệnh
                 Start-Sleep -Milliseconds 750
                 $t = (& $exe cli --no-auto-start get-text --pane-id $m.o) -join "`n"
                 if ($t -match 'Update available|Skip until next') { & $exe cli --no-auto-start send-text --no-paste --pane-id $m.o ([string][char]27); continue }
+                # 05/10: phiên bỏ lâu → Claude hỏi "Resume / Start a new conversation" (dấu ❯ của hộp này từng bị tưởng là sẵn sàng → lời giao việc rơi vào hộp,
+                # ô kẹt — Coolguy.Bot 04/10). Chọn 1. Resume (Enter) để giữ trí nhớ phiên — đúng mục đích đánh thức.
+                if ($t -match 'Start a new conversation|Resuming it will use') { & $exe cli --no-auto-start send-text --no-paste --pane-id $m.o "`r"; Start-Sleep 2; continue }
                 if ($t -match 'Ask Codex|for shortcuts|❯|auto mode|bypass permissions') { break }
             }
             Start-Sleep 2
