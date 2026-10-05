@@ -89,6 +89,19 @@ local function open_board(beside, auto)
   local nb = beside:split { direction = 'Right', size = 0.45, top_level = true, cwd = HUB, args = BOARD } -- top_level: bảng chiếm trọn mép phải, không bóp 1 ô
   wezterm.GLOBAL.board_o, wezterm.GLOBAL.board_auto = tostring(nb:pane_id()), auto
   BOARD_MEMO.mo_luc = os.time()
+  -- 06/10: 2 lần bảng tự mở bị bóp còn 1 cột (danh sách "biến mất") → 2 giây sau soát, hẹp quá thì nới về ~45% tab
+  local id = nb:pane_id()
+  wezterm.time.call_after(2, function()
+    local p = pane_or_nil(id)
+    if not p then return end
+    local ok, d = pcall(function() return p:get_dimensions() end)
+    local ok2, tw = pcall(function() return p:tab():get_size().cols end)
+    if ok and ok2 and d and tw and d.cols < 30 then
+      local can = math.floor(tw * 0.45) - d.cols
+      wezterm.log_warn('bang: o ' .. id .. ' chi ' .. d.cols .. ' cot -> noi them ' .. can)
+      wezterm.background_child_process { wezterm.executable_dir .. '\\wezterm.exe', 'cli', 'adjust-pane-size', '--pane-id', tostring(id), '--amount', tostring(can), 'Left' }
+    end
+  end)
   -- giữ con trỏ ở ô bạn đang gõ — chỉ khi ô đó ở tab đang xem, không thì màn hình nhảy sang tab Tổng quản (03/10)
   if beside:tab():tab_id() == tab_dang_xem() then beside:activate() end
   return nb

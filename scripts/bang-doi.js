@@ -16,6 +16,8 @@ const R = `${E}[0m`, B = `${E}[1m`, DIM = `${E}[2m`;
 const rgb = (hex) => { const m = /^#?(..)(..)(..)$/.exec(hex || '') || [0, '9a', 'a0', 'a6']; return `${E}[38;2;${parseInt(m[1], 16)};${parseInt(m[2], 16)};${parseInt(m[3], 16)}m`; };
 const link = (id, text) => `${E}]8;;wezai-o:${id}${E}\\${text}${E}]8;;${E}\\`;
 const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } };
+// cỡ ô hỏi thẳng console (process.stdout.columns trên Windows có thể cũ khi không nhận được sự kiện resize)
+const coO = () => { try { const [c, r] = process.stdout.getWindowSize(); if (c > 0 && r > 0) return [c, r]; } catch {} return [process.stdout.columns || 100, process.stdout.rows || 40]; };
 const SPIN = ['◐', '◓', '◑', '◒'];
 const ago = (sec) => sec < 60 ? 'vừa xong' : sec < 3600 ? `${Math.floor(sec / 60)} phút` : `${Math.floor(sec / 3600)}h${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}`;
 
@@ -66,7 +68,7 @@ function viecList(now) {
     const box = v.xong ? `${rgb('#98c379')}${B}☑${R}` : `${rgb('#e5c07b')}☐${R}`;
     const so = String(v.so).padStart(3);
     const ai = pad(String(v.ai || 'ô ' + v.o).slice(0, 30), 30);
-    const viec = String(v.viec || '').slice(0, Math.max(20, (process.stdout.columns || 100) - 75));
+    const viec = String(v.viec || '').slice(0, Math.max(20, coO()[0] - 75));
     const thoi = v.xong ? `${DIM}${hhmm(v.t)} → ${hhmm(v.xong)} (${ago(v.xong - v.t)})${R}` : `${rgb('#e5c07b')}từ ${hhmm(v.t)} · ${ago(now - v.t)}${R}`;
     const text = v.xong ? `${DIM}${viec}${R}` : viec;
     lines.push(' ' + box + ' ' + link(v.o, `${so}. ${ai}${pad(text, 4 + width(viec))}`) + thoi);
@@ -140,8 +142,7 @@ function drawRaw() {
     them(d.manager, true); arr(d.worker).forEach((w) => them(w, false));
   }
   // vẽ
-  const cols = process.stdout.columns || 100;
-  const rows = process.stdout.rows || 40;
+  const [cols, rows] = coO();
   const out = [];
   viecList(now); // 04/10: KHÔNG hiện checklist nữa (Hion: bảng chỉ để danh sách agent) — vẫn chạy để tự ☑ việc xong trong viec.json (eval, Brain dùng)
   const fc = readJson(path.join(WEZAI, 'fuel-claude.json'));
@@ -192,9 +193,24 @@ function drawRaw() {
 }
 
 process.stdout.write(`${E}]0;📊 Tổng quan${'\x07'}${E}[?25l`); // tiêu đề ô (WezTerm nhận ra), ẩn con trỏ
-process.stdout.on('resize', () => { draw.last = ''; draw(); });
+// 06/10: kéo đường chia ô → bảng trắng trơn tới khi số liệu đổi. ConPTY xoá/vẽ lại màn hình khi đổi cỡ, còn
+// sự kiện 'resize' của Node trên Windows không đáng tin → tự hỏi cỡ ô mỗi 0,4 giây (getWindowSize hỏi thẳng
+// console, rẻ); đổi cỡ thì đợi kéo xong 0,25 giây rồi vẽ lại bắt buộc. Thêm 30 giây vẽ lại 1 lần cho chắc.
+const veLai = () => { draw.last = ''; draw(); };
+let co = '', hen = null;
+const kiemCo = () => {
+  let c = ''; try { c = process.stdout.getWindowSize().join('x'); } catch { return; }
+  if (c === co) return;
+  co = c; clearTimeout(hen); hen = setTimeout(veLai, 250);
+};
+process.stdout.on('resize', kiemCo);
+// Node trên Windows chỉ biết ô đổi cỡ khi ĐANG ĐỌC bàn phím (sự kiện đổi cỡ đi chung đường với phím) → đọc phím thô,
+// bỏ qua phím thường; Ctrl+C vẫn thoát như cũ. Đo 06/10: không đọc phím thì cỡ ô kẹt ở cỡ lúc mở.
+try { process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.on('data', (d) => { if (d.includes(3)) process.exit(0); }); } catch {}
 draw();
+setInterval(kiemCo, 400);
 setInterval(draw, 3000);
+setInterval(veLai, 30000);
 
 // không bao giờ thoát vì lỗi lạ (thoát → ô đóng → WezTerm mở lại → nháy)
 process.on('uncaughtException', (e) => { try { process.stdout.write('[H[2J📊 Bảng tạm lỗi: ' + String(e && e.message || e).slice(0, 200)); } catch {} });
