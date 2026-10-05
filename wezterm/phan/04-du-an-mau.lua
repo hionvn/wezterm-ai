@@ -12,6 +12,10 @@ config.status_update_interval = 2000
 -- (04/10 thử 30 → CPU luồng giao diện 66–89%). Con trỏ không nhấp nháy, không hiệu ứng chuyển mờ, không tự kiểm bản mới.
 config.max_fps = 120 -- đo 04/10: 30 → 43% · 60 → 23–28% · 120 → 15–20% (CPU luồng giao diện)
 config.animation_fps = 1
+-- 06/10 (người dùng chọn): vẽ bằng WebGpu thay OpenGL — luồng giao diện chạy 41–98% một nhân với ~22 ô AI.
+-- Lỗi hiển thị (đen / nháy) thì xoá dòng này rồi khởi động lại WezTerm.
+config.front_end = 'WebGpu'
+config.webgpu_power_preference = 'HighPerformance' -- card rời NVIDIA RTX 3060 Ti (mặc định chọn card AMD tích hợp)
 config.cursor_blink_rate = 0
 config.check_for_updates = false
 
