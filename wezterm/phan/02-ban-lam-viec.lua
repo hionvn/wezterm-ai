@@ -55,7 +55,11 @@ local function is_header(p)
 end
 
 -- AI gọi cai-dat\mo-tai-lieu.js → wez-ai\open.json → mở ô 📄 bên phải tab đang xem (thay ô 📄 cũ)
+local OPEN_LAST = 0
 local function process_open(window)
+  -- 06/10: mỗi lần mở 📄 = tạo tab/ô mới = giật 3–5 giây khi ~20 ô AI chạy (cham.log: 11,7 giây / 10 phút).
+  -- Tối đa 1 lần / 3 phút; yêu cầu đến giữa chừng nằm chờ trong open.json (yêu cầu mới ghi đè cũ) → mở bản mới nhất.
+  if os.time() - OPEN_LAST < 180 then return end
   local req_path = AIDIR .. '\\open.json'
   local f = io.open(req_path, 'rb')
   if not f then return end
@@ -64,6 +68,7 @@ local function process_open(window)
   os.remove(req_path)
   local ok, req = pcall(wezterm.json_parse, s)
   if not ok or not req or not req.path then return end
+  OPEN_LAST = os.time()
   local name = req.path:match('([^\\/]+)$') or req.path
   local tab, cur = window:active_tab(), window:active_pane()
   -- Thay ô 📄 cũ: đóng mọi ô tài liệu trong cửa sổ (ở tab đang xem hoặc ở tab 📄 riêng)
