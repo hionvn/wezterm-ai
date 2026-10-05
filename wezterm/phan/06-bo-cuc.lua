@@ -115,10 +115,13 @@ local function restore_args(it)
     if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
       -- 04/10: vai "deepseek" = Claude Code chạy bằng DeepSeek: đặt biến (key đọc lúc chạy, không ghi file), bỏ Remote Control
       local ds = it.doi_ai == 'deepseek'
+      -- 05/10: DeepSeek báo "Invalid schema for function Artifact" → luôn chặn Artifact
+      local chan = it.chan
+      if ds and not (' ' .. (chan or '') .. ' '):find(' Artifact ', 1, true) then chan = ((chan or '') .. ' Artifact'):gsub('^%s+', '') end
       return PS((ds and (DEEPSEEK_ENV .. '; ') or '') .. ('claude --resume ' .. it.session)
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
         .. (ds and '' or (' --remote-control ' .. q(it.doi .. '-' .. it.vai)))
-        .. (it.chan and (' ' .. q('--disallowedTools=' .. (it.chan:gsub('%s+', ',')))) or '') .. tiep, true)
+        .. (chan and (' ' .. q('--disallowedTools=' .. (chan:gsub('%s+', ',')))) or '') .. tiep, true)
     end
     -- ô ngoài đội + Tổng quản Hion: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
     return PS('claudeRC --resume ' .. it.session .. tiep)

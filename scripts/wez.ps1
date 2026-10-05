@@ -505,7 +505,10 @@ switch ($Cmd) {
                 else { $l += "codex.cmd --no-daemon$sb$web`r`n" }
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
-                $chan = if ($m.chan) { " '--disallowedTools=$(($m.chan -split ' ') -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
+                $ds = @("$($m.chan)" -split ' ' | Where-Object { $_ })
+                # 05/10: DeepSeek báo "API Error 400 Invalid schema for function Artifact" (lược đồ có regex) → luôn chặn Artifact
+                if ($m.ai -eq 'deepseek' -and $ds -notcontains 'Artifact') { $ds += 'Artifact' }
+                $chan = if ($ds) { " '--disallowedTools=$($ds -join ',')'" } else { '' }   # dạng = để cờ không nuốt lời nhắn phía sau
                 # 04/10: "ai": "deepseek" = Claude Code chạy bằng DeepSeek (cổng tương thích Anthropic). Key đọc từ biến người dùng
                 # DEEPSEEK_API_KEY lúc chạy — KHÔNG ghi key vào file mở ô. Không --remote-control (cần đăng nhập claude.ai).
                 $rc = " --remote-control '$($def.du_an)-$($m.vai)'"
