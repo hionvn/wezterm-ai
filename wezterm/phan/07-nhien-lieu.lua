@@ -88,7 +88,8 @@ local function fuel_cells()
   if fx then
     local rows = {}
     for _, c in ipairs(codex) do rows[#rows + 1] = { icon = c.icon, ten = c.ten, five = c.five, week = c.week } end
-    fx:write(wezterm.json_encode(rows)) fx:close()
+    -- bảng rỗng: json_encode ghi "{}" thay vì "[]" → bang-doi.js lỗi "fx is not iterable" (06/10)
+    fx:write(#rows == 0 and '[]' or wezterm.json_encode(rows)) fx:close()
   end
   return cells
 end

@@ -199,7 +199,7 @@ function Chon-AI($s) {
     $defF = Join-Path $PSScriptRoot "..\doi\$proj.json"; if (-not (Test-Path $defF)) { return }
     $def = Get-Content $defF -Raw -Encoding UTF8 | ConvertFrom-Json
     $w = @($def.worker) | Where-Object { $_ -and ($_.vai -eq $vai -or $_.ten -eq $vai) } | Select-Object -First 1
-    if (-not $w -or $w.ai -ne 'codex') { return }
+    if (-not $w -or $w.ai -ne 'codex' -or $w.router) { return }
     $f = Get-CodexFuel $proj $w; if (-not $f) { return }
     $ng = if ($cfg -and $cfg.codexChuyenClaude) { $cfg.codexChuyenClaude } else { [pscustomobject]@{ nam = 90; tuan = 95 } }
     $key = "$proj.$($w.vai)"; $tam = Read-AiTam; $dangTam = $tam.PSObject.Properties[$key]
@@ -417,7 +417,7 @@ switch ($Cmd) {
         # vai đang tạm chạy Claude vì tài khoản Codex sắp hết (ai-tam.json) → mở bằng Claude, lời giao vai có ghi chú dự phòng
         $tamAi = Read-AiTam
         foreach ($w in @($def.worker)) {
-            if ($w -and $tamAi.PSObject.Properties["$($def.du_an).$($w.vai)"]) {
+            if ($w -and -not $w.router -and $tamAi.PSObject.Properties["$($def.du_an).$($w.vai)"]) {   # router: không dùng tài khoản Codex nào → không dự phòng
                 $w.ai = 'claude'
                 $w.viec = "$($w.viec) [ĐANG DỰ PHÒNG: bạn là bản Claude thay tạm bản Codex của vai này (Codex hết hạn mức) — không nhớ hội thoại của bản Codex: đọc brief + tien-do để nắm việc dở, ghi kết quả vào file như thường]"
             }
@@ -497,9 +497,12 @@ switch ($Cmd) {
                     $tk = $b.taiKhoan | Where-Object { $_.so -eq $soTk } | Select-Object -First 1
                     if ($tk) { $l += "`$env:CODEX_HOME = '$($tk.thuMuc)'`r`n" }
                 }
+                # 06/10: "router": true → Codex qua 9router (profile router trong ~\.codex\config.toml, cổng localhost:20128)
+                if ($m.router) { $l += "`$env:CODEX_HOME = '$HOME\.codex'`r`n" }
                 # "chan" (vai chỉ đọc: Kiểm soát / Security) → sandbox read-only; "timWeb" → bật tìm web (--search)
                 $sb = if ("$($m.chan)" -match '\bWrite\b') { ' -s read-only' } else { '' }   # chỉ vai bị chặn ghi file (Kiểm soát/Security)
                 $web = if ($m.timWeb) { ' --search' } else { '' }
+                if ($m.router) { $sb += ' --profile router' }
                 # 04/10: không tìm thấy phiên theo tên (vd vai đổi tài khoản) → mở MỚI kèm lời giao vai; KHÔNG dùng "resume --last" (vớ nhầm phiên vai khác cùng tài khoản)
                 if ($ngu) { $l += "codex.cmd --no-daemon resume$sb '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon$sb$web (Get-Content -Raw -Encoding UTF8 '$loiF') }`r`n" }
                 else { $l += "codex.cmd --no-daemon$sb$web`r`n" }

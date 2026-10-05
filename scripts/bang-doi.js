@@ -146,7 +146,8 @@ function drawRaw() {
   const out = [];
   viecList(now); // 04/10: KHÔNG hiện checklist nữa (Hion: bảng chỉ để danh sách agent) — vẫn chạy để tự ☑ việc xong trong viec.json (eval, Brain dùng)
   const fc = readJson(path.join(WEZAI, 'fuel-claude.json'));
-  const fx = readJson(path.join(WEZAI, 'fuel-codex.json')) || [];
+  let fx = readJson(path.join(WEZAI, 'fuel-codex.json'));
+  if (!Array.isArray(fx)) fx = []; // Lua ghi bảng rỗng thành {} (06/10: "fx is not iterable")
   const pc = (v) => (v == null ? '?' : `${Math.round(v)}%`);
   const col = (v) => rgb(v >= 80 ? '#e06c75' : v >= 50 ? '#e5c07b' : '#98c379');
   let fuel = fc ? `⛽ Claude ${col(fc.five || 0)}5h ${pc(fc.five)}${R} · tuần ${pc(fc.week)}` : '⛽ Claude ?';
