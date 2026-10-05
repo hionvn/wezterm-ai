@@ -59,8 +59,9 @@ function paneAlive(id) {
   if (!alivePanes) {
     // 04/10: đọc wez-ai\o-list.json (Lua ghi ≤ 10 giây/lần) trước — cli list bắt WezTerm hỏi thư mục mọi ô trên luồng giao diện
     try {
+    // 05/10: chấp nhận file cũ tới 2 phút (hook này chạy mỗi lần AI sửa file — gọi cli list lúc WezTerm nghẽn làm nghẽn thêm)
       const ol = path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'o-list.json');
-      if (Date.now() - fs.statSync(ol).mtimeMs < 15000) alivePanes = new Set(JSON.parse(fs.readFileSync(ol, 'utf8')).map((p) => String(p.pane_id)));
+      if (Date.now() - fs.statSync(ol).mtimeMs < 120000) alivePanes = new Set(JSON.parse(fs.readFileSync(ol, 'utf8')).map((p) => String(p.pane_id)));
     } catch {}
   }
   if (!alivePanes) {

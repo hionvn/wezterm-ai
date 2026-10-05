@@ -38,7 +38,22 @@ $utf8 = New-Object Text.UTF8Encoding $false
 $DEEPSEEK_ENV = "`$env:ANTHROPIC_AUTH_TOKEN = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User'); `$env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'; Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue; `$env:ANTHROPIC_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-flash[1m]'; `$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-flash'; `$env:CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-flash'; `$env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '786432'"
 
 # PowerShell 5.1: ConvertFrom-Json trả cả mảng thành 1 phần tử → foreach để trải ra từng ô
-function Get-Panes { $r = (& $exe cli --no-auto-start list --format json) -join "`n" | ConvertFrom-Json; foreach ($p in $r) { $p } }
+# 05/10 (WezTerm treo / quay vòng): `wezterm cli list` bắt WezTerm hỏi Windows thư mục của MỌI ô ngay trên luồng giao diện
+# (30 ô ≈ 1–3 giây, có lúc 35 giây khi máy bận). 4 Manager + Tổng quản gọi list/send/read/cho liên tục → giao diện đứng.
+# Giờ mặc định đọc wez-ai\o-list.json (Lua ghi sẵn, ≤ 10 giây/lần; mới < 15 giây mới dùng). -Thuc = hỏi WezTerm thật (mở/xếp đội).
+$oListF = Join-Path $env:LOCALAPPDATA 'wez-ai\o-list.json'
+function Get-Panes([switch]$Thuc) {
+    if (-not $Thuc) {
+        try {
+            $fi = Get-Item -LiteralPath $oListF -ErrorAction Stop
+            if (((Get-Date) - $fi.LastWriteTime).TotalSeconds -lt 60) {
+                $r = [IO.File]::ReadAllText($oListF, [Text.Encoding]::UTF8) | ConvertFrom-Json
+                if (@($r).Count) { foreach ($p in $r) { $p }; return }
+            }
+        } catch {}
+    }
+    $r = (& $exe cli --no-auto-start list --format json) -join "`n" | ConvertFrom-Json; foreach ($p in $r) { $p }
+}
 # Ô người dùng đang nhìn trên màn hình (khác $env:WEZTERM_PANE = ô AI gọi lệnh, có thể ở tab nền).
 # Mở/xếp ô xong thì trả màn hình về ô này — trước đây trả về ô AI gọi lệnh làm màn hình nhảy tab (03/10/2026).
 function Get-Focus { try { $c = (& $exe cli --no-auto-start list-clients --format json) -join "`n" | ConvertFrom-Json; return "$(@($c)[0].focused_pane_id)" } catch { return '' } }
@@ -49,6 +64,9 @@ function Sync-Doi($proj) {
     if (-not (Test-Path $f)) { return $null }
     $d = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
     $panes = @(Get-Panes)
+    # ô ghi trong sổ mà file danh sách chưa có (vừa mở < 10 giây) → hỏi WezTerm thật 1 lần, tránh tưởng ô đã chết
+    $coO = @{}; foreach ($p in $panes) { $coO["$($p.pane_id)"] = $true }
+    if (@(@($d.manager) + @($d.worker) | Where-Object { $_ -and "$($_.o)" -ne '' -and -not $coO["$($_.o)"] }).Count) { $panes = @(Get-Panes -Thuc) }
     $doi = $false
     $ds = @(@($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai })
     # tên vai đúng nguyên chữ: "Săn" KHÔNG khớp "Săn 2" (04/10: Aff.San và Aff.San2 cùng trỏ ô 47 vì "Săn" khớp tiêu đề "🔎 Săn 2")
@@ -244,7 +262,7 @@ function Wait-Panes($ids, $max) {
         }
         if ($sw.Elapsed.TotalSeconds -ge $nextCheck) {   # thỉnh thoảng xem ô còn mở không
             $nextCheck += 30
-            $alive = @((& $exe cli --no-auto-start list --format json | Out-String | ConvertFrom-Json) | ForEach-Object { "$($_.pane_id)" })
+            $alive = @(Get-Panes | ForEach-Object { "$($_.pane_id)" })   # 05/10: đọc o-list.json, không hỏi WezTerm mỗi 30 giây
             foreach ($id in @($left)) { if ($id -notin $alive) { Write-Host "❌ Ô $id đã đóng."; $left.Remove($id) | Out-Null; $code = [Math]::Max($code, 1) } }
         }
         Start-Sleep -Seconds 2
@@ -254,7 +272,7 @@ function Wait-Panes($ids, $max) {
 
 switch ($Cmd) {
     'list' {
-        $panes = & $exe cli --no-auto-start list --format json | Out-String | ConvertFrom-Json
+        $panes = @(Get-Panes)   # 05/10: đọc o-list.json (cột ĐANG CHỌN lấy từ file, có thể trống)
         $panes | ForEach-Object {
             $s = Get-PaneState $_.pane_id
             $dir = if ($_.cwd) { ([uri]$_.cwd).LocalPath.TrimEnd('\', '/') } else { '?' }
@@ -533,7 +551,7 @@ switch ($Cmd) {
         # Bố cục (người dùng chốt 03/10): cả đội chung 1 tab — Manager nửa trái, worker nửa phải chia lưới 2 cột
         #   (4 worker = 2×2: trên-trái, trên-phải, dưới-trái, dưới-phải). Ô đã mở ở chỗ khác thì CHUYỂN vào đúng chỗ (giữ nguyên phiên),
         #   ô thiếu thì mở mới. Cả đội đã đứng chung 1 tab rồi thì để nguyên, không xếp lại.
-        $panes = @(Get-Panes)
+        $panes = @(Get-Panes -Thuc)
         $tabOf = @{}; foreach ($p in $panes) { $tabOf["$($p.pane_id)"] = "$($p.tab_id)" }
         $mg = $def.manager
         $idsCu = @($oCu[$mg.vai]) + @($ws | ForEach-Object { $oCu[$_.vai] })
