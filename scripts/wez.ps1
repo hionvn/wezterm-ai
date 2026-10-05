@@ -193,29 +193,60 @@ function Get-CodexFuel($proj, $w) {
     $f = $ds | Where-Object { $_.ten -eq $tk.ten } | Select-Object -First 1
     if ($f) { return [pscustomobject]@{ ten = $tk.ten; five = [double]$f.five; week = [double]$f.week } }; return $null
 }
+# 06/10 (người dùng chốt): Codex hết hạn mức → GROK; Grok hết → CLAUDE. Vai định nghĩa ai=grok: Grok hết → Claude.
+# Grok không có lệnh xem hạn mức → "Grok hết" = ô Grok hiện lỗi hạn mức (rate limit / 429 / quota…) lúc giao việc,
+# hoặc đánh dấu tay `wez.ps1 grok het [giờ]`. Ghi wez-ai\grok-het.json { den, ly }; quá giờ "den" thì coi như Grok hồi.
+$grokHetF = Join-Path $env:LOCALAPPDATA 'wez-ai\grok-het.json'
+function Grok-Het { if (Test-Path $grokHetF) { try { $g = Get-Content $grokHetF -Raw -Encoding UTF8 | ConvertFrom-Json; return ([long]$g.den -gt [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) } catch {} }; return $false }
+function Grok-DanhDau($gio, $ly) {
+    $o = [ordered]@{ den = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + [int]([double]$gio * 3600); luc = (Get-Date -Format 'yyyy-MM-dd HH:mm'); ly = $ly }
+    [IO.File]::WriteAllText($grokHetF, ($o | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+}
+function Grok-BaoLoi($o) {   # 40 dòng cuối ô Grok có báo hết hạn mức?
+    $t = (& $exe cli --no-auto-start get-text --pane-id $o 2>$null | Select-Object -Last 40) -join "`n"
+    return $t -match '(?i)rate.?limit|\b429\b|quota|usage limit|limit reached|too many requests|out of credits|insufficient (credits|balance)'
+}
 function Chon-AI($s) {
     if ("$s" -notmatch '^([^./]+)[./](.+)$') { return }
     $proj = $Matches[1]; $vai = $Matches[2]
     $defF = Join-Path $PSScriptRoot "..\doi\$proj.json"; if (-not (Test-Path $defF)) { return }
     $def = Get-Content $defF -Raw -Encoding UTF8 | ConvertFrom-Json
     $w = @($def.worker) | Where-Object { $_ -and ($_.vai -eq $vai -or $_.ten -eq $vai) } | Select-Object -First 1
-    if (-not $w -or $w.ai -ne 'codex' -or $w.router) { return }
-    $f = Get-CodexFuel $proj $w; if (-not $f) { return }
-    $ng = if ($cfg -and $cfg.codexChuyenClaude) { $cfg.codexChuyenClaude } else { [pscustomobject]@{ nam = 90; tuan = 95 } }
+    if (-not $w -or $w.ai -notin @('codex', 'grok') -or $w.router) { return }
     $key = "$proj.$($w.vai)"; $tam = Read-AiTam; $dangTam = $tam.PSObject.Properties[$key]
-    $het = $f.five -ge $ng.nam -or $f.week -ge $ng.tuan
-    $hoi = $f.five -lt ($ng.nam - 10) -and $f.week -lt ($ng.tuan - 5)
-    if ($het -and -not $dangTam) { $muon = 'claude'; $ly = "$($f.ten) 5 giờ $([math]::Round($f.five))% · tuần $([math]::Round($f.week))%" }
-    elseif ($dangTam -and $hoi) { $muon = 'codex'; $ly = "$($f.ten) đã hồi ($([math]::Round($f.five))%)" }
-    else { return }
-    if ($env:WEZ_CHON_AI_THU) { Write-Host "[thử] $proj.$($w.vai): $(if ($muon -eq 'claude') { '↪ Claude' } else { '↩ Codex' }) ($ly)"; return }
-    # ô đang làm dở thì không đổi giữa chừng
+    $cur = if ($dangTam) { if ($dangTam.Value.ai) { "$($dangTam.Value.ai)" } else { 'claude' } } else { $w.ai }
     $d = Sync-Doi $proj; $m = if ($d) { @($d.worker) | Where-Object { $_.vai -eq $w.vai } | Select-Object -First 1 } else { $null }
+    $lyG = ''
+    if ($cur -eq 'grok' -and $m -and $m.o -and (Grok-BaoLoi "$($m.o)")) {
+        $gio = if ($cfg -and $cfg.grokNghiGio) { $cfg.grokNghiGio } else { 3 }
+        Grok-DanhDau $gio "ô $key báo hết hạn mức"; $lyG = "Grok báo hết hạn mức (nghỉ $gio giờ)"
+    }
+    $grokHet = Grok-Het
+    $sauCodex = if ($grokHet) { 'claude' } else { 'grok' }
+    if ("$($w.chan)" -match '\bWrite\b') { $sauCodex = 'claude' }   # vai chỉ đọc: chỉ Claude khoá cứng được (--disallowedTools), Grok thì không
+    if ($w.ai -eq 'codex') {
+        $f = Get-CodexFuel $proj $w
+        $ng = if ($cfg -and $cfg.codexChuyenClaude) { $cfg.codexChuyenClaude } else { [pscustomobject]@{ nam = 90; tuan = 95 } }
+        if ($f) {
+            $het = $f.five -ge $ng.nam -or $f.week -ge $ng.tuan
+            $hoi = $f.five -lt ($ng.nam - 10) -and $f.week -lt ($ng.tuan - 5)
+            $codexOk = if ($cur -eq 'codex') { -not $het } else { $hoi }
+            $lyC = if ($codexOk) { "$($f.ten) đã hồi ($([math]::Round($f.five))%)" } else { "$($f.ten) 5 giờ $([math]::Round($f.five))% · tuần $([math]::Round($f.week))%" }
+        } else { $codexOk = $cur -eq 'codex'; $lyC = 'không đọc được hạn mức Codex' }
+        $muon = if ($codexOk) { 'codex' } else { $sauCodex }
+        $ly = (@($lyC, $lyG) | Where-Object { $_ }) -join ' · '
+    } else {
+        $muon = $sauCodex; $ly = if ($grokHet) { if ($lyG) { $lyG } else { 'Grok đang đánh dấu hết hạn mức' } } else { 'Grok đã hồi' }
+    }
+    if ($muon -eq $cur) { return }
+    $tenAi = @{ codex = 'Codex'; grok = 'Grok'; claude = 'Claude' }
+    if ($env:WEZ_CHON_AI_THU) { Write-Host "[thử] $key`: $($tenAi[$cur]) → $($tenAi[$muon]) ($ly)"; return }
+    # ô đang làm dở thì không đổi giữa chừng
     if ($m -and $m.o) { $st = Get-PaneState "$($m.o)"; if ($st -and $st.state -eq 'work') { return } }
-    if ($muon -eq 'claude') { $tam | Add-Member -NotePropertyName $key -NotePropertyValue ([ordered]@{ ai = 'claude'; tu = (Get-Date -Format 'yyyy-MM-dd HH:mm'); ly = $ly }) -Force }
+    if ($muon -ne $w.ai) { $tam | Add-Member -NotePropertyName $key -NotePropertyValue ([ordered]@{ ai = $muon; tu = (Get-Date -Format 'yyyy-MM-dd HH:mm'); ly = $ly }) -Force }
     else { $tam.PSObject.Properties.Remove($key) }
     Save-AiTam $tam
-    Write-Host "🔀 $key → $(if ($muon -eq 'claude') { '↪ Claude dự phòng' } else { '↩ về Codex' }) ($ly)" -ForegroundColor Cyan
+    Write-Host "🔀 $key → $(if ($muon -eq $w.ai) { "↩ về $($tenAi[$muon])" } else { "↪ $($tenAi[$muon]) dự phòng" }) ($ly)" -ForegroundColor Cyan
     if ($m -and $m.o) { & $exe cli --no-auto-start kill-pane --pane-id $m.o 2>$null | Out-Null }
     & $PSCommandPath doi $proj "thuc:$($w.vai)" | Out-Null
 }
@@ -288,8 +319,17 @@ switch ($Cmd) {
     }
     # chon-ai <DựÁn.Vai>: chỉ chạy bước chọn AI (thử: đặt WEZ_CHON_AI_THU=1 để chỉ in quyết định, không đổi ô)
     'chon-ai' { Chon-AI $Rest[0] }
+    # grok [het [giờ] | con]: xem / đánh dấu tay Grok hết hạn mức (vai Codex hết sẽ sang Claude thay vì Grok) / Grok đã hồi
+    'grok' {
+        switch ("$($Rest[0])") {
+            'het' { $g = if ($Rest.Count -gt 1) { $Rest[1] } else { 3 }; Grok-DanhDau $g 'đánh dấu tay'; Write-Host "⛔ Grok coi như hết hạn mức $g giờ — vai Codex hết sẽ sang Claude; vai Grok sang Claude ở lần giao việc kế" }
+            'con' { Remove-Item $grokHetF -ErrorAction SilentlyContinue; Write-Host '✅ Grok dùng lại được — vai đang dự phòng tự về ở lần giao việc kế' }
+            default { if (Grok-Het) { $g = Get-Content $grokHetF -Raw -Encoding UTF8 | ConvertFrom-Json; Write-Host "⛔ Grok hết hạn mức tới $([DateTimeOffset]::FromUnixTimeSeconds([long]$g.den).LocalDateTime.ToString('HH:mm dd/MM')) ($($g.ly))" } else { Write-Host '✅ Grok đang dùng được' }
+                $t = Read-AiTam; $t.PSObject.Properties | ForEach-Object { Write-Host "   $($_.Name) → $($_.Value.ai) ($($_.Value.ly))" } }
+        }
+    }
     'send' {
-        Chon-AI $Rest[0]   # vai Codex mà tài khoản sắp hết → tạm chuyển Claude (và ngược lại khi Codex hồi)
+        Chon-AI $Rest[0]   # vai Codex hết hạn mức → tạm Grok (Grok hết → Claude); vai Grok hết → Claude; hồi lại thì về
         $id = Resolve-Id $Rest[0] -Thuc; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')   # -Thuc: worker đang ngủ thì tự đánh thức
         $s = Get-PaneState $id
         if (-not $Ep -and $s -and $s.state -in 'work', 'need') {
@@ -417,9 +457,12 @@ switch ($Cmd) {
         # vai đang tạm chạy Claude vì tài khoản Codex sắp hết (ai-tam.json) → mở bằng Claude, lời giao vai có ghi chú dự phòng
         $tamAi = Read-AiTam
         foreach ($w in @($def.worker)) {
-            if ($w -and -not $w.router -and $tamAi.PSObject.Properties["$($def.du_an).$($w.vai)"]) {   # router: không dùng tài khoản Codex nào → không dự phòng
-                $w.ai = 'claude'
-                $w.viec = "$($w.viec) [ĐANG DỰ PHÒNG: bạn là bản Claude thay tạm bản Codex của vai này (Codex hết hạn mức) — không nhớ hội thoại của bản Codex: đọc brief + tien-do để nắm việc dở, ghi kết quả vào file như thường]"
+            $tp = $tamAi.PSObject.Properties["$($def.du_an).$($w.vai)"]
+            if ($w -and $w.ai -in @('codex', 'grok') -and -not $w.router -and $tp) {   # router: không dùng tài khoản Codex nào → không dự phòng
+                $goc = @{ codex = 'Codex'; grok = 'Grok' }[$w.ai]
+                $w.ai = if ($tp.Value.ai) { "$($tp.Value.ai)" } else { 'claude' }   # 06/10: Codex hết → grok; Grok hết → claude
+                $moi = @{ grok = 'Grok'; claude = 'Claude' }[$w.ai]
+                $w.viec = "$($w.viec) [ĐANG DỰ PHÒNG: bạn là bản $moi thay tạm bản $goc của vai này ($goc hết hạn mức) — không nhớ hội thoại của bản $goc`: đọc brief + tien-do để nắm việc dở, ghi kết quả vào file như thường]"
             }
         }
         $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
@@ -506,6 +549,20 @@ switch ($Cmd) {
                 # 04/10: không tìm thấy phiên theo tên (vd vai đổi tài khoản) → mở MỚI kèm lời giao vai; KHÔNG dùng "resume --last" (vớ nhầm phiên vai khác cùng tài khoản)
                 if ($ngu) { $l += "codex.cmd --no-daemon resume$sb '$ten'; if (`$LASTEXITCODE) { codex.cmd --no-daemon$sb$web (Get-Content -Raw -Encoding UTF8 '$loiF') }`r`n" }
                 else { $l += "codex.cmd --no-daemon$sb$web`r`n" }
+            } elseif ($m.ai -eq 'grok') {
+                # 06/10: "ai": "grok" = Grok Build CLI (~\.grok\bin\grok.exe, đăng nhập bằng tài khoản Grok — không cần key trong file).
+                # Phiên đặt sẵn UUID (-s) và nhớ ở grok-<Vai>.id → ngủ/thức mở lại đúng phiên. 06/10: người dùng cho Grok TOÀN QUYỀN (bypassPermissions, giống Codex YOLO) — đừng giao vai chỉ đọc cho Grok.
+                $gx = Join-Path $HOME '.grok\bin\grok.exe'
+                $idF = Join-Path $launchDir "grok-$($m.vai).id"
+                $gChan = if ($m.chan) { " '--deny=$(("$($m.chan)" -split ' ' | Where-Object { $_ }) -join ',')'" } else { '' }
+                $gWeb = if ($m.timWeb) { '' } else { ' --disable-web-search' }
+                $gCu = if ($ngu -and (Test-Path $idF)) { (Get-Content -Raw $idF).Trim() } else { '' }
+                $gid = [guid]::NewGuid().ToString()
+                # lời giao vai: đổi " thành ' (PowerShell 5.1 truyền chuỗi có " cho exe bị cắt thành nhiều tham số)
+                $gMoi = "[IO.File]::WriteAllText('$idF', '$gid'); & '$gx' -s $gid --permission-mode bypassPermissions$gChan$gWeb ((Get-Content -Raw -Encoding UTF8 '$loiF') -replace '`"', `"'`")"
+                # phiên cũ mở không được (vd chưa từng tạo xong) → mở phiên mới kèm lời giao vai
+                if ($gCu) { $l += "& '$gx' --resume $gCu --permission-mode bypassPermissions$gChan$gWeb; if (`$LASTEXITCODE) { $gMoi }`r`n" }
+                else { $l += "$gMoi`r`n" }
             } else {
                 # "chan" = khoá cứng công cụ (vd Kiểm soát/Security chỉ đọc: không Edit/Write được dù lỡ được bảo)
                 $ds = @("$($m.chan)" -split ' ' | Where-Object { $_ })
@@ -516,6 +573,8 @@ switch ($Cmd) {
                 # DEEPSEEK_API_KEY lúc chạy — KHÔNG ghi key vào file mở ô. Không --remote-control (cần đăng nhập claude.ai).
                 $rc = " --remote-control '$($def.du_an)-$($m.vai)'"
                 if ($m.ai -eq 'deepseek') { $l += $DEEPSEEK_ENV + "`r`n"; $rc = '' }
+                # 06/10: người dùng cho mọi ô Claude bỏ hỏi quyền (hook chan-lenh/khoa + --disallowedTools vẫn chặn như cũ)
+                $rc += ' --permission-mode bypassPermissions'
                 if ($ngu -and $ngu.session) { $l += "claude --resume $($ngu.session)$rc -n '$ten'$chan`r`n" }
                 else { $l += "claude$rc -n '$ten'$chan (Get-Content -Raw -Encoding UTF8 '$loiF')`r`n" }
             }

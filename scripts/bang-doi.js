@@ -100,8 +100,8 @@ function drawRaw() {
   const role = {}, ngu = []; // ngu: worker đang ngủ 💤 (không có ô, tự thức khi được giao việc)
   for (const f of (() => { try { return fs.readdirSync(path.join(WEZAI, 'doi')).filter((x) => x.endsWith('.json')); } catch { return []; } })()) {
     const d = readJson(path.join(WEZAI, 'doi', f)); if (!d) continue;
-    const tam = readJson(path.join(WEZAI, 'ai-tam.json')) || {}; // vai Codex đang tạm chạy Claude (tài khoản Codex sắp hết)
-    const add = (x, laManager) => { if (x && x.o) role[String(x.o)] = { du_an: d.du_an, icon: x.icon || (laManager ? '🧭' : '•'), vai: x.vai, ten: (x.ten || x.vai) + (tam[`${d.du_an}.${x.vai}`] ? ' ↪Claude' : ''), manager: laManager }; };
+    const tam = readJson(path.join(WEZAI, 'ai-tam.json')) || {}; // vai đang chạy dự phòng: Codex hết → Grok, Grok hết → Claude
+    const add = (x, laManager) => { if (x && x.o) role[String(x.o)] = { du_an: d.du_an, icon: x.icon || (laManager ? '🧭' : '•'), vai: x.vai, ten: (x.ten || x.vai) + (tam[`${d.du_an}.${x.vai}`] ? ' ↪' + (tam[`${d.du_an}.${x.vai}`].ai === 'grok' ? 'Grok' : 'Claude') : ''), manager: laManager }; };
     add(d.manager, true); arr(d.worker).forEach((w) => add(w, false));
     arr(d.worker).forEach((w) => { if (w && w.ngu && !w.o) ngu.push({ du_an: d.du_an, vai: w.vai, label: `${w.icon || '•'} ${w.ten || w.vai}`, since: w.ngu_luc ? now - w.ngu_luc : null }); });
   }
