@@ -249,7 +249,11 @@ function Chon-AI($s) {
     else { $tam.PSObject.Properties.Remove($key) }
     Save-AiTam $tam
     Write-Host "🔀 $key → $(if ($muon -eq $w.ai) { "↩ về $($tenAi[$muon])" } else { "↪ $($tenAi[$muon]) dự phòng" }) ($ly)" -ForegroundColor Cyan
-    if ($m -and $m.o) { & $exe cli --no-auto-start kill-pane --pane-id $m.o 2>$null | Out-Null }
+    if ($m -and $m.o) {
+        & $exe cli --no-auto-start kill-pane --pane-id $m.o 2>$null | Out-Null
+        # 06/10: kill-pane chưa xong thì "doi thuc:" còn thấy ô cũ → "mở mới 0 ô", vai mất ô. Đợi ô biến mất hẳn (tối đa 10 giây)
+        for ($k = 0; $k -lt 20; $k++) { if (-not (@(& $exe cli --no-auto-start list --format json 2>$null | ConvertFrom-Json) | Where-Object { "$($_.pane_id)" -eq "$($m.o)" })) { break }; Start-Sleep -Milliseconds 500 }
+    }
     & $PSCommandPath doi $proj "thuc:$($w.vai)" | Out-Null
 }
 
