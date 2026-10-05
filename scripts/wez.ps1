@@ -86,11 +86,12 @@ function Sync-Doi($proj) {
         if ($cuP -and -not $daGiu["$($m.o)"]) {
             $cwdP = [uri]::UnescapeDataString("$($cuP.cwd)") -replace '\\', '/'
             $vaiKhac = $ds | Where-Object { $_ -ne $m -and (KhopTen $cuP.title $_) } | Select-Object -First 1
-            if (($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match [regex]::Escape($proj)) -and (-not $vaiKhac -or (KhopTen $cuP.title $m))) {
+            # 05/10: tiêu đề chỉ tính khi đúng dạng ô đội "<dự án> · <vai>" — ô Tổng quản (thư mục Hion) bị Claude tự đặt tên "Aff.Manager Ted's…" từng bị nhận là Manager Aff → báo cáo worker chạy nhầm sang Tổng quản
+            if (($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match "$([regex]::Escape($proj))\s*·") -and (-not $vaiKhac -or (KhopTen $cuP.title $m))) {
                 $daGiu["$($m.o)"] = $true; continue
             }
         }
-        $hit = $panes | Where-Object { $_.title -match [regex]::Escape($proj) -and (KhopTen $_.title $m) -and $_.title -notmatch 'ten-o' -and -not $daGiu["$($_.pane_id)"] } | Select-Object -First 1
+        $hit = $panes | Where-Object { $_.title -match "$([regex]::Escape($proj))\s*·" -and (KhopTen $_.title $m) -and $_.title -notmatch 'ten-o' -and -not $daGiu["$($_.pane_id)"] } | Select-Object -First 1
         $moi = if ($hit) { "$($hit.pane_id)" } else { '' }
         if ($moi) { $daGiu[$moi] = $true }
         if ("$($m.o)" -ne $moi) { $m.o = $moi; $doi = $true }
