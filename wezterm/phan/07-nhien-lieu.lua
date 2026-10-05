@@ -59,14 +59,28 @@ local function fuel_cells()
     if memo and memo.file == files[#files] and memo.size == size then
       if memo.row then table.insert(codex, memo.row) end
     else
-      s = files[#files] and read_file(files[#files], 98304)
-      FUEL_MEMO[tk.so or 0] = { file = files[#files], size = size }
+      FUEL_MEMO[tk.so or 0] = { file = files[#files], size = size, row = memo and memo.row }
+      -- 06/10: phiên vừa mở chưa có số hạn mức → lùi về tối đa 5 phiên trước (trước đây tài khoản biến mất khỏi
+      -- fuel-codex.json → wez.ps1 "không đọc được hạn mức Codex" → vai kẹt ở Grok mãi)
+      -- nhiều ô cùng tài khoản chạy song song → file mới nhất theo tên chưa chắc có số mới nhất: gom 10 phiên cuối,
+      -- lấy khung có giờ làm mới muộn nhất, trong khung đó lấy % cao nhất (trong 1 khung % chỉ tăng)
+      for i = #files, math.max(1, #files - 9), -1 do
+        local t = read_file(files[i], 98304)
+        if t then
+          for u, r in t:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
+            u, r = tonumber(u), tonumber(r)
+            if not s or r > s.r5 or (r == s.r5 and u > s.p5) then s = s or {}; s.p5, s.r5 = u, r end
+          end
+          for u, r in t:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
+            u, r = tonumber(u), tonumber(r)
+            if s and (not s.rw or r > s.rw or (r == s.rw and u > s.pw)) then s.pw, s.rw = u, r end
+          end
+        end
+      end
+      if not s and memo and memo.row then table.insert(codex, memo.row) end -- vẫn chưa có → giữ số cũ
     end
     if s then
-      local p5, r5, pw, rw
-      for u, r in s:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do p5, r5 = u, r end
-      for u, r in s:gmatch('"secondary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do pw, rw = u, r end
-      if not pw then for u in s:gmatch('"secondary":{"used_percent":([%d%.]+)') do pw = u end end
+      local p5, r5, pw, rw = s.p5, s.r5, s.pw, s.rw
       if p5 then
         local du_an = {}
         for k, v in pairs((bang and bang.duAn) or {}) do if v == tk.so then table.insert(du_an, k) end end
@@ -87,7 +101,10 @@ local function fuel_cells()
   local fx = io.open(AIDIR .. '\\fuel-codex.json', 'w')
   if fx then
     local rows = {}
-    for _, c in ipairs(codex) do rows[#rows + 1] = { icon = c.icon, ten = c.ten, five = c.five, week = c.week } end
+    -- 06/10: đã qua giờ làm mới → ghi 0 (trước ghi số cũ 100% → wez.ps1 tưởng Codex vẫn hết, không chuyển về)
+    local now = os.time()
+    for _, c in ipairs(codex) do rows[#rows + 1] = { icon = c.icon, ten = c.ten,
+      five = (c.five_reset and c.five_reset < now) and 0 or c.five, week = (c.week_reset and c.week_reset < now) and 0 or c.week } end
     -- bảng rỗng: json_encode ghi "{}" thay vì "[]" → bang-doi.js lỗi "fx is not iterable" (06/10)
     fx:write(#rows == 0 and '[]' or wezterm.json_encode(rows)) fx:close()
   end

@@ -119,6 +119,7 @@ local function restore_args(it)
       local chan = it.chan
       if ds and not (' ' .. (chan or '') .. ' '):find(' Artifact ', 1, true) then chan = ((chan or '') .. ' Artifact'):gsub('^%s+', '') end
       return PS((ds and (DEEPSEEK_ENV .. '; ') or '') .. ('claude --resume ' .. it.session)
+        .. ' --permission-mode bypassPermissions' -- 06/10: người dùng cho cả đội bỏ hỏi quyền (giống wez.ps1)
         .. ' -n ' .. q(it.logo .. ' ' .. it.doi .. ' · ' .. it.icon .. ' ' .. it.ten)
         .. (ds and '' or (' --remote-control ' .. q(it.doi .. '-' .. it.vai)))
         .. (chan and (' ' .. q('--disallowedTools=' .. (chan:gsub('%s+', ',')))) or '') .. tiep, true)

@@ -233,6 +233,8 @@ function Chon-AI($s) {
             $codexOk = if ($cur -eq 'codex') { -not $het } else { $hoi }
             $lyC = if ($codexOk) { "$($f.ten) đã hồi ($([math]::Round($f.five))%)" } else { "$($f.ten) 5 giờ $([math]::Round($f.five))% · tuần $([math]::Round($f.week))%" }
         } else { $codexOk = $cur -eq 'codex'; $lyC = 'không đọc được hạn mức Codex' }
+        # 06/10: ô Codex đang báo hết hạn mức trên màn hình → chuyển luôn (file hạn mức có thể trễ vài phút)
+        if ($codexOk -and $cur -eq 'codex' -and $m -and $m.o -and (Grok-BaoLoi "$($m.o)")) { $codexOk = $false; $lyC = 'ô Codex báo hết hạn mức' }
         $muon = if ($codexOk) { 'codex' } else { $sauCodex }
         $ly = (@($lyC, $lyG) | Where-Object { $_ }) -join ' · '
     } else {
