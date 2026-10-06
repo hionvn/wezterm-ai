@@ -144,14 +144,14 @@ function loiVai(d, w) {
   const ten = w.ten || w.vai;
   return `Bạn là worker ${d.logo || ''} ${d.du_an} · ${w.icon || ''} ${ten}. Phụ trách: ${w.viec}. Manager của bạn: ${d.du_an}.Manager.` +
     (w.quyen ? ` QUYỀN CỦA BẠN: ${w.quyen}` : '') +
-    ` Luật chung: E:\\AI\\Hion\\quy-trinh-lien-mach.md. Thư mục dự án: ${path.join(AI_ROOT, d.du_an)} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
+    ` Luật chung: E:\\AI\\Hion\\quy-trinh-lien-mach.md. Thư mục làm việc: ${path.join(AI_ROOT, d.du_an, w.thuMuc || '')} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
     'Làm đúng phần mình; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
 }
 
 // ===== chạy 1 lượt AI, ghi log dễ đọc =====
 function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
   return new Promise((resolve) => {
-    const projDir = path.join(AI_ROOT, d.du_an);
+    const projDir = path.join(AI_ROOT, d.du_an, w.thuMuc || ''); // "thuMuc": chạy trong thư mục con (vd KhoAI build chỉ thấy app — sạch phòng)
     const env = { ...process.env, WEZTERM_PANE: `ngam-${key}`, WEZ_NGAM: key };
     for (const k of Object.keys(env)) if (/^CLAUDE/.test(k)) delete env[k];
     const chiDoc = /\bWrite\b/.test(String(w.chan || ''));
