@@ -328,6 +328,13 @@ function baoManager(proj, key, nhan, kqF) {
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--', msg], opt);
       cp.execSync('ping -n 1 -w 400 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
+      // 06/10: Enter có lúc không ăn (dòng 🌙 nằm ở ô nhập, Manager Chatbot đứng 15 phút) → kiểm lại, còn thì Enter lại
+      for (let k = 0; k < 3; k++) {
+        cp.execSync('ping -n 2 -w 600 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
+        const t = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+        if (!t.split('\n').some((l) => /^\s*[❯›]\s/.test(l) && l.includes(`🌙 ${key} `))) break;
+        cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
+      }
     });
   } catch {}
 }
