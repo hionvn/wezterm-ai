@@ -100,6 +100,18 @@ function ketThuc(key, st, trangThai, noiDung) {
   ghi(st.ket_qua, noiDung);
   luuSt(key, st); oSt(key, 'idle');
 }
+// Hạn mức Claude (statusline.js ghi wez-ai\fuel-claude.json): 5 giờ ≥ "claudeDung" (85%) hoặc tuần ≥ "claudeDungTuan" (95%)
+// → không mở việc Claude MỚI (việc đang chạy làm tiếp). Qua giờ hồi (five_reset / week_reset) thì coi như đã hồi.
+// Trả '' = còn dùng được, hoặc lý do đang dừng.
+function claudeGanHet() {
+  const f = readJson(path.join(WEZAI, 'fuel-claude.json'));
+  if (!f) return '';
+  const t = now();
+  const nam = CFG.claudeDung || 85, tuan = CFG.claudeDungTuan || 95;
+  if ((f.five || 0) >= nam && !(f.five_reset && t >= f.five_reset)) return `Claude 5 giờ ${f.five}% ≥ ${nam}% — hồi lúc ${hhmm(f.five_reset)}`;
+  if ((f.week || 0) >= tuan && !(f.week_reset && t >= f.week_reset)) return `Claude tuần ${f.week}% ≥ ${tuan}% — hồi ${new Date(f.week_reset * 1000).toLocaleString('vi-VN')}`;
+  return '';
+}
 function dieuPhoi() {
   khoa(() => {
     const ds = moiSt();
@@ -110,8 +122,11 @@ function dieuPhoi() {
     }
     let dangChay = ds.filter((x) => x.st.trang_thai === 'chay').length;
     const hang = ds.filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
+    const claudeHet = claudeGanHet();
     for (const { key, st } of hang) {
       if (dangChay >= TOI_DA) break;
+      const v = timVai(key);
+      if (claudeHet && v && aiThat(v.d, v.w) === 'claude') continue; // Claude gần hết hạn mức → việc Claude chờ, việc Codex vẫn chạy
       const c = cp.spawn(process.execPath, [__filename, 'chay', key], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
       c.unref();
       st.trang_thai = 'chay'; st.pid = c.pid; st.bat_dau = now();
@@ -330,6 +345,7 @@ async function main() {
     dieuPhoi();
     const st = docSt(v.key);
     if (st.trang_thai === 'chay') console.log(`🌙 ${v.key} nhận việc, đang chạy ngầm (giới hạn ${v.w.ngamPhut || v.d.ngamPhut || PHUT} phút). Đợi: wez.ps1 cho ${v.key} · log: wez.ps1 read ${v.key}`);
+    else if (claudeGanHet() && aiThat(v.d, v.w) === 'claude') console.log(`⏸ ${v.key} xếp hàng: ${claudeGanHet()}. Tự chạy khi Claude hồi.`);
     else {
       const hang = moiSt().filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
       console.log(`⌛ ${v.key} xếp hàng (thứ ${hang.findIndex((x) => x.key === v.key) + 1}/${hang.length}) — đang có ${TOI_DA} worker ngầm chạy (tối đa ${TOI_DA}).`);
@@ -340,6 +356,7 @@ async function main() {
     dieuPhoi();
     const ds = bangTrangThai();
     console.log(`🌙 Worker chạy ngầm · tối đa ${TOI_DA} cùng lúc · giới hạn mặc định ${PHUT} phút/việc · phiên > ${TOKEN} token thì mở phiên mới`);
+    const het = claudeGanHet(); if (het) console.log(`⏸ Tạm dừng việc Claude mới: ${het} (việc Codex vẫn chạy)`);
     for (const x of ds) {
       const s = x.st || {};
       const tt = x.giu ? `🪟 trong ô (${x.giu})` : NHAN[s.trang_thai] || '🟢 rảnh (chưa giao)';
@@ -397,4 +414,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { batNgam, muonNgam, giuO, docSt, NHAN, bangTrangThai };
+module.exports = { batNgam, muonNgam, giuO, docSt, NHAN, bangTrangThai, dieuPhoi };

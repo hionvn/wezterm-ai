@@ -227,6 +227,8 @@ draw();
 setInterval(kiemCo, 400);
 setInterval(draw, 3000);
 setInterval(veLai, 30000);
+// 06/10: worker ngầm xếp hàng chờ Claude hồi hạn mức → mỗi phút thử mở lại (ngoài các lúc Manager gọi wez.ps1 send / cho)
+setInterval(() => { try { require('./ngam.js').dieuPhoi(); } catch {} }, 60000);
 
 // không bao giờ thoát vì lỗi lạ (thoát → ô đóng → WezTerm mở lại → nháy)
 process.on('uncaughtException', (e) => { try { process.stdout.write('[H[2J📊 Bảng tạm lỗi: ' + String(e && e.message || e).slice(0, 200)); } catch {} });
