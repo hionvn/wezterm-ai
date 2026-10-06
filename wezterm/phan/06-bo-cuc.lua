@@ -212,7 +212,13 @@ local function plan_tab(t)
       from = #steps
     end
   end
-  return { title = t.title, steps = steps, made = {} }
+  -- 06/10: tab thuộc dự án nào (sổ đội, không có thì theo thư mục ô đầu) → mỗi dự án mở lại trong 1 cửa sổ riêng; Hion ở cửa sổ chính
+  local da
+  for _, it in ipairs(keep) do if it.doi then da = it.doi break end end
+  local c = keep[1].cwd or ''
+  if not da and c:lower():sub(1, #AI_ROOT + 1) == AI_ROOT:lower() .. '\\' then da = c:sub(#AI_ROOT + 2):match('^[^\\/]+') end
+  if da and da:lower() == 'hion' then da = nil end
+  return { title = t.title, steps = steps, made = {}, du_an = da }
 end
 
 -- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (Chatbot.Engineer…) trỏ đúng
@@ -282,6 +288,7 @@ local function restore_layout(window, d, xong)
 
   -- PHA 1: dựng khung từng ô một
   local pi, si = 1, 1
+  local win_da = {} -- dự án → cửa sổ riêng đã mở trong lượt này
   local function buoc()
     local plan = plans[pi]
     if not plan then
@@ -296,7 +303,9 @@ local function restore_layout(window, d, xong)
       local p
       if not s.from then
         local tab
-        tab, p = mw:spawn_tab { cwd = safe_cwd(it.cwd), args = args }
+        local w = plan.du_an and win_da[plan.du_an:lower()] or (not plan.du_an and mw) or nil
+        if w then tab, p = w:spawn_tab { cwd = safe_cwd(it.cwd), args = args }
+        else tab, p, w = wezterm.mux.spawn_window { cwd = safe_cwd(it.cwd), args = args }; win_da[plan.du_an:lower()] = w end
         plan.tab = tab
         if plan.title and plan.title ~= '' then tab:set_title(plan.title) end
       else

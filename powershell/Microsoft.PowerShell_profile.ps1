@@ -192,8 +192,9 @@ function claudeRC { claude --remote-control (Split-Path -Leaf (Get-Location).Pat
 function aiall {
     foreach ($d in Get-ChildItem $AIRoot -Directory | Sort-Object Name) {
         if ($env:WEZTERM_PANE) {
-            # WezTerm: one new tab per project, tab titled with the project name
-            $id = & $WezExe cli --no-auto-start spawn --cwd "$($d.FullName)" -- powershell -NoExit -Command claudeRC
+            # WezTerm: one new window per project (06/10; Hion stays in this window), tab titled with the project name
+            $nw = if ($d.Name -ne 'Hion') { '--new-window' } else { $null }
+            $id = & $WezExe cli --no-auto-start spawn $nw --cwd "$($d.FullName)" -- powershell -NoExit -Command claudeRC
             & $WezExe cli set-tab-title --pane-id $id.Trim() $d.Name
             continue
         }

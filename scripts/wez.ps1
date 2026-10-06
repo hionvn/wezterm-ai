@@ -589,7 +589,7 @@ switch ($Cmd) {
             # ô đội gọi thẳng claude / codex.cmd (CODEX_HOME đặt sẵn) → không cần profile, mở nhanh hơn (03/10)
             $a = @('powershell', '-NoLogo', '-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', $lf)
             $id = if ($splitFrom) { & $exe cli --no-auto-start split-pane --pane-id $splitFrom $huong --percent $pct --cwd $projDir -- @a }
-                  else { & $exe cli --no-auto-start spawn --cwd $projDir -- @a }
+                  else { & $exe cli --no-auto-start spawn --new-window --cwd $projDir -- @a }   # 06/10: mỗi dự án 1 cửa sổ riêng (chung tiến trình)
             $id = "$id".Trim()
             if ($id) { [void]$choBat.Add(@{ id = $id; go = $go; codexMoi = ($m.ai -eq 'codex' -and -not $ngu); ten = $ten; loiF = $loiF }) }
             return $id
@@ -620,7 +620,7 @@ switch ($Cmd) {
             }
         }
         $so = [ordered]@{ du_an = $def.du_an; logo = $def.logo; cap_nhat = (Get-Date -Format 'yyyy-MM-dd HH:mm'); manager = $null; worker = @() }
-        # Bố cục (người dùng chốt 03/10): cả đội chung 1 tab — Manager nửa trái, worker nửa phải chia lưới 2 cột
+        # Bố cục (người dùng chốt 03/10; 06/10: tab đội nằm ở cửa sổ riêng của dự án): cả đội chung 1 tab — Manager nửa trái, worker nửa phải chia lưới 2 cột
         #   (4 worker = 2×2: trên-trái, trên-phải, dưới-trái, dưới-phải). Ô đã mở ở chỗ khác thì CHUYỂN vào đúng chỗ (giữ nguyên phiên),
         #   ô thiếu thì mở mới. Cả đội đã đứng chung 1 tab rồi thì để nguyên, không xếp lại.
         $panes = @(Get-Panes -Thuc)
@@ -647,8 +647,9 @@ switch ($Cmd) {
             $mo = $oCu[$mg.vai]
             foreach ($w in $ws) { $ids[$w.vai] = $oCu[$w.vai] }
         } else {
-            # 1) Manager mở tab mới (ô cũ thì đẩy sang tab mới)
-            if ($oCu[$mg.vai]) { $mo = $oCu[$mg.vai]; & $exe cli --no-auto-start move-pane-to-new-tab --pane-id $mo | Out-Null }
+            # 1) Manager mở CỬA SỔ mới (ô cũ thì đẩy sang cửa sổ mới) — 06/10: mỗi dự án 1 cửa sổ riêng, KHÔNG dùng
+            #    --always-new-process (2 tiến trình = số ô trùng nhau, cli chỉ thấy 1 tiến trình, Lua chạy chồng như lỗi treo 05/10)
+            if ($oCu[$mg.vai]) { $mo = $oCu[$mg.vai]; & $exe cli --no-auto-start move-pane-to-new-tab --new-window --pane-id $mo | Out-Null }
             else { $mo = Mo $mg $true $null $null 0; $moMoi++ }
             # 2) Đầu 2 cột worker: cột 1 chiếm nửa phải, cột 2 tách đôi cột 1
             $c1 = @(); $c2 = @()
