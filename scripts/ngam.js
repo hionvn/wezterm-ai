@@ -112,6 +112,42 @@ function claudeGanHet() {
   if ((f.week || 0) >= tuan && !(f.week_reset && t >= f.week_reset)) return `Claude tuần ${f.week}% ≥ ${tuan}% — hồi ${new Date(f.week_reset * 1000).toLocaleString('vi-VN')}`;
   return '';
 }
+// ===== Tự lấy việc (07/10, người dùng: "không cho phép các worker nghỉ, hãy cho làm việc liên tục") =====
+// Vai ngầm rảnh > 3 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" hoặc xong < 2 phút
+// → nghỉ 30 phút rồi mới tự lấy lại (đỡ đốt hạn mức vô ích). Tắt: "ngam": {"tuLam": false} (cả máy) · "tuLam": false ở đội / vai.
+const TU_LAM_SAU = 180, TU_LAM_NGHI = 1800;
+function viecTuLam(d, w) {
+  const goc = path.join(AI_ROOT, d.du_an), ten = w.ten || w.vai;
+  return `TỰ LẤY VIỆC (người dùng 07/10: worker không được nghỉ, làm liên tục). Bạn là ${d.du_an}.${w.vai} (${ten}). ` +
+    `Đọc: ${goc}\\tien-do-*.md (mục Đang làm / Việc tiếp / Kẹt), các brief mới nhất trong ${goc}\\brief\\ có nhắc vai bạn, và kết quả lô trước của bạn. ` +
+    `Chọn 1–3 việc 🟢 tiếp theo ĐÚNG VAI bạn mà chưa vai nào nhận (không làm trùng việc Manager đang giao cho vai khác, không sửa file vai khác đang sửa). Làm luôn tới xong, ghi file như thường. ` +
+    `Ghi thêm 1 dòng vào ${goc}\\brief\\tu-lam-${w.vai}.md: giờ · việc · file (vai chỉ đọc thì chỉ in ra). ` +
+    'Câu trả lời cuối: báo 5 trường cho Manager. Nếu THẬT SỰ không còn việc nào hợp vai: bắt đầu câu trả lời bằng "KHÔNG CÒN VIỆC" + đề xuất 1–3 việc mới cho Manager.';
+}
+function tuLay() {
+  if (CFG.tuLam === false) return 0;
+  let n = 0; const t = now();
+  for (const d of moiDoi()) {
+    if (d.tuLam === false) continue;
+    for (const w of arr(d.worker)) {
+      if (!w || w.tuLam === false || !batNgam(d, w)) continue;
+      const key = `${d.du_an}.${w.vai}`, st = docSt(key) || {};
+      if (st.trang_thai === 'cho' || st.trang_thai === 'chay') continue;
+      if (t - (st.ket_thuc || 0) < TU_LAM_SAU || (st.tu_lam_nghi && t < st.tu_lam_nghi)) continue;
+      luuSt(key, { ...st, trang_thai: 'cho', viec: viecTuLam(d, w), giao_luc: t, bat_dau: null, ket_thuc: null, pid: null, log: null, ket_qua: null, tu: 'tu-lam', tu_lam: true });
+      oSt(key, 'work'); n++;
+    }
+  }
+  return n;
+}
+// Nhịp nền: 1 tiến trình "ngam.js giu" gọi dieuPhoi mỗi phút (tự lấy việc + mở hàng chờ khi không ai gọi lệnh)
+const GIU_PID = path.join(DIR, 'giu.pid');
+function giuSong() {
+  const pid = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
+  if (song(pid)) return;
+  const c = cp.spawn(process.execPath, [__filename, 'giu'], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
+  c.unref(); ghi(GIU_PID, String(c.pid));
+}
 function dieuPhoi() {
   khoa(() => {
     const ds = moiSt();
@@ -120,6 +156,7 @@ function dieuPhoi() {
         ketThuc(key, st, 'loi', `# ⛔ ${key} — tiến trình ngầm chết giữa chừng\n- Việc: ${st.viec}\n- Có thể do khởi động lại máy / bị tắt tay. Việc CHƯA xong — giao lại nếu cần.\n- Log: ${st.log || '(chưa có)'}\n`);
       }
     }
+    if (tuLay()) ds.splice(0, ds.length, ...moiSt()); // có vai vừa được tự giao việc → đọc lại hàng chờ
     let dangChay = ds.filter((x) => x.st.trang_thai === 'chay').length;
     const hang = ds.filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
     const claudeHet = claudeGanHet();
@@ -133,6 +170,7 @@ function dieuPhoi() {
       luuSt(key, st); dangChay++;
     }
   });
+  try { giuSong(); } catch {}
 }
 
 // ===== lời giao vai cho phiên mới =====
@@ -292,6 +330,8 @@ async function chay(key) {
   }
   st.session = r.ses || st.session; st.ai_phien = ai; st.token = r.token;
   const tt = r.quaHan ? 'qua-han' : r.code ? 'loi' : 'xong';
+  // tự lấy việc mà hết việc / xong quá nhanh / lỗi → nghỉ 30 phút mới tự lấy lại
+  if (st.tu_lam && (/^\s*\**\s*KHÔNG CÒN VIỆC/i.test(r.cuoi || '') || now() - st.bat_dau < 120 || tt === 'loi')) st.tu_lam_nghi = now() + TU_LAM_NGHI;
   const dauDe = { xong: '✅ xong', 'qua-han': `⌛ QUÁ HẠN — đã dừng sau ${phut} phút, việc CHƯA xong`, loi: `⛔ lỗi (mã ${r.code})` }[tt];
   const bd = st.bat_dau, kt = now();
   ketThuc(key, st, tt, `# ${dauDe} · ${key}\n` +
@@ -367,6 +407,13 @@ const NHAN = { chay: '⏳ đang chạy', cho: '⌛ hàng chờ', xong: '🟢 r�
 async function main() {
   const [cmd, a1, a2, a3] = process.argv.slice(2);
   if (cmd === 'chay') return chay(a1);
+  if (cmd === 'giu') { // nhịp nền mỗi phút; tiến trình khác đã giữ thì thoát
+    const cu = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
+    if (cu && cu !== process.pid && song(cu)) return;
+    ghi(GIU_PID, String(process.pid));
+    const nhip = () => { try { dieuPhoi(); } catch {} };
+    nhip(); setInterval(nhip, 60000); return;
+  }
   if (cmd === 'kiem') { // mã 0 = vai chạy ngầm · 1 = trong ô
     const v = timVai(a1); process.exit(v && batNgam(v.d, v.w) ? 0 : 1);
   }
@@ -382,7 +429,7 @@ async function main() {
     const r = khoa(() => {
       const st = docSt(v.key) || {};
       if (st.trang_thai === 'cho' || (st.trang_thai === 'chay' && song(st.pid))) return st;
-      luuSt(v.key, { ...st, trang_thai: 'cho', viec, giao_luc: now(), bat_dau: null, ket_thuc: null, pid: null, log: null, ket_qua: null, tu: process.env.WEZTERM_PANE || '' });
+      luuSt(v.key, { ...st, trang_thai: 'cho', viec, giao_luc: now(), bat_dau: null, ket_thuc: null, pid: null, log: null, ket_qua: null, tu: process.env.WEZTERM_PANE || '', tu_lam: false, tu_lam_nghi: null });
       oSt(v.key, 'work');
       return null;
     });
