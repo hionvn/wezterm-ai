@@ -319,6 +319,10 @@ function baoManager(proj, key, nhan, kqF) {
   const opt = { env: { ...process.env, WEZTERM_UNIX_SOCKET: sock.f }, stdio: 'ignore', timeout: 10000, windowsHide: true };
   const msg = `🌙 ${key} ${nhan} — kết quả: ${kqF} . Đọc rồi giao lô việc kế ngay (giao theo lô, mục 15).`;
   try {
+    // ô nhập của Manager đang có chữ gõ dở (vd người dùng gõ "duyệt 1, 2, 3" chưa Enter) → không gõ chen, tránh dính chữ
+    const man = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+    const nhap = man.split('\n').filter((l) => /^\s*[❯›]/.test(l)).pop() || '';
+    if (nhap.replace(/^\s*[❯›]\s*/, '').trim()) return;
     khoa(() => { // nhiều worker xong cùng lúc → gõ lần lượt, không xen chữ
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--', msg], opt);
       cp.execSync('ping -n 1 -w 400 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
