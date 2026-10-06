@@ -172,13 +172,15 @@ function drawRaw() {
   const cat = (s, n) => { let o = '', w = 0; for (const ch of s) { const cw = width(ch); if (w + cw > n) return o + '…'; o += ch; w += cw; } return o; };
   const blocks = [];
   const order = [...cay.map((n) => n.ten), ...Object.keys(groups).filter((k) => !projInfo[k.toLowerCase()])];
-  let total = { work: 0, need: 0, idle: 0, ngu: 0, tat: 0 };
+  let total = { work: 0, need: 0, idle: 0, ngu: 0, tat: 0, cho: 0, loi: 0, ngam: 0 };
+  // 06/10: worker ngầm đếm theo trạng thái việc (⏳ chạy = đang làm, ⌛ hàng chờ, ⛔ lỗi/quá hạn, còn lại = rảnh) + đếm riêng tổng 🌙
+  const dem = (x) => x.state !== 'ngam' ? x.state : x.ngam === 'chay' ? 'work' : x.ngam === 'cho' ? 'cho' : ['qua-han', 'loi'].includes(x.ngam) ? 'loi' : 'idle';
   for (const name of order) {
     const g = groups[name]; if (!g) continue;
     const info = projInfo[name.toLowerCase()] || {};
     const c = rgb(info.mau || '#9aa0a6');
-    const n = { work: 0, need: 0, ngu: 0, tat: 0 }; g.forEach((x) => { if (x.state !== 'idle') n[x.state]++; total[x.state]++; });
-    const b = [`${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '')];
+    const n = { work: 0, need: 0, ngu: 0, tat: 0, cho: 0, loi: 0, idle: 0 }; g.forEach((x) => { const k = dem(x); n[k]++; total[k]++; if (x.state === 'ngam') total.ngam++; });
+    const b = [`${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '') + (n.cho ? `  ⌛${n.cho}` : '') + (n.loi ? `  ⛔${n.loi}` : '')];
     g.sort((a, b) => (b.manager - a.manager) || (b.inTeam - a.inTeam) || (a.tabNo - b.tabNo));
     for (const x of g) {
       const ten = pad(cat(x.label, 24), 26);
@@ -203,7 +205,7 @@ function drawRaw() {
     for (let i = 0; i < Math.max(trai.length, phai.length); i++) out.push(pad(trai[i] || '', W + 2) + (phai[i] || ''));
   } else for (const b of blocks) out.push(...b);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh · 💤 ${total.ngu} ngủ · ⚫ ${total.tat} tắt   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
+  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh` + (total.cho ? ` · ⌛ ${total.cho} hàng chờ` : '') + (total.loi ? ` · ⛔ ${total.loi} lỗi/quá hạn` : '') + ` · 💤 ${total.ngu} ngủ · ⚫ ${total.tat} tắt · 🌙 ${total.ngam} chạy ngầm   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
   const s = out.join('\n');
   if (s !== draw.last) { draw.last = s; process.stdout.write(`${E}[H${E}[2J${s}\n`); }
 }
