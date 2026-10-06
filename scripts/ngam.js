@@ -294,6 +294,37 @@ async function chay(key) {
     (r.quaHan ? `## ⌛ Quá hạn\nĐã dừng tiến trình. Phần đã làm xem log. Câu trả lời cuối trước khi dừng:\n\n` : '## Kết quả\n') +
     (r.cuoi || '(không có câu trả lời)') + (tt === 'loi' && r.loiRa ? `\n\n## Lỗi\n\`\`\`\n${r.loiRa.slice(-1500)}\n\`\`\`\n` : '') + '\n');
   dieuPhoi();
+  baoManager(d.du_an, key, { xong: 'xong (✅)', 'qua-han': 'QUÁ HẠN (⌛, chưa xong)', loi: 'LỖI (⛔)' }[tt], st.ket_qua);
+}
+// Tự báo Manager (06/10, người dùng chốt): việc ngầm kết thúc → gõ 1 dòng vào ô Manager của đội (Claude đang bận thì
+// dòng nằm hàng chờ, xong lượt sẽ đọc). Manager đang chờ duyệt (🔔) thì không gõ — tránh trả lời nhầm hộp hỏi.
+// Tắt: "ngam": {"baoManager": false} trong ~\.wez-ai.json.
+function baoManager(proj, key, nhan, kqF) {
+  if (CFG.baoManager === false) return;
+  const so = readJson(path.join(WEZAI, 'doi', proj + '.json'));
+  const o = so && so.manager && String(so.manager.o || '');
+  if (!/^\d+$/.test(o)) return;
+  const s = readJson(path.join(WEZAI, 'state', o + '.json'));
+  if (s && s.state === 'need') return;
+  const dir = path.join(HOME, '.local', 'share', 'wezterm');
+  let sock = null;
+  try {
+    for (const n of fs.readdirSync(dir)) {
+      const m = /^gui-sock-(\d+)$/.exec(n); if (!m || !song(+m[1])) continue;
+      const t = fs.statSync(path.join(dir, n)).mtimeMs; if (!sock || t > sock.t) sock = { f: path.join(dir, n), t };
+    }
+  } catch {}
+  if (!sock) return;
+  const exe = MAY.wezterm || 'C:\\Program Files\\WezTerm\\wezterm.exe';
+  const opt = { env: { ...process.env, WEZTERM_UNIX_SOCKET: sock.f }, stdio: 'ignore', timeout: 10000, windowsHide: true };
+  const msg = `🌙 ${key} ${nhan} — kết quả: ${kqF} . Đọc rồi giao lô việc kế ngay (giao theo lô, mục 15).`;
+  try {
+    khoa(() => { // nhiều worker xong cùng lúc → gõ lần lượt, không xen chữ
+      cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--', msg], opt);
+      cp.execSync('ping -n 1 -w 400 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
+      cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
+    });
+  } catch {}
 }
 // phiên Claude của vai lúc còn chạy trong ô (sổ đội) → ngầm tiếp tục đúng phiên đó
 function phienSoDoi(proj, vai, ai) {
