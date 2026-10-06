@@ -4,9 +4,12 @@ Bộ cấu hình biến WezTerm thành "phòng điều hành" cho nhiều AI (Cl
 theo mô hình của khóa Build to Own (anh Sơn, buổi 8): **CEO → Tổng quản (Chief of Staff) → Manager từng dự án → Worker**.
 Khác bản gốc chỉ chạy trên Mac, bản này chạy trên **Windows + PowerShell 5.1**.
 
+> 🆕 **Người mới bắt đầu: đọc [HUONG-DAN-NGUOI-MOI.md](HUONG-DAN-NGUOI-MOI.md)** — cài đặt, ngày đầu tiên, dùng hằng ngày, worker chạy ngầm, sự cố.
+
 ## Có gì
 | Tính năng | Phím / lệnh |
 |---|---|
+| **Worker chạy ngầm 🌙** (06/10/2026): worker không mở ô, chạy `claude -p` / `codex exec` trong nền, tiếp đúng phiên; hàng chờ, giới hạn số chạy cùng lúc, 30 phút/việc, tự tóm tắt phiên dài, dừng khi Claude gần hết hạn mức, tự báo Manager khi xong | `"ngam": true` trong `Hion\doi\<dự án>.json` · `node scripts/ngam.js ds · log · cho · dung` · mẫu `mau/doi/VD.json` |
 | Menu chọn dự án + AI, mở ở ô phải / ô dưới / tab mới | `Ctrl+Shift+A`, hoặc gõ `ai` |
 | Tab "Tổng quản": Claude ở `Hion` + ô 📋 Cần duyệt | `Ctrl+Shift+H` |
 | Bật / tắt ô 📋 Cần duyệt (can-duyet.md + sổ tiến độ các dự án, tự cập nhật) | `Ctrl+Shift+J` |

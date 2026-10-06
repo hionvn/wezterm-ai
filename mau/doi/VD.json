@@ -1,0 +1,54 @@
+{
+    "du_an": "VD",
+    "logo": "🧪",
+    "ghi_chu": "Đội mẫu. Đổi tên file + du_an thành đúng tên thư mục dự án trong E:\\AI, chép vào E:\\AI\\Hion\\doi\\. ngam: true = worker chạy ngầm (không có ô).",
+    "ngam": true,
+    "manager": {
+        "vai": "Manager",
+        "icon": "🧭",
+        "ai": "claude",
+        "mau": "#61afef",
+        "viec": "chia việc cho worker, gom kết quả, giữ tien-do của dự án",
+        "quyen": "ĐƯỢC: đọc/sửa file trong dự án, commit (không push), giao việc cho worker. PHẢI DUYỆT: tiền, gửi ra ngoài, xoá dữ liệu, push."
+    },
+    "worker": [
+        {
+            "vai": "Engineer",
+            "icon": "⚙️",
+            "ai": "codex",
+            "router": false,
+            "mau": "#98c379",
+            "viec": "viết code, chạy thử, viết test",
+            "quyen": "ĐƯỢC: sửa code trong dự án, chạy thử trên máy. KHÔNG: deploy, đưa khoá vào code."
+        },
+        {
+            "vai": "NoiDung",
+            "ten": "Nội dung",
+            "icon": "📣",
+            "ai": "claude",
+            "mau": "#e5c07b",
+            "viec": "viết nháp bài đăng, kịch bản, tin nhắn",
+            "quyen": "ĐƯỢC: viết nháp vào thư mục dự án. KHÔNG: đăng bài, gửi tin cho khách."
+        },
+        {
+            "vai": "KiemSoat",
+            "ten": "Kiểm soát",
+            "icon": "🔒",
+            "ai": "claude",
+            "mau": "#56b6c2",
+            "viec": "soát việc của worker khác trước khi Manager chốt",
+            "quyen": "CHỈ ĐỌC (khoá cứng). Kết quả in cho Manager.",
+            "chan": "Edit Write NotebookEdit"
+        },
+        {
+            "vai": "ApBot",
+            "ten": "Áp bot",
+            "icon": "🛠️",
+            "ai": "claude",
+            "mau": "#c678dd",
+            "viec": "áp thay đổi đã duyệt lên hệ thống thật bằng Chrome",
+            "quyen": "CHỈ sửa mục đã duyệt; chụp bản cũ trước khi sửa.",
+            "giuO": "dùng Chrome sửa hệ thống thật, cần người xem"
+        }
+    ]
+}
