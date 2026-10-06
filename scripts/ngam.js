@@ -172,7 +172,10 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
       // router: ghi rõ model từ router.config.toml (07/10 đổi 5.6-luna → 6-luna) — phiên cũ tiếp tục (resume) không giữ model cũ
       let mRouter = '';
       if (w.router) try { mRouter = (/^model\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(path.join(HOME, '.codex', 'router.config.toml'), 'utf8')) || [])[1] || ''; } catch {}
-      const chung = [...(w.router ? ['-p', 'router'] : []), ...(mRouter ? ['-c', `model="${mRouter}"`] : []), ...(chiDoc ? ['-s', 'read-only'] : [])];
+      // 07/10: chạy ngầm thì TẮT plugin trình duyệt (chrome / browser / computer-use: tự mở Chrome điều khiển, dễ sót Chrome ẩn)
+      // và bật tìm web phía máy chủ (search_service.web_run) — đã thử: tìm web được, số Chrome không tăng
+      const khongTrinhDuyet = ['chrome', 'browser', 'unified-computer-use'].flatMap((p) => ['-c', `plugins."${p}@openai-bundled".enabled=false`]);
+      const chung = [...(w.router ? ['-p', 'router'] : []), ...(mRouter ? ['-c', `model="${mRouter}"`] : []), ...khongTrinhDuyet, '-c', 'web_search="live"', ...(chiDoc ? ['-s', 'read-only'] : [])];
       args = [CODEX, 'exec', ...chung, ...(ses ? ['resume', ses] : []), '--json', '--skip-git-repo-check', '-'];
     }
     fs.mkdirSync(path.dirname(logF), { recursive: true });
