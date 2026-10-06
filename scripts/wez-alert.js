@@ -14,7 +14,7 @@ const pane = process.env.WEZTERM_PANE;
 let input = '';
 process.stdin.on('data', (c) => (input += c));
 process.stdin.on('end', () => {
-  if (!pane) return; // không chạy trong WezTerm thì thôi
+  if (!pane || pane.startsWith('ngam-')) return; // ngoài WezTerm / worker ngầm (ngam.js tự ghi trạng thái) thì thôi
   let data = {};
   try { data = JSON.parse(input.replace(/^﻿/, '')); } catch {}
   const base = path.join(process.env.LOCALAPPDATA || '', 'wez-ai');

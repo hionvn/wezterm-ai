@@ -109,6 +109,17 @@ function drawRaw() {
   const groups = {}, docs = [];
   const coMat = new Set(ngu.map((z) => `${z.du_an}.${z.vai}`)); // vai đang có ô hoặc đang ngủ
   for (const z of ngu) (groups[z.du_an] = groups[z.du_an] || []).push({ id: '', tabNo: 99, label: z.label, state: 'ngu', since: z.since, manager: false, inTeam: true });
+  // 06/10: worker chạy ngầm (ngam.js) — không có ô; hiện 🌙 + trạng thái việc ngầm
+  try {
+    const ng = require('./ngam.js');
+    for (const x of ng.bangTrangThai()) {
+      if (x.giu) continue;
+      const s = x.st || {}, tt = s.trang_thai || 'xong';
+      const t0 = tt === 'chay' ? s.bat_dau : tt === 'cho' ? s.giao_luc : s.ket_thuc;
+      coMat.add(x.key);
+      (groups[x.d.du_an] = groups[x.d.du_an] || []).push({ id: '', tabNo: 98, label: `🌙${x.w.icon || '•'} ${x.w.ten || x.w.vai}`, state: 'ngam', ngam: tt, since: t0 ? now - t0 : null, manager: false, inTeam: true });
+    }
+  } catch {}
   const tabOrder = [...new Set(panes.map((p) => p.tab_id))];
   for (const p of panes) {
     const t = p.title || '';
@@ -173,6 +184,10 @@ function drawRaw() {
       const ten = pad(cat(x.label, 24), 26);
       const t = x.since != null ? ago(x.since) : '';
       if (x.state === 'tat') { b.push(' ' + `${DIM}${ten}${pad('⚫ tắt', 9)}${R}`); continue; } // đội chưa mở: wez.ps1 doi <dự án>
+      if (x.state === 'ngam') { // ⏳ chạy · ⌛ hàng chờ · 🟢 rảnh · ⌛ quá hạn · ⛔ lỗi (log: wez.ps1 read DựÁn.Vai)
+        const m = { chay: `${rgb('#e5c07b')}⏳ làm${R}`, cho: `${rgb('#61afef')}⌛ chờ${R}`, 'qua-han': `${rgb('#e06c75')}⌛ hạn${R}`, loi: `${rgb('#e06c75')}⛔ lỗi${R}` }[x.ngam] || `${rgb('#98c379')}🟢 rảnh${R}`;
+        b.push(' ' + ten + pad(m, 9) + `${DIM}${t}${R}`); continue;
+      }
       if (x.state === 'ngu') { b.push(' ' + `${DIM}${ten}${pad('💤 ngủ', 9)}${t}${R}`); continue; } // không có ô để nhảy
       const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
       b.push(' ' + link(x.id, ten + pad(s, 9) + `${DIM}${t}${R}`));

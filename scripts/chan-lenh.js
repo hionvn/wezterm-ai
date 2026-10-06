@@ -128,6 +128,9 @@ if (cmd === 'hook') {
         'Nếu thật sự cần: ghi vào bàn duyệt (node E:\\AI\\Hion\\cai-dat\\duyet.js them <dự án> "…") để người dùng tự làm tay, rồi làm việc khác.');
     } else if (muc === 'dem') {
       traLoi('deny', `🌙 Ca đêm (22:00–06:30) không được: ${ly}. Ghi vào bàn duyệt (duyet.js them) để sáng người dùng bấm, rồi làm việc kế tiếp — đừng đứng chờ, đừng tìm đường vòng.`);
+    } else if (process.env.WEZ_NGAM) {
+      // 06/10: worker chạy ngầm (ngam.js) không có ai bấm hộp hỏi → chặn luôn
+      traLoi('deny', `🌙 Worker chạy ngầm không có người duyệt: ${ly}. Ghi vào bàn duyệt (duyet.js them) rồi làm phần khác — đừng tìm đường vòng.`);
     } else {
       traLoi('ask', `🔴 ${ly} — việc gửi ra ngoài, cần người dùng đồng ý.`);
     }

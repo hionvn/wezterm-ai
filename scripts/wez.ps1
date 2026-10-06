@@ -122,7 +122,7 @@ function Add-Viec($id, $text) {
     $vs = @(Read-Viec | Where-Object { $_ -and $_.so })
     $so = if ($vs.Count) { [int](($vs | Measure-Object so -Maximum).Maximum) + 1 } else { 1 }
     # tên người nhận: theo sổ đội (vd "💬 Chatbot · ⚙️ Engineer"), không thì dự án + số ô
-    $ai = "ô $id"
+    $ai = if ("$id" -like 'ngam-*') { "🌙 $("$id".Substring(5)) (ngầm)" } else { "ô $id" }
     foreach ($f in Get-ChildItem $doiDir -Filter *.json -ErrorAction SilentlyContinue) {
         $d = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         foreach ($m in @($d.manager) + @($d.worker)) { if ($m -and "$($m.o)" -eq "$id") { $ai = "$($d.logo) $($d.du_an) · $($m.icon) $(if ($m.ten) { $m.ten } else { $m.vai })" } }
@@ -134,6 +134,8 @@ function Add-Viec($id, $text) {
     Write-Host "📝 Việc số $so → $ai" -ForegroundColor DarkGray
 }
 
+# Vai chạy ngầm? (ngam.js kiem: "ngam" bật và không thuộc nhóm phải giữ ô — Grok / Remote Control / giuO)
+function Test-Ngam($s) { if ("$s" -notmatch '^[^./\d][^./]*[./].+$') { return $false }; node "$PSScriptRoot\ngam.js" kiem "$s"; return ($LASTEXITCODE -eq 0) }
 # "24" → 24 · "Chatbot.Engineer" / "chatbot/manager" → số ô theo sổ đội
 function Resolve-Id($s, [switch]$Thuc) {
     $s = "$s"
@@ -335,6 +337,15 @@ switch ($Cmd) {
         }
     }
     'send' {
+        # 06/10: vai chạy ngầm ("ngam" trong doi\<dự án>.json) → ngam.js (không ô; vai đang bận thì từ chối, quá giới hạn thì xếp hàng)
+        if (Test-Ngam $Rest[0]) {
+            $tf = Join-Path $env:TEMP "ngam-$([guid]::NewGuid().ToString('N')).txt"
+            [IO.File]::WriteAllText($tf, ($Rest[1..($Rest.Count - 1)] -join ' '), $utf8)
+            node "$PSScriptRoot\ngam.js" giao $Rest[0] $tf; $c = $LASTEXITCODE
+            Remove-Item $tf -ErrorAction SilentlyContinue
+            if ($c -eq 0) { Add-Viec "ngam-$($Rest[0] -replace '/', '.')" ($Rest[1..($Rest.Count - 1)] -join ' ') }
+            exit $c
+        }
         Chon-AI $Rest[0]   # vai Codex hết hạn mức → tạm Grok (Grok hết → Claude); vai Grok hết → Claude; hồi lại thì về
         $id = Resolve-Id $Rest[0] -Thuc; $text = ($Rest[1..($Rest.Count - 1)] -join ' ')   # -Thuc: worker đang ngủ thì tự đánh thức
         $s = Get-PaneState $id
@@ -378,8 +389,13 @@ switch ($Cmd) {
     }
     # cho <id>[,<id>...] [giây]: đợi một hoặc nhiều ô làm xong (ô nào xong trước in trước)
     'cho' {
-        $ids = @("$($Rest[0])" -split ',' | ForEach-Object { Resolve-Id $_ }); $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
-        exit (Wait-Panes $ids $max)
+        $max = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 1800 }
+        $ten = @("$($Rest[0])" -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $ngam = @($ten | Where-Object { Test-Ngam $_ }); $code = 0
+        if ($ngam.Count) { node "$PSScriptRoot\ngam.js" cho ($ngam -join ',') $max; $code = $LASTEXITCODE }
+        $ids = @($ten | Where-Object { $_ -notin $ngam } | ForEach-Object { Resolve-Id $_ })
+        if ($ids.Count) { $code = [Math]::Max($code, (Wait-Panes $ids $max)) }
+        exit $code
     }
     # giao <dự án> <claude|codex> "việc" [-Cho] [-Ra <file>] [-Canh]
     #   mở AI mới ở thư mục dự án (tab nền; -Canh = ô bên phải ô đang gọi) với câu giao việc làm lời nhắn đầu tiên.
@@ -450,6 +466,7 @@ switch ($Cmd) {
         exit $LASTEXITCODE
     }
     'read' {
+        if (Test-Ngam $Rest[0]) { node "$PSScriptRoot\ngam.js" log @Rest; break }   # vai ngầm: đọc log (thêm -f để theo dõi liên tục)
         $id = Resolve-Id $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
         Read-Pane $id $n
     }
@@ -505,9 +522,23 @@ switch ($Cmd) {
         $launchDir = Join-Path $doiDir $def.du_an
         New-Item -ItemType Directory -Force $launchDir | Out-Null
         $bom = New-Object Text.UTF8Encoding $true
-        $ws = @($def.worker | Where-Object { -not ($thuc -and $nguInfo[$_.vai] -and $_.vai -ne $thuc) })   # bỏ các vai ngủ tiếp khỏi bố cục
+        # 06/10: vai chạy ngầm không có ô — bỏ khỏi bố cục; ô cũ của vai đó đang rảnh thì đóng (phiên giữ trong sổ, ngầm chạy tiếp đúng phiên)
+        $ngamVai = @{}
+        foreach ($ln in @(node "$PSScriptRoot\ngam.js" ds-bat $def.du_an)) { $p = "$ln" -split "`t"; if ($p[0]) { $ngamVai[$p[0]] = $p } }
+        foreach ($v in @($ngamVai.Keys)) {
+            if ($oCu[$v]) {
+                $st = Get-PaneState $oCu[$v]
+                if ($st -and $st.state -eq 'work') { Write-Host "   ⚠️ $($def.du_an).$v đang làm trong ô $($oCu[$v]) — để nguyên, lần doi sau mới đóng" -ForegroundColor Yellow; continue }
+                & $exe cli --no-auto-start kill-pane --pane-id $oCu[$v] 2>$null | Out-Null
+                Write-Host "   🌙 $($def.du_an).$v chuyển sang chạy ngầm (đóng ô $($oCu[$v]))" -ForegroundColor DarkCyan
+                $oCu.Remove($v)
+            }
+            $nguInfo.Remove($v)
+        }
+        $ws = @($def.worker | Where-Object { -not $ngamVai[$_.vai] -and -not ($thuc -and $nguInfo[$_.vai] -and $_.vai -ne $thuc) })   # bỏ các vai ngủ tiếp / chạy ngầm khỏi bố cục
         $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
-        if (-not $tenWorker) { $tenWorker = "chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
+        if ($ngamVai.Count) { $tenWorker = (@($tenWorker) + @("🌙 chạy ngầm (không có ô, giao + cho như thường; xem việc: wez.ps1 read <Vai>): " + (($ngamVai.Keys | ForEach-Object { "$($def.du_an).$_" }) -join ', ')) | Where-Object { $_ }) -join ' · ' }
+        if (-not $tenWorker) { $tenWorker ="chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
         # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
         # tên hiển thị (có dấu, vd "Số liệu") khác tên gọi lệnh (không dấu, vd Sino.SoLieu) khi định nghĩa có trường "ten"
         function TenVai($m) { if ($m.ten) { $m.ten } else { $m.vai } }
@@ -668,7 +699,8 @@ switch ($Cmd) {
         }
         $so.manager = [ordered]@{ o = $mo; vai = $mg.vai; ten = (TenVai $mg); icon = $mg.icon; ai = $mg.ai; mau = $mg.mau; session = $sesCu[$mg.vai] }
         foreach ($w in @($def.worker)) {   # giữ thứ tự định nghĩa; vai đang ngủ tiếp thì ghi lại để lần sau đánh thức đúng phiên
-            if ($ids.ContainsKey($w.vai)) { $so.worker += [ordered]@{ o = $ids[$w.vai]; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; session = $sesCu[$w.vai] } }
+            if ($ngamVai[$w.vai] -and -not $ids.ContainsKey($w.vai)) { $ses = if ($ngamVai[$w.vai][1]) { $ngamVai[$w.vai][1] } else { $sesCu[$w.vai] }; $so.worker += [ordered]@{ o = ''; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; ngam = $true; session = $ses } }
+            elseif ($ids.ContainsKey($w.vai)) { $so.worker += [ordered]@{ o = $ids[$w.vai]; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; session = $sesCu[$w.vai] } }
             elseif ($nguInfo[$w.vai]) { $n0 = $nguInfo[$w.vai]; $so.worker += [ordered]@{ o = ''; vai = $w.vai; ten = (TenVai $w); icon = $w.icon; ai = $w.ai; mau = $w.mau; viec = $w.viec; ngu = $true; session = $n0.session; ngu_luc = $n0.ngu_luc } }
         }
         [IO.File]::WriteAllText($soF, ($so | ConvertTo-Json -Depth 5), $utf8)
