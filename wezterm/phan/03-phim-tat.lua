@@ -1,3 +1,9 @@
+-- mở đội 1 dự án bằng wez.ps1 doi (chạy ẩn qua an.vbs, không nháy cửa sổ đen)
+local function mo_doi(proj)
+  return wezterm.action_callback(function()
+    wezterm.background_child_process { 'wscript.exe', HUB .. '\\cai-dat\\an.vbs', HUB .. '\\cai-dat\\wez.ps1', 'doi', proj }
+  end)
+end
 config.keys = {
   -- Bàn làm việc Tổng quản, ô cần duyệt, menu dự án
   { key = 'H', mods = 'CTRL|SHIFT', action = open_desk },
@@ -34,6 +40,13 @@ config.keys = {
   { key = 'U', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tong-quan' },   -- 📊 bảng tổng quan đội (03/10)
   { key = 'F4', mods = 'CTRL|SHIFT', action = act.EmitEvent 'tat-du-an' },  -- đóng hẳn 1 dự án (mọi ô của nó), có hỏi lại (03/10)
   { key = 'w', mods = 'CTRL|ALT', action = act.EmitEvent 'tat-du-an' },     -- như trên; laptop hay cần Fn cho F4 nên thêm phím này
+  -- Ctrl+Alt+1…5: mở đội dự án = wez.ps1 doi <dự án> (cửa sổ riêng, chung tiến trình; đội đang mở thì giữ nguyên) (06/10)
+  -- KHÔNG dùng --always-new-process: wez.ps1 chọn socket mới nhất + số ô trùng giữa các tiến trình → điều khiển nhầm đội
+  { key = '1', mods = 'CTRL|ALT', action = mo_doi 'Chatbot' },
+  { key = '2', mods = 'CTRL|ALT', action = mo_doi 'Sino' },
+  { key = '3', mods = 'CTRL|ALT', action = mo_doi 'Coolguy' },
+  { key = '4', mods = 'CTRL|ALT', action = mo_doi '1Bill' },
+  { key = '5', mods = 'CTRL|ALT', action = mo_doi 'Aff' },
   -- Ctrl+Shift+P: MENU GỌN của đội AI (03/10, người dùng thấy bảng lệnh gốc quá nhiều dòng thừa) · bảng gốc → Ctrl+Shift+Alt+P
   { key = 'P', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
   { key = 'p', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
