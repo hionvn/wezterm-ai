@@ -65,14 +65,20 @@ local function fuel_cells()
       -- fuel-codex.json → wez.ps1 "không đọc được hạn mức Codex" → vai kẹt ở Grok mãi)
       -- nhiều ô cùng tài khoản chạy song song → file mới nhất theo tên chưa chắc có số mới nhất: gom 10 phiên cuối,
       -- lấy khung có giờ làm mới muộn nhất, trong khung đó lấy % cao nhất (trong 1 khung % chỉ tăng)
-      for i = #files, math.max(1, #files - 9), -1 do
+      for i = #files, math.max(1, #files - 29), -1 do -- 06/10: 10 → 30 phiên (phiên 9router bị bỏ qua chiếm chỗ)
         -- 06/10: file chưa đổi cỡ thì dùng lại kết quả (trước đọc lại cả 10 file mỗi lần → lượt cập nhật giật 2,4 giây)
         local fh, sz = io.open(files[i], 'rb'), nil
         if fh then sz = fh:seek('end') fh:close() end
         local c = FUEL_FILE[files[i]]
         if not c or c.size ~= sz then
           c = { size = sz }
-          local t = read_file(files[i], 98304)
+          -- 06/10: phiên đi qua 9router (worker "router": true, CODEX_HOME = ~\.codex) mang hạn mức của tài khoản 9router
+          -- đang xoay tới (vd vuanhtuanfpt 64%/98%) → đọc lẫn vào tài khoản ~\.codex (hionkeap thật còn 72% tuần)
+          -- → Chon-AI chuyển nhầm cả đội sang Claude. Dòng đầu (session_meta) ghi model_provider → bỏ qua phiên nine_router.
+          local hf = io.open(files[i], 'rb')
+          local head = hf and hf:read(4096) or ''
+          if hf then hf:close() end
+          local t = not head:find('"model_provider":"nine_router"', 1, true) and read_file(files[i], 98304) or nil
           if t then
             for u, r in t:gmatch('"primary":{"used_percent":([%d%.]+),"window_minutes":%d+,"resets_at":(%d+)}') do
               u, r = tonumber(u), tonumber(r)
