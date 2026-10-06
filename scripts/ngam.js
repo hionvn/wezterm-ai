@@ -311,7 +311,8 @@ function baoManager(proj, key, nhan, kqF) {
   try {
     for (const n of fs.readdirSync(dir)) {
       const m = /^gui-sock-(\d+)$/.exec(n); if (!m || !song(+m[1])) continue;
-      const t = fs.statSync(path.join(dir, n)).mtimeMs; if (!sock || t > sock.t) sock = { f: path.join(dir, n), t };
+      let t = 0; try { t = fs.statSync(path.join(dir, n)).mtimeMs; } catch {} // stat file socket trên Windows có lúc lỗi → vẫn dùng được
+      if (!sock || t > sock.t) sock = { f: path.join(dir, n), t };
     }
   } catch {}
   if (!sock) return;

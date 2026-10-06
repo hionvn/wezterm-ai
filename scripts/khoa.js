@@ -42,7 +42,8 @@ function liveGui() {
       const m = /^gui-sock-(\d+)$/.exec(n);
       if (!m) continue;
       try { process.kill(Number(m[1]), 0); } catch { continue; } // tiến trình đã tắt
-      const full = path.join(dir, n), t = fs.statSync(full).mtimeMs;
+      const full = path.join(dir, n);
+      let t = 0; try { t = fs.statSync(full).mtimeMs; } catch {} // 06/10: stat file socket bị EACCES → trước đây cả vòng hỏng, GUI = null, khoá ô thường bị coi là đã chết
       if (!best || t > best.t) best = { full, name: n, t };
     }
   } catch {}
