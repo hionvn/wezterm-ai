@@ -63,7 +63,7 @@ function giuO(w) {
   if (!['claude', 'codex'].includes(w.ai)) return `AI ${w.ai} chưa hỗ trợ chạy ngầm`;
   return '';
 }
-const muonNgam = (d, w) => (w.ngam != null ? !!w.ngam : !!d.ngam);
+const muonNgam = (d, w) => !w.tat && (w.ngam != null ? !!w.ngam : !!d.ngam); // "tat": true = vai đang tắt (không chạy ngầm, không mở ô)
 const batNgam = (d, w) => muonNgam(d, w) && !giuO(w);
 // AI thật đang dùng: vai Codex hết hạn mức đang tạm Claude/Grok (ai-tam.json, do wez.ps1 Chon-AI ghi) → ngầm thì chạy Claude
 function aiThat(d, w) {

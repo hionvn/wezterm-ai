@@ -535,7 +535,7 @@ switch ($Cmd) {
             }
             $nguInfo.Remove($v)
         }
-        $ws = @($def.worker | Where-Object { -not $ngamVai[$_.vai] -and -not ($thuc -and $nguInfo[$_.vai] -and $_.vai -ne $thuc) })   # bỏ các vai ngủ tiếp / chạy ngầm khỏi bố cục
+        $ws = @($def.worker | Where-Object { -not $_.tat -and -not $ngamVai[$_.vai] -and -not ($thuc -and $nguInfo[$_.vai] -and $_.vai -ne $thuc) })   # bỏ các vai ngủ tiếp / chạy ngầm khỏi bố cục
         $tenWorker = ($ws | ForEach-Object { "$($def.du_an).$($_.vai)" }) -join ', '
         if ($ngamVai.Count) { $tenWorker = (@($tenWorker) + @("🌙 chạy ngầm (không có ô, giao + cho như thường; xem việc: wez.ps1 read <Vai>): " + (($ngamVai.Keys | ForEach-Object { "$($def.du_an).$_" }) -join ', ')) | Where-Object { $_ }) -join ' · ' }
         if (-not $tenWorker) { $tenWorker ="chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
