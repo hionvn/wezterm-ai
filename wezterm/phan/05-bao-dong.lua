@@ -112,6 +112,10 @@ local PANE_SLOW = 30 -- 04/10: 6 → 30 giây. Đo thật: 14 ô = process_alert
 -- chạy ngay trên luồng GUI. Mở lại phiên 20 ô thì các ô hết hạn cùng một nhịp → dồn 40 câu hỏi vào 1 lượt → đứng hình.
 -- Giới hạn: làm mới tối đa SLOW_MAX ô mỗi giây (ô MỚI chưa có gì thì vẫn hỏi ngay); ô chưa tới lượt dùng tạm bản cũ.
 local SLOW_MAX, SLOW_BUDGET = 2, { t = -1, n = 0 }
+-- 06/10 (đơ dù chỉ ~14 ô): mỗi câu hỏi Windows 80–120 ms (tiến trình ~40 + thư mục ~40, log GUI 168 lần) × 2 ô / lượt
+-- = process_alerts 250–350 ms mỗi 1,8 giây trên luồng giao diện, đều như máy → chuột/gõ khựng. Ô AI hầu như không đổi
+-- thư mục / chương trình → ô mới hỏi ngay, sau đó 5 phút mới hỏi lại, tối đa 1 ô mỗi lượt.
+PANE_SLOW, SLOW_MAX = 300, 1
 local function pinfo(p)
   local now = os.time()
   if PANE_NOW.t ~= now then PANE_NOW = { t = now, m = {} } end
