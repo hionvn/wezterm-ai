@@ -29,6 +29,9 @@ if (-not $Rest) { $Rest = @() }
 $cfg = $null
 if (Test-Path "$HOME\.wez-ai.json") { $cfg = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json }
 $exe = if ($cfg -and $cfg.wezterm) { $cfg.wezterm } else { 'C:\Program Files\WezTerm\wezterm.exe' }
+# 07/10: PS 5.1 đọc `wezterm cli get-text` theo bảng mã OEM → tiếng Việt vỡ, mọi chỗ so chữ trên màn hình (câu còn kẹt ở ô nhập → Enter lại)
+# không bao giờ khớp → lời giao việc nằm im ở ô nhập Codex, Manager + worker đứng không
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 if (-not (Test-Path $exe)) { $c = Get-Command wezterm -ErrorAction SilentlyContinue; if ($c) { $exe = $c.Source } }
 $stateDir = Join-Path $env:LOCALAPPDATA 'wez-ai\state'
 $doiDir = Join-Path $env:LOCALAPPDATA 'wez-ai\doi'   # sổ đội lúc chạy: số ô của Manager + từng worker
@@ -361,10 +364,11 @@ switch ($Cmd) {
         # 04/10: câu dài → Enter đôi khi tới trước khi ô nhận xong chữ (Codex / Claude để nguyên chữ ở ô nhập,
         # ca đêm báo "đã giao" mà không chạy). Kiểm 3 lần: chữ đầu câu còn nằm ở dòng nhập (› hoặc ❯) → Enter lại.
         $dau = ($text -replace '\s+', ' ').Trim(); $dau = $dau.Substring(0, [Math]::Min(25, $dau.Length))
-        for ($k = 0; $k -lt 3; $k++) {
+        # 07/10: Codex gom câu dài thành "[Pasted Content …]" → không thấy chữ đầu câu, trước đây bỏ qua → câu kẹt ở ô nhập, Manager đứng
+        for ($k = 0; $k -lt 6; $k++) {
             Start-Sleep -Milliseconds 1200
             $man = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
-            $conNhap = $man -split "`n" | Where-Object { $_ -match '^\s*[›❯>]\s' -and ($_ -replace '\s+', ' ').Contains($dau) }
+            $conNhap = $man -split "`n" | Where-Object { $_ -match '^\s*[›❯>]\s' -and (($_ -replace '\s+', ' ').Contains($dau) -or $_ -match 'Pasted Content') }
             if (-not $conNhap) { break }
             & $exe cli --no-auto-start send-text --pane-id $id --no-paste "`r"
         }
@@ -639,10 +643,10 @@ switch ($Cmd) {
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"; Start-Sleep -Milliseconds 900
                 & $exe cli --no-auto-start send-text --pane-id $id $ten; Start-Sleep -Milliseconds 400
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"; Start-Sleep -Milliseconds 900
-                & $exe cli --no-auto-start send-text --pane-id $id (Get-Content -Raw -Encoding UTF8 $loiF); Start-Sleep -Milliseconds 400
+                & $exe cli --no-auto-start send-text --pane-id $id -- ((Get-Content -Raw -Encoding UTF8 $loiF) -replace '"', '\"'); Start-Sleep -Milliseconds 400   # 07/10: lời có dấu " làm PS 5.1 tách đối số → lỗi "unexpected argument"
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
                 # 04/10: lời dài bị Codex gom thành "[Pasted Content …]" và Enter đầu có khi trôi → kiểm, còn nằm ở ô nhập thì Enter lại
-                for ($k = 0; $k -lt 4; $k++) {
+                for ($k = 0; $k -lt 8; $k++) {   # 07/10: 4 lần chưa đủ (Manager Aff lời dài vẫn nằm ở ô nhập)
                     Start-Sleep -Milliseconds 1200
                     $man = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
                     if ($man -notmatch '(?m)^\s*›\s*\S.*(Pasted Content|Bạn là)') { break }

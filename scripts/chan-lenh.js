@@ -68,7 +68,8 @@ const MCP_DEM = [
 
 // Dự án được tự git push ban ngày (repo riêng tư) — khớp mục 8 "Đã cho phép" trong quy-trinh-lien-mach.md.
 // Đêm vẫn chặn; push ép / công khai repo vẫn CẤM.
-const TU_PUSH = [/[\\/]AI[\\/]Chatbot(?=[\\/\s"';&]|$)/i];
+// 08/10 Hion: "Làm xong thì tự commit tự push" → mọi repo riêng tư (wezterm-ai công khai vẫn hỏi)
+const TU_PUSH = [/[\\/]AI[\\/](?:Chatbot|Coolguy|Sino|1Bill|Aff|KhoAI|Hion)(?=[\\/\s"';&]|$)/i];
 
 function laDem(d = new Date()) {
   const p = d.getHours() * 60 + d.getMinutes();

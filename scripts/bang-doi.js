@@ -182,11 +182,14 @@ function drawRaw() {
     const n = { work: 0, need: 0, ngu: 0, tat: 0, cho: 0, loi: 0, idle: 0 }; g.forEach((x) => { const k = dem(x); n[k]++; total[k]++; if (x.state === 'ngam') total.ngam++; });
     const b = [`${c}${B}${info.logo || '📁'} ${name.toUpperCase()}${R}` + (n.work ? `  ⏳${n.work}` : '') + (n.need ? `  🔔${n.need}` : '') + (n.cho ? `  ⌛${n.cho}` : '') + (n.loi ? `  ⛔${n.loi}` : '')];
     g.sort((a, b) => (b.manager - a.manager) || (b.inTeam - a.inTeam) || (a.tabNo - b.tabNo));
+    // 17/10 (người dùng: "cột phải chồng chất, làm gọn"): worker ngầm đang làm/rảnh/chờ + vai tắt gộp 1 dòng đếm; chỉ worker lỗi/quá hạn còn hiện từng dòng
+    const gop = { chay: 0, cho: 0, ranh: 0, tat: 0 };
     for (const x of g) {
+      if (x.state === 'tat') { gop.tat++; continue; }
+      if (x.state === 'ngam' && !['qua-han', 'loi'].includes(x.ngam)) { gop[x.ngam === 'chay' ? 'chay' : x.ngam === 'cho' ? 'cho' : 'ranh']++; continue; }
       const ten = pad(cat(x.label, 24), 26);
       const t = x.since != null ? ago(x.since) : '';
-      if (x.state === 'tat') { b.push(' ' + `${DIM}${ten}${pad('⚫ tắt', 9)}${R}`); continue; } // đội chưa mở: wez.ps1 doi <dự án>
-      if (x.state === 'ngam') { // ⏳ chạy · ⌛ hàng chờ · 🟢 rảnh · ⌛ quá hạn · ⛔ lỗi (log: wez.ps1 read DựÁn.Vai)
+      if (x.state === 'ngam') { // ⌛ quá hạn · ⛔ lỗi (log: wez.ps1 read DựÁn.Vai)
         const m = { chay: `${rgb('#e5c07b')}⏳ làm${R}`, cho: `${rgb('#61afef')}⌛ chờ${R}`, 'qua-han': `${rgb('#e06c75')}⌛ hạn${R}`, loi: `${rgb('#e06c75')}⛔ lỗi${R}` }[x.ngam] || `${rgb('#98c379')}🟢 rảnh${R}`;
         b.push(' ' + ten + pad(m, 9) + `${DIM}${t}${R}`); continue;
       }
@@ -194,6 +197,8 @@ function drawRaw() {
       const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
       b.push(' ' + link(x.id, ten + pad(s, 9) + `${DIM}${t}${R}`));
     }
+    if (gop.chay + gop.cho + gop.ranh) b[0] += `  ${DIM}·${R} 🌙${gop.chay + gop.cho + gop.ranh}` + (gop.ranh ? ` ${rgb('#98c379')}🟢${gop.ranh}${R}` : '');
+    if (gop.tat) b[0] += ` ${DIM}⚫${gop.tat}${R}`;
     blocks.push(b);
   }
   if (docs.length) blocks.push([`${B}📄 TÀI LIỆU${R}`, ...docs.map((d) => ' ' + link(d.id, cat(d.t, W - 3)))]);

@@ -28,6 +28,8 @@ const TOKEN = CFG.token || 120000;
 const AI_ROOT = MAY.aiRoot || 'E:\\AI';
 const CLAUDE = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
 const CODEX = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
+// 07/10: ngủ ngay trong Node — trước gọi ping qua cmd.exe, tiến trình ngầm không có console nên mỗi lần bật 1 ô đen
+const ngu = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const now = () => Math.floor(Date.now() / 1000);
 const hhmm = (t) => (t ? new Date(t * 1000).toTimeString().slice(0, 5) : '--:--');
 const stamp = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
@@ -66,8 +68,14 @@ function giuO(w) {
 const muonNgam = (d, w) => !w.tat && (w.ngam != null ? !!w.ngam : !!d.ngam); // "tat": true = vai đang tắt (không chạy ngầm, không mở ô)
 const batNgam = (d, w) => muonNgam(d, w) && !giuO(w);
 // AI thật đang dùng: vai Codex hết hạn mức đang tạm Claude/Grok (ai-tam.json, do wez.ps1 Chon-AI ghi) → ngầm thì chạy Claude
+// 07/10 (người dùng: "ưu tiên GPT, hết hạn mức chuyển sang Sonnet"): vai router mà 9router báo hết hạn mức → ghi router-het.json,
+// mọi vai router chạy Claude Sonnet tới giờ "den" (nghỉ "routerNghiPhut", mặc định 60) rồi tự thử lại GPT.
+const ROUTER_HET = path.join(WEZAI, 'router-het.json');
+const routerHet = () => ((readJson(ROUTER_HET) || {}).den || 0) > now();
+const HET_MUC = /usage limit|rate.?limit|\b429\b|quota|exhaust|insufficient|out of credits|no (available|active) (account|connection)s?|too many requests/i;
 function aiThat(d, w) {
-  if (w.ai !== 'codex' || w.router) return w.ai;
+  if (w.ai !== 'codex') return w.ai;
+  if (w.router) return routerHet() ? 'claude' : 'codex';
   const t = (readJson(path.join(WEZAI, 'ai-tam.json')) || {})[`${d.du_an}.${w.vai}`];
   return t ? 'claude' : 'codex'; // ponytail: Codex hết → Claude luôn (Grok chỉ chạy trong ô)
 }
@@ -84,7 +92,7 @@ function khoa(fn) {
   for (let i = 0; i < 100; i++) {
     try { fs.mkdirSync(k); break; } catch {
       try { if (Date.now() - fs.statSync(k).mtimeMs > 20000) fs.rmdirSync(k); } catch {}
-      cp.execSync('ping -n 1 -w 100 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' }); // ngủ ~0,1 giây
+      ngu(100);
     }
   }
   try { return fn(); } finally { try { fs.rmdirSync(k); } catch {} }
@@ -113,16 +121,21 @@ function claudeGanHet() {
   return '';
 }
 // ===== Tự lấy việc (07/10, người dùng: "không cho phép các worker nghỉ, hãy cho làm việc liên tục") =====
-// Vai ngầm rảnh > 3 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" hoặc xong < 2 phút
-// → nghỉ 30 phút rồi mới tự lấy lại (đỡ đốt hạn mức vô ích). Tắt: "ngam": {"tuLam": false} (cả máy) · "tuLam": false ở đội / vai.
-const TU_LAM_SAU = 180, TU_LAM_NGHI = 1800;
+// Vai ngầm rảnh > 1 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" / lỗi
+// → nghỉ 2 phút rồi tự lấy lại. 08/10 (người dùng: "giao việc liên tục chứ để nghỉ thế"): đo lượt TB 2 phút, 45% báo
+// KHÔNG CÒN VIỆC, luật cũ "xong < 2 phút → nghỉ 10 phút" làm worker đứng ~80% thời gian → bỏ luật đó, 180/600 → 60/120,
+// lời giao bắt làm nối nhiều việc ~20 phút + việc nền. Tắt: "ngam": {"tuLam": false} (cả máy) · "tuLam": false ở đội / vai.
+const TU_LAM_SAU = 10, TU_LAM_NGHI = 30; // 17/10 người dùng: "không cho phép worker nào ngủ" (trước 60 / 120)
 function viecTuLam(d, w) {
   const goc = path.join(AI_ROOT, d.du_an), ten = w.ten || w.vai;
   return `TỰ LẤY VIỆC (người dùng 07/10: worker không được nghỉ, làm liên tục). Bạn là ${d.du_an}.${w.vai} (${ten}). ` +
     `Đọc: ${goc}\\tien-do-*.md (mục Đang làm / Việc tiếp / Kẹt), các brief mới nhất trong ${goc}\\brief\\ có nhắc vai bạn, và kết quả lô trước của bạn. ` +
-    `Chọn 1–3 việc 🟢 tiếp theo ĐÚNG VAI bạn mà chưa vai nào nhận (không làm trùng việc Manager đang giao cho vai khác, không sửa file vai khác đang sửa). Làm luôn tới xong, ghi file như thường. ` +
-    `Ghi thêm 1 dòng vào ${goc}\\brief\\tu-lam-${w.vai}.md: giờ · việc · file (vai chỉ đọc thì chỉ in ra). ` +
-    'Câu trả lời cuối: báo 5 trường cho Manager. Nếu THẬT SỰ không còn việc nào hợp vai: bắt đầu câu trả lời bằng "KHÔNG CÒN VIỆC" + đề xuất 1–3 việc mới cho Manager.';
+    `Chọn việc 🟢 tiếp theo ĐÚNG VAI bạn mà chưa vai nào nhận (không làm trùng việc Manager đang giao cho vai khác, không sửa file vai khác đang sửa). Làm luôn tới xong, ghi file như thường. ` +
+    `LÀM LIÊN TỤC ~20 PHÚT: xong 1 việc thì làm ngay việc kế, KHÔNG dừng sau 1 việc. Hết việc trong brief/tiến độ thì làm VIỆC NỀN đúng vai: ` +
+    `(a) soát chéo đầu ra 24 giờ qua của vai khác cùng dự án, ghi lỗi tìm được; (b) kiểm chứng lại số liệu/khẳng định trong file vai mình với nguồn gốc; ` +
+    `(c) nâng chất lượng file cũ của vai mình (rõ hơn, gọn hơn, sửa chỗ lỗi thời); (d) chuẩn bị sẵn bản nháp cho việc đang chờ người dùng duyệt/làm tay. ` +
+    `Ghi thêm 1 dòng vào ${goc}\\brief\\tu-lam-${w.vai}.md cho mỗi việc: giờ · việc · file (vai chỉ đọc thì chỉ in ra). ` +
+    'Câu trả lời cuối: báo 5 trường cho Manager. Chỉ khi đã làm hết cả việc nền mới bắt đầu câu trả lời bằng "KHÔNG CÒN VIỆC" + đề xuất 1–3 việc mới cho Manager.';
 }
 function tuLay() {
   if (CFG.tuLam === false) return 0;
@@ -130,7 +143,7 @@ function tuLay() {
   for (const d of moiDoi()) {
     if (d.tuLam === false) continue;
     for (const w of arr(d.worker)) {
-      if (!w || w.tuLam === false || !batNgam(d, w)) continue;
+      if (!w || w.tuLam === false || w.tamDung || !batNgam(d, w)) continue;
       const key = `${d.du_an}.${w.vai}`, st = docSt(key) || {};
       if (st.trang_thai === 'cho' || st.trang_thai === 'chay') continue;
       if (t - (st.ket_thuc || 0) < TU_LAM_SAU || (st.tu_lam_nghi && t < st.tu_lam_nghi)) continue;
@@ -142,9 +155,12 @@ function tuLay() {
 }
 // Nhịp nền: 1 tiến trình "ngam.js giu" gọi dieuPhoi mỗi phút (tự lấy việc + mở hàng chờ khi không ai gọi lệnh)
 const GIU_PID = path.join(DIR, 'giu.pid');
+// 14/10: pid bị Windows dùng lại (giu.pid trỏ vào chrome-native-host) → tưởng còn sống, vòng tự lấy việc chết im.
+// Vòng giu chạm file mỗi phút → file cũ > 3 phút = vòng đã chết dù pid còn.
+const giuConSong = (pid) => song(pid) && Date.now() - fs.statSync(GIU_PID).mtimeMs < 180000;
 function giuSong() {
   const pid = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
-  if (song(pid)) return;
+  if (giuConSong(pid)) return;
   const c = cp.spawn(process.execPath, [__filename, 'giu'], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
   c.unref(); ghi(GIU_PID, String(c.pid));
 }
@@ -199,6 +215,7 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
       const chan = String(w.chan || '').split(/\s+/).filter(Boolean);
       exe = CLAUDE;
       args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'bypassPermissions',
+        '--model', 'sonnet', // 14/10 (người dùng): Tổng quản Opus, mọi worker chạy ngầm Sonnet
         '--append-system-prompt', loiVai(d, w), ...(ses ? ['--resume', ses] : ['--session-id', moiSes]),
         ...(chan.length ? [`--disallowedTools=${chan.join(',')}`] : [])];
     } else {
@@ -220,10 +237,24 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     const log = (s) => fs.appendFileSync(logF, `[${new Date().toTimeString().slice(0, 8)}] ${s}\n`);
     log(`▶ ${key} · ${ai}${ses ? ' · tiếp phiên ' + ses : ' · phiên mới'} · giới hạn ${Math.round(giay / 60)} phút`);
     const c = cp.spawn(exe, args, { cwd: projDir, env, windowsHide: true });
-    let buf = '', cuoi = '', token = 0, quaHan = false, loiRa = '';
+    let buf = '', cuoi = '', token = 0, quaHan = false, loiRa = '', hetMuc = false;
+    // 07/10: GPT qua 9router báo hết hạn mức → Codex tự thử lại tới hết giờ (25 việc phí trọn 30 phút) → dừng ngay để chuyển Sonnet
+    const xemHet = (m) => {
+      if (hetMuc || ai !== 'codex' || !w.router || !HET_MUC.test(String(m || ''))) return;
+      hetMuc = true; log('↪ 9router hết hạn mức → dừng, chuyển Claude Sonnet');
+      try { cp.execSync(`taskkill /PID ${c.pid} /T /F`, { stdio: 'ignore', windowsHide: true }); } catch {}
+    };
     const cat = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; };
+    // 08/10: cả 7 tài khoản 429 mà 9router TREO (không trả lỗi) → 45 worker đứng im tới hết 30 phút.
+    // Im lặng 5 phút (không phải đang chạy lệnh) = coi như hết hạn mức → chuyển Sonnet.
+    let lanCuoi = Date.now(), dangLenh = false;
+    const canh = setInterval(() => {
+      if (!dangLenh && Date.now() - lanCuoi > 5 * 60e3) xemHet('9router treo 5 phút không trả lời (usage limit?)');
+    }, 30e3);
     const doc = (line) => {
+      lanCuoi = Date.now();
       let e; try { e = JSON.parse(line); } catch { if (line.trim()) log('· ' + cat(line, 300)); return; }
+      if (e.item && e.item.type === 'command_execution') dangLenh = e.type === 'item.started';
       if (ai === 'claude') {
         if (e.type === 'system' && e.subtype === 'init') { moiSes = e.session_id || moiSes; log(`⚙ phiên ${moiSes} · ${e.model || ''}`); }
         else if (e.type === 'assistant') {
@@ -250,25 +281,25 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
         else if (e.type === 'item.completed' && it.type === 'file_change') log('📝 ' + arr(it.changes).map((x) => `${x.kind} ${x.path}`).join(', '));
         else if (e.type === 'item.completed' && it.type === 'mcp_tool_call') log(`🔌 ${it.server}.${it.tool} ${it.status || ''}`);
         else if (e.type === 'item.completed' && it.type === 'web_search') log('🔎 ' + cat(it.query, 200));
-        else if (e.type === 'item.completed' && it.type === 'error') log('⛔ ' + cat(it.message, 300));
-        else if (e.type === 'turn.failed' || e.type === 'error') log('⛔ ' + cat((e.error && e.error.message) || e.message, 400));
+        else if (e.type === 'item.completed' && it.type === 'error') { log('⛔ ' + cat(it.message, 300)); loiRa += '\n' + it.message; xemHet(it.message); }
+        else if (e.type === 'turn.failed' || e.type === 'error') { const m = (e.error && e.error.message) || e.message; log('⛔ ' + cat(m, 400)); loiRa += '\n' + m; xemHet(m); }
         else if (e.type === 'turn.completed') log(`🏁 xong lượt · vào ${(e.usage || {}).input_tokens || '?'} token`);
       }
     };
     c.stdout.on('data', (x) => { buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { doc(buf.slice(0, i)); buf = buf.slice(i + 1); } });
-    c.stderr.on('data', (x) => { loiRa = (loiRa + x).slice(-2000); });
+    c.stderr.on('data', (x) => { loiRa = (loiRa + x).slice(-2000); xemHet(x); });
     const hen = setTimeout(() => {
       quaHan = true; log(`⌛ QUÁ HẠN ${Math.round(giay / 60)} phút → dừng`);
-      try { cp.execSync(`taskkill /PID ${c.pid} /T /F`, { stdio: 'ignore' }); } catch {}
+      try { cp.execSync(`taskkill /PID ${c.pid} /T /F`, { stdio: 'ignore', windowsHide: true }); } catch {}
     }, giay * 1000);
     c.stdin.end(prompt);
     c.on('error', (er) => { loiRa += String(er); });
     c.on('close', (code) => {
-      clearTimeout(hen); if (buf) doc(buf);
+      clearTimeout(hen); clearInterval(canh); if (buf) doc(buf);
       if (code && loiRa.trim()) log('stderr: ' + cat(loiRa, 800));
       if (ai === 'codex' && moiSes) token = tokenCodex(env.CODEX_HOME, moiSes) || token;
       log(`■ kết thúc mã ${code} · context ~${token} token`);
-      resolve({ code, quaHan, cuoi, ses: moiSes, token, loiRa });
+      resolve({ code, quaHan, cuoi, ses: moiSes, token, loiRa, hetMuc });
     });
   });
 }
@@ -323,6 +354,16 @@ async function chay(key) {
   // Codex không có system prompt riêng, và resume phiên không tồn tại thì lặng lẽ mở phiên mới → luôn kèm lời giao vai
   const dau = (ai === 'codex' ? loiVai(d, w) + '\n\n' : '') + (tomTat ? `TÓM TẮT PHIÊN TRƯỚC CỦA VAI NÀY:\n${tomTat}\n\n` : '');
   let r = await chayAI({ ...chung, ses, giay, prompt: `${dau}VIỆC MỚI (giới hạn ${phut} phút): ${st.viec}` });
+  // GPT qua 9router hết hạn mức → đánh dấu, trả việc về hàng chờ → lượt sau chạy Sonnet
+  if (ai === 'codex' && w.router && (r.hetMuc || (r.code && !r.quaHan && HET_MUC.test(r.loiRa || '')))) {
+    // nghỉ theo "reset after 6m 30s" của 9router (ít nhất 10 phút); không đọc được thì routerNghiPhut (60)
+    const rs = /reset after\s*(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?/i.exec(r.loiRa || '');
+    const nghi = rs && (rs[1] || rs[2] || rs[3]) ? Math.max(10, Math.ceil((+rs[1] || 0) * 60 + (+rs[2] || 0) + (+rs[3] || 0) / 60)) : MAY.routerNghiPhut || 60;
+    ghi(ROUTER_HET, { den: now() + nghi * 60, luc: new Date().toLocaleString('vi-VN'), ly: `${key}: ${String(r.loiRa).trim().slice(-200)}` });
+    fs.appendFileSync(st.log, `↪ 9router hết hạn mức → mọi vai GPT chạy Claude Sonnet ${nghi} phút, việc này xếp lại hàng chờ\n`);
+    luuSt(key, { ...st, trang_thai: 'cho', pid: null, bat_dau: null });
+    return dieuPhoi();
+  }
   // phiên cũ không mở được (bị xoá / sai tài khoản) → mở phiên mới 1 lần
   if (ses && r.code && !r.cuoi && !r.quaHan) {
     fs.appendFileSync(st.log, '↻ không tiếp được phiên cũ → mở phiên mới\n');
@@ -330,8 +371,8 @@ async function chay(key) {
   }
   st.session = r.ses || st.session; st.ai_phien = ai; st.token = r.token;
   const tt = r.quaHan ? 'qua-han' : r.code ? 'loi' : 'xong';
-  // tự lấy việc mà hết việc / xong quá nhanh / lỗi → nghỉ 30 phút mới tự lấy lại
-  if (st.tu_lam && (/^\s*\**\s*KHÔNG CÒN VIỆC/i.test(r.cuoi || '') || now() - st.bat_dau < 120 || tt === 'loi')) st.tu_lam_nghi = now() + TU_LAM_NGHI;
+  // tự lấy việc mà hết việc / lỗi → nghỉ TU_LAM_NGHI mới tự lấy lại
+  if (st.tu_lam && (/^\s*\**\s*KHÔNG CÒN VIỆC/i.test(r.cuoi || '') || tt === 'loi')) st.tu_lam_nghi = now() + TU_LAM_NGHI;
   const dauDe = { xong: '✅ xong', 'qua-han': `⌛ QUÁ HẠN — đã dừng sau ${phut} phút, việc CHƯA xong`, loi: `⛔ lỗi (mã ${r.code})` }[tt];
   const bd = st.bat_dau, kt = now();
   ketThuc(key, st, tt, `# ${dauDe} · ${key}\n` +
@@ -367,18 +408,22 @@ function baoManager(proj, key, nhan, kqF) {
   const msg = `🌙 ${key} ${nhan} — kết quả: ${kqF} . Đọc rồi giao lô việc kế ngay (giao theo lô, mục 15).`;
   try {
     // ô nhập của Manager đang có chữ gõ dở (vd người dùng gõ "duyệt 1, 2, 3" chưa Enter) → không gõ chen, tránh dính chữ
-    const man = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
-    const nhap = man.split('\n').filter((l) => /^\s*[❯›]/.test(l)).pop() || '';
-    if (nhap.replace(/^\s*[❯›]\s*/, '').trim()) return;
+    const man = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--escapes', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+    const tron = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\([AB0]/g, '');
+    const raw = man.split('\n').filter((l) => /^\s*[❯›]/.test(tron(l))).pop() || '';
+    // 08/10: Claude hiện câu gợi ý MỜ (vd "❯ 🌙 Chatbot.Security xong…") → trước đây tưởng chữ gõ dở, bỏ qua MỌI 🌙 → worker đứng không
+    const nhap = /[❯›]\s*(?:\x1b\([AB0])?\x1b\[(?:0;)?2m/.test(raw) ? '' : tron(raw);
+    // 07/10: ô Codex trống hiện chữ mờ "Ask Codex to do anything" → trước đây tưởng chữ gõ dở, Manager Codex không bao giờ nhận 🌙
+    if (nhap.replace(/^\s*[❯›]\s*/, '').replace(/^(Ask Codex to do anything|Explain this codebase|Summarize recent commits|Implement \{feature\}|Find and fix a bug in @filename|Write tests for @filename|Improve documentation in @filename|Run \/review on my current changes|Use \/skills to list available skills)\s*$/, '').trim()) return;
     khoa(() => { // nhiều worker xong cùng lúc → gõ lần lượt, không xen chữ
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--', msg], opt);
-      cp.execSync('ping -n 1 -w 400 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
+      ngu(400);
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
       // 06/10: Enter có lúc không ăn (dòng 🌙 nằm ở ô nhập, Manager Chatbot đứng 15 phút) → kiểm lại, còn thì Enter lại
-      for (let k = 0; k < 3; k++) {
-        cp.execSync('ping -n 2 -w 600 127.0.0.1 >nul 2>&1 & exit 0', { stdio: 'ignore', shell: 'cmd.exe' });
+      for (let k = 0; k < 6; k++) { // 07/10: Manager Codex gom dòng dài thành [Pasted Content …] → kiểm cả chữ đó
+        ngu(1000);
         const t = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
-        if (!t.split('\n').some((l) => /^\s*[❯›]\s/.test(l) && l.includes(`🌙 ${key} `))) break;
+        if (!t.split('\n').some((l) => /^\s*[❯›]\s/.test(l) && (l.includes(`🌙 ${key} `) || l.includes('Pasted Content')))) break;
         cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
       }
     });
@@ -409,9 +454,9 @@ async function main() {
   if (cmd === 'chay') return chay(a1);
   if (cmd === 'giu') { // nhịp nền mỗi phút; tiến trình khác đã giữ thì thoát
     const cu = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
-    if (cu && cu !== process.pid && song(cu)) return;
+    if (cu && cu !== process.pid && giuConSong(cu)) return;
     ghi(GIU_PID, String(process.pid));
-    const nhip = () => { try { dieuPhoi(); } catch {} };
+    const nhip = () => { try { ghi(GIU_PID, String(process.pid)); dieuPhoi(); } catch {} };
     nhip(); setInterval(nhip, 60000); return;
   }
   if (cmd === 'kiem') { // mã 0 = vai chạy ngầm · 1 = trong ô
@@ -425,6 +470,9 @@ async function main() {
   if (cmd === 'giao') { // giao <key> <file chứa việc>
     const v = timVai(a1);
     if (!v || !batNgam(v.d, v.w)) { console.error(`${a1} không chạy ngầm`); process.exit(4); }
+    // "tamDung" ở sổ đội (người dùng cho dự án nghỉ) → không nhận việc mới; xoá trường đó để chạy lại
+    const tamDung = v.d.tamDung || v.w.tamDung; // cả đội hoặc 1 vai
+    if (tamDung) { console.log(`⏸ ${v.key} đang tạm dừng (${tamDung}) → không nhận việc.`); process.exit(5); }
     const viec = fs.readFileSync(a2, 'utf8').replace(/^\uFEFF/, '').trim();
     const r = khoa(() => {
       const st = docSt(v.key) || {};
@@ -499,7 +547,7 @@ async function main() {
     const keys = cmd === 'dung-het' ? moiSt().map((x) => x.key) : [timVai(a1) && timVai(a1).key].filter(Boolean);
     for (const k of keys) {
       const st = docSt(k); if (!st || !['chay', 'cho'].includes(st.trang_thai)) continue;
-      if (song(st.pid)) try { cp.execSync(`taskkill /PID ${st.pid} /T /F`, { stdio: 'ignore' }); } catch {}
+      if (song(st.pid)) try { cp.execSync(`taskkill /PID ${st.pid} /T /F`, { stdio: 'ignore', windowsHide: true }); } catch {}
       ketThuc(k, st, 'dung', `# ✖ ${k} — đã dừng tay\n- Việc: ${st.viec}\n- Log: ${st.log || '(chưa chạy)'}\n`);
       console.log(`✖ Đã dừng ${k}`);
     }
