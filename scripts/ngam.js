@@ -77,8 +77,8 @@ const HET_MUC = /usage limit|rate.?limit|\b429\b|quota|exhaust|insufficient|out 
 const GROK_HET = path.join(WEZAI, 'grok-het.json');
 const API_KEY_F = path.join(WEZAI, 'anthropic-key.txt'), API_CHI = path.join(WEZAI, 'api-chi.json');
 const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
-// 18/10 (người dùng: "hết hạn mức thì chuyển qua GPT/9router/Grok/Claude hionvn"): vai Claude → Claude chính → Claude hionvn (claudeTk)
-// → cả 2 hết thì GPT qua 9router → 9router cũng hết thì Codex tài khoản riêng. Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
+// 18/10: vai còn để "claude" mà cả 2 Claude hết → chạy GPT qua 9router (hết thì Codex tài khoản riêng). Vai router (mặc định đội Muse)
+// đi GPT trước, 9router hết → Claude chính → Claude hionvn (claudeTk). Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
 const vaiDuPhong = (w) => (w.ai === 'codex' || w.ai === 'grok' || !claudeHetHan() ? w : { ...w, router: !routerHet(), duPhong: true });
 function aiThat(d, w) {
   if (w.ai === 'grok') return grokHet() ? 'claude' : 'grok';
@@ -136,6 +136,8 @@ const tkHetF = (tk) => path.join(WEZAI, `claude-het-${tk}.json`);
 const tkHet = (tk) => ((readJson(tkHetF(tk)) || {}).den || 0) > now();
 // Trả 'chinh' | 'tk2' | '' (cả 2 đang hết). Ưu tiên tài khoản chính; chính hồi là quay về.
 function claudeTk() {
+  // 18/10 người dùng chốt: worker = GPT qua 9router trước; 9router hết → Claude chính → Claude hionvn (tk2) CUỐI CÙNG
+  // (hionvn ưu tiên cho Tổng quản điều khiển).
   if (!claudeGanHet() && !tkHet('chinh')) return 'chinh';
   if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2')) return 'tk2';
   return '';
