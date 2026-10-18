@@ -77,9 +77,12 @@ const HET_MUC = /usage limit|rate.?limit|\b429\b|quota|exhaust|insufficient|out 
 const GROK_HET = path.join(WEZAI, 'grok-het.json');
 const API_KEY_F = path.join(WEZAI, 'anthropic-key.txt'), API_CHI = path.join(WEZAI, 'api-chi.json');
 const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
+// 18/10 (người dùng: "hết hạn mức thì chuyển qua GPT/9router/Grok/Claude hionvn"): vai Claude → Claude chính → Claude hionvn (claudeTk)
+// → cả 2 hết thì GPT qua 9router → 9router cũng hết thì Codex tài khoản riêng. Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
+const vaiDuPhong = (w) => (w.ai === 'codex' || w.ai === 'grok' || !claudeHetHan() ? w : { ...w, router: !routerHet(), duPhong: true });
 function aiThat(d, w) {
   if (w.ai === 'grok') return grokHet() ? 'claude' : 'grok';
-  if (w.ai !== 'codex') return w.ai;
+  if (w.ai !== 'codex') return claudeHetHan() ? 'codex' : w.ai;
   if (w.router) return routerHet() ? 'claude' : 'codex';
   const t = (readJson(path.join(WEZAI, 'ai-tam.json')) || {})[`${d.du_an}.${w.vai}`];
   return t ? 'claude' : 'codex'; // ponytail: Codex hết → Claude luôn (Grok chỉ chạy trong ô)
@@ -365,7 +368,7 @@ function tokenCodex(home, id) {
 async function chay(key) {
   const v = timVai(key); const st = docSt(key);
   if (!v || !st) return;
-  const { d, w } = v;
+  const { d } = v, w = vaiDuPhong(v.w);
   const ai = aiThat(d, w);
   const phut = w.ngamPhut || d.ngamPhut || PHUT;
   const het = Date.now() + phut * 60000;
