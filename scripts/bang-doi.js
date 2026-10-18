@@ -108,6 +108,7 @@ function drawRaw() {
   // gom ô theo dự án
   const groups = {}, docs = [];
   const coMat = new Set(ngu.map((z) => `${z.du_an}.${z.vai}`)); // vai đang có ô hoặc đang ngủ
+  const moRong = new Set(); // 17/10 (người dùng: "list các worker Muse ở cột phải"): dự án không tạm dừng → hiện từng worker ngầm; dự án tạm dừng → gộp 1 dòng
   for (const z of ngu) (groups[z.du_an] = groups[z.du_an] || []).push({ id: '', tabNo: 99, label: z.label, state: 'ngu', since: z.since, manager: false, inTeam: true });
   // 06/10: worker chạy ngầm (ngam.js) — không có ô; hiện 🌙 + trạng thái việc ngầm
   try {
@@ -117,7 +118,8 @@ function drawRaw() {
       const s = x.st || {}, tt = s.trang_thai || 'xong';
       const t0 = tt === 'chay' ? s.bat_dau : tt === 'cho' ? s.giao_luc : s.ket_thuc;
       coMat.add(x.key);
-      (groups[x.d.du_an] = groups[x.d.du_an] || []).push({ id: '', tabNo: 98, label: `🌙${x.w.icon || '•'} ${x.w.ten || x.w.vai}`, state: 'ngam', ngam: tt, since: t0 ? now - t0 : null, manager: false, inTeam: true });
+      if (!x.d.tamDung) moRong.add(x.d.du_an);
+      (groups[x.d.du_an] = groups[x.d.du_an] || []).push({ id: '', tabNo: 98, label: `⚡${x.w.icon || '•'} ${x.w.ten || x.w.vai}`, state: 'ngam', ngam: tt, since: t0 ? now - t0 : null, manager: false, inTeam: true });
     }
   } catch {}
   const tabOrder = [...new Set(panes.map((p) => p.tab_id))];
@@ -186,7 +188,7 @@ function drawRaw() {
     const gop = { chay: 0, cho: 0, ranh: 0, tat: 0 };
     for (const x of g) {
       if (x.state === 'tat') { gop.tat++; continue; }
-      if (x.state === 'ngam' && !['qua-han', 'loi'].includes(x.ngam)) { gop[x.ngam === 'chay' ? 'chay' : x.ngam === 'cho' ? 'cho' : 'ranh']++; continue; }
+      if (x.state === 'ngam' && !moRong.has(name) && !['qua-han', 'loi'].includes(x.ngam)) { gop[x.ngam === 'chay' ? 'chay' : x.ngam === 'cho' ? 'cho' : 'ranh']++; continue; }
       const ten = pad(cat(x.label, 24), 26);
       const t = x.since != null ? ago(x.since) : '';
       if (x.state === 'ngam') { // ⌛ quá hạn · ⛔ lỗi (log: wez.ps1 read DựÁn.Vai)
@@ -197,7 +199,7 @@ function drawRaw() {
       const s = x.state === 'need' ? `${rgb('#e06c75')}${B}🔔 chờ${R}` : x.state === 'work' ? `${rgb('#e5c07b')}⏳ làm${R}` : `${rgb('#98c379')}🟢 rảnh${R}`;
       b.push(' ' + link(x.id, ten + pad(s, 9) + `${DIM}${t}${R}`));
     }
-    if (gop.chay + gop.cho + gop.ranh) b[0] += `  ${DIM}·${R} 🌙${gop.chay + gop.cho + gop.ranh}` + (gop.ranh ? ` ${rgb('#98c379')}🟢${gop.ranh}${R}` : '');
+    if (gop.chay + gop.cho + gop.ranh) b[0] += `  ${DIM}·${R} ⚡${gop.chay + gop.cho + gop.ranh}` + (gop.ranh ? ` ${rgb('#98c379')}🟢${gop.ranh}${R}` : '');
     if (gop.tat) b[0] += ` ${DIM}⚫${gop.tat}${R}`;
     blocks.push(b);
   }
@@ -210,7 +212,7 @@ function drawRaw() {
     for (let i = 0; i < Math.max(trai.length, phai.length); i++) out.push(pad(trai[i] || '', W + 2) + (phai[i] || ''));
   } else for (const b of blocks) out.push(...b);
   out.push(DIM + '─'.repeat(Math.min(cols - 1, 110)) + R);
-  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh` + (total.cho ? ` · ⌛ ${total.cho} hàng chờ` : '') + (total.loi ? ` · ⛔ ${total.loi} lỗi/quá hạn` : '') + ` · 💤 ${total.ngu} ngủ · ⚫ ${total.tat} tắt · 🌙 ${total.ngam} chạy ngầm   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
+  out.push(`${DIM}Tổng: ⏳ ${total.work} đang làm · 🔔 ${total.need} chờ bạn · 🟢 ${total.idle} rảnh` + (total.cho ? ` · ⌛ ${total.cho} hàng chờ` : '') + (total.loi ? ` · ⛔ ${total.loi} lỗi/quá hạn` : '') + ` · 💤 ${total.ngu} ngủ · ⚫ ${total.tat} tắt · ⚡ ${total.ngam} chạy ngầm   ·   Bấm vào dòng để nhảy tới ô · Ctrl+Shift+U bật/tắt bảng${R}`);
   const s = out.join('\n');
   if (s !== draw.last) { draw.last = s; process.stdout.write(`${E}[H${E}[2J${s}\n`); }
 }

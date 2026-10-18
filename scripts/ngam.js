@@ -27,6 +27,7 @@ const PHUT = CFG.phut || 30;
 const TOKEN = CFG.token || 120000;
 const AI_ROOT = MAY.aiRoot || 'E:\\AI';
 const CLAUDE = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+const GROK = path.join(HOME, '.grok', 'bin', 'grok.exe');
 const CODEX = path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js');
 // 07/10: ngủ ngay trong Node — trước gọi ping qua cmd.exe, tiến trình ngầm không có console nên mỗi lần bật 1 ô đen
 const ngu = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -59,10 +60,9 @@ function timVai(key) {
 }
 // lý do vai phải ở lại trong ô ('' = được chạy ngầm)
 function giuO(w) {
-  if (w.ai === 'grok') return 'dùng Grok (chưa có chế độ ngầm)';
   if (w.rc) return 'dùng Remote Control trên điện thoại';
   if (w.giuO) return String(w.giuO);
-  if (!['claude', 'codex'].includes(w.ai)) return `AI ${w.ai} chưa hỗ trợ chạy ngầm`;
+  if (!['claude', 'codex', 'grok'].includes(w.ai)) return `AI ${w.ai} chưa hỗ trợ chạy ngầm`;
   return '';
 }
 const muonNgam = (d, w) => !w.tat && (w.ngam != null ? !!w.ngam : !!d.ngam); // "tat": true = vai đang tắt (không chạy ngầm, không mở ô)
@@ -73,7 +73,12 @@ const batNgam = (d, w) => muonNgam(d, w) && !giuO(w);
 const ROUTER_HET = path.join(WEZAI, 'router-het.json');
 const routerHet = () => ((readJson(ROUTER_HET) || {}).den || 0) > now();
 const HET_MUC = /usage limit|rate.?limit|\b429\b|quota|exhaust|insufficient|out of credits|no (available|active) (account|connection)s?|too many requests/i;
+// Grok hết hạn mức (grok-het.json, cùng file wez.ps1 dùng) → vai Grok chạy Claude tới giờ "den"
+const GROK_HET = path.join(WEZAI, 'grok-het.json');
+const API_KEY_F = path.join(WEZAI, 'anthropic-key.txt'), API_CHI = path.join(WEZAI, 'api-chi.json');
+const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
 function aiThat(d, w) {
+  if (w.ai === 'grok') return grokHet() ? 'claude' : 'grok';
   if (w.ai !== 'codex') return w.ai;
   if (w.router) return routerHet() ? 'claude' : 'codex';
   const t = (readJson(path.join(WEZAI, 'ai-tam.json')) || {})[`${d.du_an}.${w.vai}`];
@@ -120,6 +125,19 @@ function claudeGanHet() {
   if ((f.week || 0) >= tuan && !(f.week_reset && t >= f.week_reset)) return `Claude tuần ${f.week}% ≥ ${tuan}% — hồi ${new Date(f.week_reset * 1000).toLocaleString('vi-VN')}`;
   return '';
 }
+// 18/10 (người dùng: "thêm acc claude cũ hionvn, hết hạn mức thì chuyển"): hồ sơ Claude thứ 2 ở ~\.claude-tk2
+// (đăng nhập 1 lần: $env:CLAUDE_CONFIG_DIR="$HOME\.claude-tk2"; claude → /login). projects\ nối junction về ~\.claude\projects
+// để --resume phiên cũ chạy được ở cả 2 tài khoản. Tài khoản đang hết (báo lỗi hạn mức) ghi claude-het-<tk>.json.
+const TK2 = path.join(require('os').homedir(), '.claude-tk2');
+const tkHetF = (tk) => path.join(WEZAI, `claude-het-${tk}.json`);
+const tkHet = (tk) => ((readJson(tkHetF(tk)) || {}).den || 0) > now();
+// Trả 'chinh' | 'tk2' | '' (cả 2 đang hết). Ưu tiên tài khoản chính; chính hồi là quay về.
+function claudeTk() {
+  if (!claudeGanHet() && !tkHet('chinh')) return 'chinh';
+  if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2')) return 'tk2';
+  return '';
+}
+const claudeHetHan = () => (claudeTk() ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
 // ===== Tự lấy việc (07/10, người dùng: "không cho phép các worker nghỉ, hãy cho làm việc liên tục") =====
 // Vai ngầm rảnh > 1 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" / lỗi
 // → nghỉ 2 phút rồi tự lấy lại. 08/10 (người dùng: "giao việc liên tục chứ để nghỉ thế"): đo lượt TB 2 phút, 45% báo
@@ -129,7 +147,7 @@ const TU_LAM_SAU = 10, TU_LAM_NGHI = 30; // 17/10 người dùng: "không cho ph
 function viecTuLam(d, w) {
   const goc = path.join(AI_ROOT, d.du_an), ten = w.ten || w.vai;
   return `TỰ LẤY VIỆC (người dùng 07/10: worker không được nghỉ, làm liên tục). Bạn là ${d.du_an}.${w.vai} (${ten}). ` +
-    `Đọc: ${goc}\\tien-do-*.md (mục Đang làm / Việc tiếp / Kẹt), các brief mới nhất trong ${goc}\\brief\\ có nhắc vai bạn, và kết quả lô trước của bạn. ` +
+    `Đọc TRƯỚC file việc tồn: ${goc}\\app\\brief\\*viec-ton*.md và ${goc}\\brief\\*viec-ton*.md (nếu có) — mục ☐ của vai bạn là việc PHẢI làm, còn ☐ thì KHÔNG được báo "KHÔNG CÒN VIỆC". Rồi đọc: ${goc}\\tien-do-*.md (mục Đang làm / Việc tiếp / Kẹt), các brief mới nhất trong ${goc}\\brief\\ có nhắc vai bạn, và kết quả lô trước của bạn. ` +
     `Chọn việc 🟢 tiếp theo ĐÚNG VAI bạn mà chưa vai nào nhận (không làm trùng việc Manager đang giao cho vai khác, không sửa file vai khác đang sửa). Làm luôn tới xong, ghi file như thường. ` +
     `LÀM LIÊN TỤC ~20 PHÚT: xong 1 việc thì làm ngay việc kế, KHÔNG dừng sau 1 việc. Hết việc trong brief/tiến độ thì làm VIỆC NỀN đúng vai: ` +
     `(a) soát chéo đầu ra 24 giờ qua của vai khác cùng dự án, ghi lỗi tìm được; (b) kiểm chứng lại số liệu/khẳng định trong file vai mình với nguồn gốc; ` +
@@ -175,7 +193,7 @@ function dieuPhoi() {
     if (tuLay()) ds.splice(0, ds.length, ...moiSt()); // có vai vừa được tự giao việc → đọc lại hàng chờ
     let dangChay = ds.filter((x) => x.st.trang_thai === 'chay').length;
     const hang = ds.filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
-    const claudeHet = claudeGanHet();
+    const claudeHet = claudeHetHan();
     for (const { key, st } of hang) {
       if (dangChay >= TOI_DA) break;
       const v = timVai(key);
@@ -208,6 +226,10 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     const projDir = path.join(AI_ROOT, d.du_an, w.thuMuc || ''); // "thuMuc": chạy trong thư mục con (vd KhoAI build chỉ thấy app — sạch phòng)
     const env = { ...process.env, WEZTERM_PANE: `ngam-${key}`, WEZ_NGAM: key };
     for (const k of Object.keys(env)) if (/^CLAUDE/.test(k)) delete env[k];
+    // 18/10 (người dùng): worker Claude dùng API key trả trước tới trần "apiNganSach" USD (mặc định 100); chi cộng dồn ở api-chi.json
+    const tk = ai === 'claude' ? (claudeTk() || 'chinh') : '';
+    if (tk === 'tk2') env.CLAUDE_CONFIG_DIR = TK2;
+    if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach || 100)) env.ANTHROPIC_API_KEY = k; } catch {} }
     const chiDoc = /\bWrite\b/.test(String(w.chan || ''));
     let exe, args, moiSes = ses;
     if (ai === 'claude') {
@@ -218,6 +240,13 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
         '--model', 'sonnet', // 14/10 (người dùng): Tổng quản Opus, mọi worker chạy ngầm Sonnet
         '--append-system-prompt', loiVai(d, w), ...(ses ? ['--resume', ses] : ['--session-id', moiSes]),
         ...(chan.length ? [`--disallowedTools=${chan.join(',')}`] : [])];
+    } else if (ai === 'grok') {
+      // ponytail: --output-format json = 1 kết quả cuối (log không chạy theo từng bước); cần log sống thì đổi streaming-json
+      const pf = path.join(DIR, 'prompt', `${key}-${Date.now()}.txt`);
+      fs.mkdirSync(path.dirname(pf), { recursive: true }); fs.writeFileSync(pf, prompt);
+      exe = GROK;
+      args = ['--prompt-file', pf, '--output-format', 'json', '--permission-mode', 'bypassPermissions', ...(ses ? ['-r', ses] : [])];
+      prompt = '';
     } else {
       const bang = readJson(path.join(HOME, '.codex-tai-khoan.json')) || {};
       const soTk = w.tk || (bang.duAn || {})[d.du_an];
@@ -255,7 +284,12 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
       lanCuoi = Date.now();
       let e; try { e = JSON.parse(line); } catch { if (line.trim()) log('· ' + cat(line, 300)); return; }
       if (e.item && e.item.type === 'command_execution') dangLenh = e.type === 'item.started';
-      if (ai === 'claude') {
+      if (ai === 'grok') {
+        moiSes = e.sessionId || moiSes; cuoi = e.text || cuoi;
+        const u = e.usage || {}; token = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0);
+        log(`⚙ phiên ${moiSes}`); log('💬 ' + cat(e.text, 600)); log(`🏁 ${e.stopReason || ''} · ${e.num_turns || '?'} lượt`);
+        if (e.is_error || e.error) loiRa += ' ' + JSON.stringify(e.error || e).slice(0, 500);
+      } else if (ai === 'claude') {
         if (e.type === 'system' && e.subtype === 'init') { moiSes = e.session_id || moiSes; log(`⚙ phiên ${moiSes} · ${e.model || ''}`); }
         else if (e.type === 'assistant') {
           const u = e.message && e.message.usage;
@@ -271,6 +305,7 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
           }
         } else if (e.type === 'result') {
           if (e.result) cuoi = e.result;
+          if (env.ANTHROPIC_API_KEY && e.total_cost_usd) { const c = readJson(API_CHI) || { usd: 0 }; c.usd = +(c.usd + e.total_cost_usd).toFixed(4); ghi(API_CHI, c); }
           log(`${e.is_error ? '⛔' : '🏁'} ${e.subtype} · ${e.num_turns || '?'} lượt · ${Math.round((e.duration_ms || 0) / 1000)} giây`);
         }
       } else {
@@ -286,7 +321,8 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
         else if (e.type === 'turn.completed') log(`🏁 xong lượt · vào ${(e.usage || {}).input_tokens || '?'} token`);
       }
     };
-    c.stdout.on('data', (x) => { buf += x; let i; while ((i = buf.indexOf('\n')) >= 0) { doc(buf.slice(0, i)); buf = buf.slice(i + 1); } });
+    // Grok in 1 JSON nhiều dòng lúc xong → gom hết, đọc 1 lần khi tiến trình đóng
+    c.stdout.on('data', (x) => { buf += x; if (ai === 'grok') return; let i; while ((i = buf.indexOf('\n')) >= 0) { doc(buf.slice(0, i)); buf = buf.slice(i + 1); } });
     c.stderr.on('data', (x) => { loiRa = (loiRa + x).slice(-2000); xemHet(x); });
     const hen = setTimeout(() => {
       quaHan = true; log(`⌛ QUÁ HẠN ${Math.round(giay / 60)} phút → dừng`);
@@ -295,11 +331,11 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     c.stdin.end(prompt);
     c.on('error', (er) => { loiRa += String(er); });
     c.on('close', (code) => {
-      clearTimeout(hen); clearInterval(canh); if (buf) doc(buf);
+      clearTimeout(hen); clearInterval(canh); if (buf) doc(ai === 'grok' ? buf.replace(/\s*\n\s*/g, ' ') : buf);
       if (code && loiRa.trim()) log('stderr: ' + cat(loiRa, 800));
       if (ai === 'codex' && moiSes) token = tokenCodex(env.CODEX_HOME, moiSes) || token;
       log(`■ kết thúc mã ${code} · context ~${token} token`);
-      resolve({ code, quaHan, cuoi, ses: moiSes, token, loiRa, hetMuc });
+      resolve({ code, quaHan, cuoi, ses: moiSes, token, loiRa, hetMuc, tk });
     });
   });
 }
@@ -352,7 +388,7 @@ async function chay(key) {
   }
   const giay = Math.max(60, Math.floor((het - Date.now()) / 1000));
   // Codex không có system prompt riêng, và resume phiên không tồn tại thì lặng lẽ mở phiên mới → luôn kèm lời giao vai
-  const dau = (ai === 'codex' ? loiVai(d, w) + '\n\n' : '') + (tomTat ? `TÓM TẮT PHIÊN TRƯỚC CỦA VAI NÀY:\n${tomTat}\n\n` : '');
+  const dau = (ai === 'codex' || ai === 'grok' ? loiVai(d, w) + '\n\n' : '') + (tomTat ? `TÓM TẮT PHIÊN TRƯỚC CỦA VAI NÀY:\n${tomTat}\n\n` : '');
   let r = await chayAI({ ...chung, ses, giay, prompt: `${dau}VIỆC MỚI (giới hạn ${phut} phút): ${st.viec}` });
   // GPT qua 9router hết hạn mức → đánh dấu, trả việc về hàng chờ → lượt sau chạy Sonnet
   if (ai === 'codex' && w.router && (r.hetMuc || (r.code && !r.quaHan && HET_MUC.test(r.loiRa || '')))) {
@@ -364,10 +400,27 @@ async function chay(key) {
     luuSt(key, { ...st, trang_thai: 'cho', pid: null, bat_dau: null });
     return dieuPhoi();
   }
+  // Claude báo hết hạn mức → đánh dấu tài khoản đó hết 1 giờ (hoặc tới giờ "resets Xam/pm"), việc xếp lại → lượt sau dùng tài khoản kia
+  if (ai === 'claude' && r.code && !r.quaHan && /usage limit|hit your (session |weekly |usage )?limit|session limit|limit reached|rate.?limit|\b429\b|out of (extra )?usage/i.test(`${r.loiRa || ''}\n${r.cuoi || ''}`)) {
+    const tk = r.tk || 'chinh';
+    ghi(tkHetF(tk), { den: now() + 3600, luc: new Date().toLocaleString('vi-VN'), ly: `${key}: ${String(r.loiRa || r.cuoi).trim().slice(-200)}` });
+    fs.appendFileSync(st.log, `↪ Claude (${tk}) hết hạn mức → ${claudeTk() ? 'chuyển sang tài khoản ' + claudeTk() : 'cả 2 tài khoản hết, việc chờ'}; việc này xếp lại hàng chờ\n`);
+    luuSt(key, { ...st, trang_thai: 'cho', pid: null, bat_dau: null });
+    return dieuPhoi();
+  }
+  // Grok hết hạn mức → đánh dấu grok-het.json (grokNghiGio, mặc định 3 giờ), việc xếp lại → lượt sau chạy Claude
+  if (ai === 'grok' && r.code && !r.quaHan && HET_MUC.test(r.loiRa || '')) {
+    const gio = MAY.grokNghiGio || 3;
+    ghi(GROK_HET, { den: now() + gio * 3600, ly: `${key}: ${String(r.loiRa).trim().slice(-200)}` });
+    fs.appendFileSync(st.log, `↪ Grok hết hạn mức → mọi vai Grok chạy Claude ${gio} giờ, việc này xếp lại hàng chờ
+`);
+    luuSt(key, { ...st, trang_thai: 'cho', pid: null, bat_dau: null });
+    return dieuPhoi();
+  }
   // phiên cũ không mở được (bị xoá / sai tài khoản) → mở phiên mới 1 lần
   if (ses && r.code && !r.cuoi && !r.quaHan) {
     fs.appendFileSync(st.log, '↻ không tiếp được phiên cũ → mở phiên mới\n');
-    r = await chayAI({ ...chung, ses: null, giay: Math.max(60, Math.floor((het - Date.now()) / 1000)), prompt: `${ai === 'codex' ? loiVai(d, w) + '\n\n' : ''}VIỆC MỚI (giới hạn ${phut} phút): ${st.viec}` });
+    r = await chayAI({ ...chung, ses: null, giay: Math.max(60, Math.floor((het - Date.now()) / 1000)), prompt: `${ai === 'codex' || ai === 'grok' ? loiVai(d, w) + '\n\n' : ''}VIỆC MỚI (giới hạn ${phut} phút): ${st.viec}` });
   }
   st.session = r.ses || st.session; st.ai_phien = ai; st.token = r.token;
   const tt = r.quaHan ? 'qua-han' : r.code ? 'loi' : 'xong';
@@ -489,7 +542,7 @@ async function main() {
     dieuPhoi();
     const st = docSt(v.key);
     if (st.trang_thai === 'chay') console.log(`🌙 ${v.key} nhận việc, đang chạy ngầm (giới hạn ${v.w.ngamPhut || v.d.ngamPhut || PHUT} phút). Đợi: wez.ps1 cho ${v.key} · log: wez.ps1 read ${v.key}`);
-    else if (claudeGanHet() && aiThat(v.d, v.w) === 'claude') console.log(`⏸ ${v.key} xếp hàng: ${claudeGanHet()}. Tự chạy khi Claude hồi.`);
+    else if (claudeHetHan() && aiThat(v.d, v.w) === 'claude') console.log(`⏸ ${v.key} xếp hàng: ${claudeHetHan()}. Tự chạy khi Claude hồi.`);
     else {
       const hang = moiSt().filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
       console.log(`⌛ ${v.key} xếp hàng (thứ ${hang.findIndex((x) => x.key === v.key) + 1}/${hang.length}) — đang có ${TOI_DA} worker ngầm chạy (tối đa ${TOI_DA}).`);
@@ -500,7 +553,7 @@ async function main() {
     dieuPhoi();
     const ds = bangTrangThai();
     console.log(`🌙 Worker chạy ngầm · tối đa ${TOI_DA} cùng lúc · giới hạn mặc định ${PHUT} phút/việc · phiên > ${TOKEN} token thì mở phiên mới`);
-    const het = claudeGanHet(); if (het) console.log(`⏸ Tạm dừng việc Claude mới: ${het} (việc Codex vẫn chạy)`);
+    const het = claudeHetHan(); if (het) console.log(`⏸ Tạm dừng việc Claude mới: ${het} (việc Codex vẫn chạy)`);
     for (const x of ds) {
       const s = x.st || {};
       const tt = x.giu ? `🪟 trong ô (${x.giu})` : NHAN[s.trang_thai] || '🟢 rảnh (chưa giao)';

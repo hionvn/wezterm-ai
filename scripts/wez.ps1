@@ -207,9 +207,10 @@ function Grok-DanhDau($gio, $ly) {
     $o = [ordered]@{ den = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + [int]([double]$gio * 3600); luc = (Get-Date -Format 'yyyy-MM-dd HH:mm'); ly = $ly }
     [IO.File]::WriteAllText($grokHetF, ($o | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 }
-function Grok-BaoLoi($o) {   # 40 dòng cuối ô Grok có báo hết hạn mức?
-    $t = (& $exe cli --no-auto-start get-text --pane-id $o 2>$null | Select-Object -Last 40) -join "`n"
-    return $t -match '(?i)rate.?limit|\b429\b|quota|usage limit|limit reached|too many requests|out of credits|insufficient (credits|balance)'
+function Grok-BaoLoi($o) {   # dòng cuối ô Grok (sát ô nhập) có báo hết hạn mức?
+    # 17/10: quét 40 dòng → báo nhầm khi worker đang viết code có chữ "quota"/"usage limit" (Muse) → chỉ xét 10 dòng cuối, và phải là câu lỗi
+    $t = (& $exe cli --no-auto-start get-text --pane-id $o 2>$null | Where-Object { $_.Trim() } | Select-Object -Last 10) -join "`n"
+    return $t -match '(?i)(error|lỗi|failed|exceeded|reached|hit your|you.ve hit)[^\n]{0,80}(rate.?limit|\b429\b|quota|usage limit|too many requests|out of credits|insufficient (credits|balance))|(rate.?limit|\b429\b|too many requests)[^\n]{0,40}(error|exceeded|reached|try again)'
 }
 function Chon-AI($s) {
     if ("$s" -notmatch '^([^./]+)[./](.+)$') { return }
