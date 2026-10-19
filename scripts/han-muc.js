@@ -12,14 +12,37 @@ const docJson = f => { try { return JSON.parse(fs.readFileSync(path.join(AIDIR, 
 const gio = s => { const d = new Date(s * 1000); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const mau = p => p >= 100 ? DO : p >= 85 ? CAM : XANH;
 
-// Số liệu 1 tài khoản Claude (statusline.js ghi theo CLAUDE_CONFIG_DIR); het = claude-het-*.json của ngam.js
-function soClaude(file, hetFile, now) {
-  const c = docJson(file), het = docJson(hetFile);
+// Số liệu 1 tài khoản Claude. 19/10: nguồn chính = API hạn mức của chính tài khoản (api.anthropic.com/api/oauth/usage,
+// token đọc từ <thư mục>\.credentials.json — KHÔNG in / ghi token ở đâu, KHÔNG tự làm mới token), tối đa 1 lần / 5 phút;
+// lỗi → giữ số lần trước (tô xám); chưa có lần nào → dự phòng file statusline (fuel-claude-<tk>.json).
+const OAUTH = {}; // [thư mục] = { at, five, five_reset, week, week_reset, loi }
+async function oauthUsage(dir, now) {
+  const m = OAUTH[dir] || (OAUTH[dir] = {});
+  if (m.at && now - m.at < 300) return m;
+  m.at = now;
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(process.env.USERPROFILE || '', dir, '.credentials.json'), 'utf8')).claudeAiOauth || {};
+    if (!c.accessToken) throw new Error('chưa đăng nhập');
+    if (c.expiresAt && c.expiresAt < Date.now()) throw new Error('token hết hạn');
+    const r = await fetch('https://api.anthropic.com/api/oauth/usage', {
+      headers: { Authorization: 'Bearer ' + c.accessToken, 'anthropic-beta': 'oauth-2025-04-20' }, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error('lỗi ' + r.status);
+    const u = await r.json(), f = u.five_hour || {}, w = u.seven_day || {};
+    Object.assign(m, { five: f.utilization, five_reset: Date.parse(f.resets_at) / 1000 || 0, week: w.utilization,
+      week_reset: Date.parse(w.resets_at) / 1000 || 0, t: now, loi: '' });
+  } catch (e) { m.loi = String(e.message || e).slice(0, 30); }
+  return m;
+}
+async function soClaude(dir, file, hetFile, now) {
+  const het = docJson(hetFile);
   if (het && het.den > now) return { het: het.den };
-  if (!c) return {};
+  const o = await oauthUsage(dir, now);
+  const c = o.t ? o : docJson(file);
+  if (!c) return { loi: o.loi };
   const five = c.five_reset && c.five_reset < now ? 0 : Math.round(c.five || 0);
   const week = c.week_reset && c.week_reset < now ? 0 : Math.round(c.week || 0);
-  return { five, week, cu: now - (c.t || 0) > 3600, het: five >= 100 ? c.five_reset : week >= 100 ? c.week_reset : 0 };
+  return { five, week, cu: !!o.loi || now - (c.t || 0) > 3600, het: five >= 100 ? c.five_reset : week >= 100 ? c.week_reset : 0,
+    hoi: c.five_reset };
 }
 
 async function so9r(now) {
@@ -57,9 +80,11 @@ async function gom() {
   let r9 = null; try { r9 = await so9r(now); } catch {}
   goi.push({ ten: 'GPT 9router', het: rh && rh.den > now ? rh.den : !r9 ? -1 : r9.con === 0 ? (r9.hoi || -1) : 0, n: chay.codex,
     them: r9 ? r9.con + '/' + r9.tong + ' tk còn' + (r9.tuan !== null ? ' · tuần ' + Math.round(r9.tuan) + '%' : '') : '9router tắt' });
-  for (const [ten, f, h] of [['Claude vuanh', 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'], ['Claude hionvn', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
-    const c = soClaude(f, h, now);
-    goi.push({ ten, het: c.het || 0, cu: c.cu, them: c.five == null ? 'chưa có số' : '5h ' + c.five + '% · tuần ' + c.week + '%', pct: c.five });
+  for (const [ten, dir, f, h] of [['Claude vuanh', '.claude', 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
+    ['Claude hionvn', '.claude-tk2', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
+    const c = await soClaude(dir, f, h, now);
+    goi.push({ ten, het: c.het || 0, cu: c.cu, pct: Math.max(c.five || 0, c.week || 0),
+      them: c.five == null ? '? ' + (c.loi || 'chưa có số') : '5h ' + c.five + '%' + (c.five >= 85 && c.hoi ? ' ↻' + gio(c.hoi) : '') + ' · tuần ' + c.week + '%' });
   }
   goi[3].tq = true;
   const dangDung = goi.findIndex(x => x.het === 0); // -1 = mọi gói hết
