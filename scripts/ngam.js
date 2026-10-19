@@ -79,11 +79,14 @@ const API_KEY_F = path.join(WEZAI, 'anthropic-key.txt'), API_CHI = path.join(WEZ
 const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
 // 18/10: vai còn để "claude" mà cả 2 Claude hết → chạy GPT qua 9router (hết thì Codex tài khoản riêng). Vai router (mặc định đội Muse)
 // đi GPT trước, 9router hết → Claude chính → Claude hionvn (claudeTk). Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
-const vaiDuPhong = (w) => (w.ai === 'codex' || w.ai === 'grok' || !claudeHetHan() ? w : { ...w, router: !routerHet(), duPhong: true });
+// 19/10 người dùng: "Hết grok hết 9router mới chuyển sang vuanhtuanfpt, hết vuanhtuanfpt mới chuyển sang hionvn"
+// → mọi worker (trừ vai Codex tài khoản riêng, vai chỉ đọc "chan" = Claude) đi Grok → 9router → Claude (claudeTk: vuanhtuanfpt → hionvn).
+const thuTu = () => (fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
+const riengVai = (w) => w.chan || (w.ai === 'codex' && !w.router);
+const vaiDuPhong = (w) => (riengVai(w) ? w : { ...w, router: thuTu() === 'router' });
 function aiThat(d, w) {
-  if (w.ai === 'grok') return grokHet() ? 'claude' : 'grok';
-  if (w.ai !== 'codex') return claudeHetHan() ? 'codex' : w.ai;
-  if (w.router) return routerHet() ? 'claude' : 'codex';
+  if (w.chan) return 'claude';
+  if (!riengVai(w)) { const t = thuTu(); return t === 'router' ? 'codex' : t; }
   const t = (readJson(path.join(WEZAI, 'ai-tam.json')) || {})[`${d.du_an}.${w.vai}`];
   return t ? 'claude' : 'codex'; // ponytail: Codex hết → Claude luôn (Grok chỉ chạy trong ô)
 }
@@ -138,8 +141,12 @@ const tkHet = (tk) => ((readJson(tkHetF(tk)) || {}).den || 0) > now();
 function claudeTk() {
   // 18/10 người dùng chốt: worker = GPT qua 9router trước; 9router hết → Claude chính → Claude hionvn (tk2) CUỐI CÙNG
   // (hionvn ưu tiên cho Tổng quản điều khiển).
-  if (!claudeGanHet() && !tkHet('chinh')) return 'chinh';
-  if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2')) return 'tk2';
+  // 19/10 người dùng: "worker làm với grok, 9router và claude hionvn, phiên này giữ làm tổng quản" → worker KHÔNG dùng tài khoản chính
+  // 19/10 sau: "Chuyển tổng quản sang hionvn" → đảo lại: Tổng quản dùng hionvn, worker CHỈ dùng tài khoản chính vuanhtuanfpt
+  // 19/10 cuối: hionvn là tài khoản chính (Tổng quản + mọi ô Claude) → fuel-claude.json giờ là hạn mức hionvn;
+  // worker dùng vuanhtuanfpt trước (chỉ đổi khi báo lỗi hạn mức), hết mới mượn hionvn tới ngưỡng "claudeDung".
+  if (!tkHet('chinh')) return 'chinh';
+  if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2') && !claudeGanHet()) return 'tk2';
   return '';
 }
 const claudeHetHan = () => (claudeTk() ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
@@ -167,6 +174,8 @@ function tuLay() {
     if (d.tuLam === false) continue;
     for (const w of arr(d.worker)) {
       if (!w || w.tuLam === false || w.tamDung || !batNgam(d, w)) continue;
+      // 18/10 người dùng "đừng chạy phí token, ngân sách": việc tự lấy chỉ chạy bằng GPT; vai sẽ chạy Claude thì chờ việc giao (bật lại: "tuLamClaude": true)
+      if (!CFG.tuLamClaude && aiThat(d, vaiDuPhong(w)) === 'claude') continue;
       const key = `${d.du_an}.${w.vai}`, st = docSt(key) || {};
       if (st.trang_thai === 'cho' || st.trang_thai === 'chay') continue;
       if (t - (st.ket_thuc || 0) < TU_LAM_SAU || (st.tu_lam_nghi && t < st.tu_lam_nghi)) continue;
@@ -181,11 +190,79 @@ const GIU_PID = path.join(DIR, 'giu.pid');
 // 14/10: pid bị Windows dùng lại (giu.pid trỏ vào chrome-native-host) → tưởng còn sống, vòng tự lấy việc chết im.
 // Vòng giu chạm file mỗi phút → file cũ > 3 phút = vòng đã chết dù pid còn.
 const giuConSong = (pid) => song(pid) && Date.now() - fs.statSync(GIU_PID).mtimeMs < 180000;
+// 19/10: từng có 2 bản giu cùng ghi đè giu.pid. giu.pid = "pid bản" (bản = giờ sửa ngam.js, giống han-muc.js):
+// nhịp nào thấy pid trong file không phải mình thì tự thoát; code vừa sửa → bản mới giành lấy (bản cũ không giành lại).
+const GIU_BAN = String(Math.floor(fs.statSync(__filename).mtimeMs));
+const docGiu = () => { const [p, b] = (fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : '').trim().split(/\s+/); return [+p || 0, b || '']; };
 function giuSong() {
-  const pid = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
-  if (giuConSong(pid)) return;
+  const [pid, ban] = docGiu();
+  if (giuConSong(pid) && +ban >= +GIU_BAN) return;
   const c = cp.spawn(process.execPath, [__filename, 'giu'], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
-  c.unref(); ghi(GIU_PID, String(c.pid));
+  c.unref(); ghi(GIU_PID, `${c.pid} ${GIU_BAN}`);
+}
+// 19/10: máy đơ (422 chrome, CPU 80%) vì nhiều worker cùng chạy bài đo Chrome → tải cao thì KHÔNG mở việc mới
+// (việc đang chạy không đụng, hàng chờ thử lại nhịp sau). Ngưỡng: "ngam": { "cpuToiDa": 70, "chromeToiDa": 150, "tienTrinhToiDa": 1000 }
+const TAI_F = path.join(DIR, 'tai-may.json');
+const nguongTai = () => ({ cpu: CFG.cpuToiDa || 70, chrome: CFG.chromeToiDa || 150, tienTrinh: CFG.tienTrinhToiDa || 1000 });
+const quaTai = (m, n) => m.cpu >= n.cpu || m.chrome >= n.chrome || m.tienTrinh >= n.tienTrinh;
+function doTai() {
+  const os = require('os'), cu = readJson(TAI_F) || {}, t = Date.now();
+  let idle = 0, tong = 0;
+  for (const c of os.cpus()) { const x = c.times; idle += x.idle; tong += x.user + x.nice + x.sys + x.idle + x.irq; }
+  // CPU = chênh lệch so với mẫu cũ ≥ 1 phút (nhiều tiến trình gọi dieuPhoi, mẫu chỉ thay mỗi phút → không nhảy theo vài giây)
+  let { mau, mau_cu: mauCu } = cu;
+  if (!mau || t - mau.luc >= 60000) { mauCu = mau; mau = { idle, tong, luc: t }; }
+  const goc = mauCu || mau, cpu = tong > goc.tong ? Math.round(100 * (1 - (idle - goc.idle) / (tong - goc.tong))) : cu.cpu || 0;
+  let { chrome = 0, tienTrinh = 0, luc_dem: lucDem = 0 } = cu;
+  if (t - lucDem >= 30000) { // tasklist tối đa 1 lần / 30 giây
+    try {
+      const ds = cp.execFileSync('tasklist', ['/fo', 'csv', '/nh'], { windowsHide: true, encoding: 'utf8', timeout: 15000 }).split(/\r?\n/).filter(Boolean);
+      tienTrinh = ds.length; chrome = ds.filter((l) => /^"chrome\.exe"/i.test(l)).length; lucDem = t;
+    } catch {}
+  }
+  const m = { cpu, chrome, tienTrinh }, chan = quaTai(m, nguongTai());
+  if (chan !== !!cu.chan) fs.appendFileSync(path.join(DIR, 'log', 'dieu-phoi.log'),
+    `[${new Date().toLocaleString('vi-VN')}] ${chan ? '🐢 tải cao → tạm không mở việc ngầm mới' : '✅ tải ổn → mở việc lại'} · CPU ${cpu}% · chrome ${chrome} · tiến trình ${tienTrinh}\n`);
+  ghi(TAI_F, { chan, ...m, luc: t, luc_dem: lucDem, mau, mau_cu: mauCu });
+  return chan;
+}
+// 19/10: worker ngầm mở Windows Sandbox / Electron (npm run thu-khach) / cmd để thử rồi chết → cửa sổ mồ côi trên màn hình, máy lag.
+// Đóng (taskkill /T) khi: đúng loại (Sandbox · electron.exe chạy từ E:\AI · cmd/node có cửa sổ) + chạy > 10 phút + chuỗi cha
+// đứt (cha chết hoặc pid cha bị dùng lại) tại một tiến trình kiểu script, và trên chuỗi không có claude/codex/grok/ngam.js/
+// wezterm/explorer còn sống (app người dùng tự mở có explorer làm cha → không đụng). Nhịp giu 5 phút/lần; log don-chrome-an.log.
+const GOC_SCRIPT = /^(?:node|cmd|powershell|pwsh|bash|sh|conhost|python|electron|WindowsSandbox\w*)\.exe$/i;
+const GIU_LAI = /^(?:claude|codex|grok|wezterm-gui|wezterm|explorer|WindowsTerminal)\.exe$/i;
+function moCoi(p, m, cuaSo, t) {
+  const loai = /^WindowsSandboxRemoteSession\.exe$/i.test(p.ten)
+    || (/^electron\.exe$/i.test(p.ten) && (p.exe || p.cmd || '').replace(/^"/, '').toLowerCase().startsWith(AI_ROOT.toLowerCase() + '\\'))
+    || (/^(?:cmd|node)\.exe$/i.test(p.ten) && cuaSo.has(p.pid));
+  if (!loai || t - p.tao < 10 * 60000) return false;
+  for (let x = p, i = 0; x && i < 64; i++) {
+    if (GIU_LAI.test(x.ten) || (/^node\.exe$/i.test(x.ten) && /ngam\.js/i.test(x.cmd))) return false;
+    const cha = m.get(x.ppid);
+    if (!cha || cha.tao > x.tao) return GOC_SCRIPT.test(x.ten); // chuỗi cha đứt tại x
+    x = cha;
+  }
+  return false;
+}
+function donCuaSo(thu) {
+  const ps = `[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$w=@(Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object Id)
+$p=@(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{i=$_.ProcessId;p=$_.ParentProcessId;n=$_.Name;e=$_.ExecutablePath;c=$_.CommandLine;t=$(if($_.CreationDate){([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds()}else{0})} })
+@{w=$w;p=$p} | ConvertTo-Json -Compress -Depth 3`;
+  cp.execFile('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')],
+    { windowsHide: true, encoding: 'utf8', maxBuffer: 64 << 20, timeout: 60000 }, (e, out) => {
+      let j; try { j = JSON.parse(out); } catch { return; }
+      const ds = [].concat(j.p || []).map((x) => ({ pid: x.i, ppid: x.p, ten: x.n || '', tao: x.t || 0, exe: x.e || '', cmd: x.c || '' }));
+      const m = new Map(ds.map((x) => [x.pid, x])), cs = new Set([].concat(j.w || [])), t = Date.now();
+      const bo = ds.filter((x) => moCoi(x, m, cs, t));
+      if (!thu) for (const x of bo) try { cp.execFileSync('taskkill', ['/PID', String(x.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
+      if (!bo.length && !thu) return;
+      const dong = `${new Date().toLocaleString('sv-SE').slice(0, 16)} don-cua-so: ${bo.length} cửa sổ mồ côi${thu ? ' (thử, chưa đóng)' : ' đã đóng'}` +
+        bo.map((x) => ` · ${x.ten}#${x.pid} ${Math.round((t - x.tao) / 60000)}p ${(x.exe || x.cmd).slice(0, 80)}`).join('') + '\r\n';
+      try { fs.appendFileSync(path.join(WEZAI, 'don-chrome-an.log'), Buffer.from(dong, 'utf16le')); } catch {} // log PowerShell *>> = UTF-16
+      if (thu) process.stdout.write(dong);
+    });
 }
 function dieuPhoi() {
   khoa(() => {
@@ -199,8 +276,9 @@ function dieuPhoi() {
     let dangChay = ds.filter((x) => x.st.trang_thai === 'chay').length;
     const hang = ds.filter((x) => x.st.trang_thai === 'cho').sort((a, b) => a.st.giao_luc - b.st.giao_luc);
     const claudeHet = claudeHetHan();
+    let taiCao = false; try { taiCao = doTai(); } catch {} // đo mỗi nhịp để CPU là trung bình ~1 phút
     for (const { key, st } of hang) {
-      if (dangChay >= TOI_DA) break;
+      if (dangChay >= TOI_DA || taiCao) break;
       const v = timVai(key);
       if (claudeHet && v && aiThat(v.d, v.w) === 'claude') continue; // Claude gần hết hạn mức → việc Claude chờ, việc Codex vẫn chạy
       const c = cp.spawn(process.execPath, [__filename, 'chay', key], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
@@ -222,7 +300,9 @@ function loiVai(d, w) {
   return `Bạn là worker ${d.logo || ''} ${d.du_an} · ${w.icon || ''} ${ten}. Phụ trách: ${w.viec}. Manager của bạn: ${d.du_an}.Manager.` +
     (w.quyen ? ` QUYỀN CỦA BẠN: ${w.quyen}` : '') +
     ` Luật chung: E:\\AI\\Hion\\quy-trinh-lien-mach.md. Thư mục làm việc: ${path.join(AI_ROOT, d.du_an, w.thuMuc || '')} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
-    'Làm đúng phần mình; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
+    'TIẾT KIỆM TOKEN: đọc file theo đoạn (grep, sed -n, Read có offset/limit), không đọc lại file vừa đọc, không in log/diff dài (dùng tail, --stat); chạy test liên quan tới file đã sửa thay vì cả bộ (cả bộ chỉ trước khi báo xong việc lớn); trả lời cuối ngắn gọn. '+
+    // 18/10: worker không commit → test đã commit mà mã chưa commit → bản sạch đỏ, phát hành hỏng 4 lần
+    'Làm đúng phần mình; XONG VIỆC: chạy test liên quan, qua thì commit NGAY đúng file mình sửa (git add <từng file>, cả mã lẫn test đi kèm; không git add -A, không git stash, không commit file vai khác) với lời commit rõ nội dung, không push; KHÔNG commit khi chỉ ghi nhật ký (tu-lam-*.md, ra lại, kiểm lại không đổi) — nhật ký đi kèm commit của việc thật;  không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
 }
 
 // ===== chạy 1 lượt AI, ghi log dễ đọc =====
@@ -232,9 +312,9 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     const env = { ...process.env, WEZTERM_PANE: `ngam-${key}`, WEZ_NGAM: key };
     for (const k of Object.keys(env)) if (/^CLAUDE/.test(k)) delete env[k];
     // 18/10 (người dùng): worker Claude dùng API key trả trước tới trần "apiNganSach" USD (mặc định 100); chi cộng dồn ở api-chi.json
-    const tk = ai === 'claude' ? (claudeTk() || 'chinh') : '';
+    const tk = ai === 'claude' ? (claudeTk() || 'chinh') : ''; // 19/10: chính trước, hết mới hionvn
     if (tk === 'tk2') env.CLAUDE_CONFIG_DIR = TK2;
-    if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach || 100)) env.ANTHROPIC_API_KEY = k; } catch {} }
+    if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach ?? 100)) env.ANTHROPIC_API_KEY = k; } catch {} } /* 19/10: apiNganSach 0 = worker dùng gói vuanhtuanfpt, không dùng API key */
     const chiDoc = /\bWrite\b/.test(String(w.chan || ''));
     let exe, args, moiSes = ses;
     if (ai === 'claude') {
@@ -242,7 +322,7 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
       const chan = String(w.chan || '').split(/\s+/).filter(Boolean);
       exe = CLAUDE;
       args = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'bypassPermissions',
-        '--model', 'sonnet', // 14/10 (người dùng): Tổng quản Opus, mọi worker chạy ngầm Sonnet
+        '--strict-mcp-config', '--model', 'sonnet', // 18/10 bỏ MCP cho worker (tiết kiệm token) · 14/10 (người dùng): Tổng quản Opus, mọi worker chạy ngầm Sonnet
         '--append-system-prompt', loiVai(d, w), ...(ses ? ['--resume', ses] : ['--session-id', moiSes]),
         ...(chan.length ? [`--disallowedTools=${chan.join(',')}`] : [])];
     } else if (ai === 'grok') {
@@ -328,7 +408,8 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     };
     // Grok in 1 JSON nhiều dòng lúc xong → gom hết, đọc 1 lần khi tiến trình đóng
     c.stdout.on('data', (x) => { buf += x; if (ai === 'grok') return; let i; while ((i = buf.indexOf('\n')) >= 0) { doc(buf.slice(0, i)); buf = buf.slice(i + 1); } });
-    c.stderr.on('data', (x) => { loiRa = (loiRa + x).slice(-2000); xemHet(x); });
+    // 18/10: stderr có cả code worker in ra → chữ 'quota'/'limit' trong code làm báo nhầm 9router hết; chỉ xét dòng lỗi ngắn
+    c.stderr.on('data', (x) => { loiRa = (loiRa + x).slice(-2000); String(x).split(/\r?\n/).filter(l => l.length < 400 && !/[{};]/.test(l) && /\bERROR\b|unexpected status|stream error/.test(l)).forEach(xemHet); });
     const hen = setTimeout(() => {
       quaHan = true; log(`⌛ QUÁ HẠN ${Math.round(giay / 60)} phút → dừng`);
       try { cp.execSync(`taskkill /PID ${c.pid} /T /F`, { stdio: 'ignore', windowsHide: true }); } catch {}
@@ -408,7 +489,11 @@ async function chay(key) {
   // Claude báo hết hạn mức → đánh dấu tài khoản đó hết 1 giờ (hoặc tới giờ "resets Xam/pm"), việc xếp lại → lượt sau dùng tài khoản kia
   if (ai === 'claude' && r.code && !r.quaHan && /usage limit|hit your (session |weekly |usage )?limit|session limit|limit reached|rate.?limit|\b429\b|out of (extra )?usage/i.test(`${r.loiRa || ''}\n${r.cuoi || ''}`)) {
     const tk = r.tk || 'chinh';
-    ghi(tkHetF(tk), { den: now() + 3600, luc: new Date().toLocaleString('vi-VN'), ly: `${key}: ${String(r.loiRa || r.cuoi).trim().slice(-200)}` });
+    // "resets 3:20pm" → nghỉ tới đúng giờ đó (qua nửa đêm thì sang hôm sau); không đọc được thì 1 giờ
+    const rs = /resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i.exec(`${r.loiRa || ''}\n${r.cuoi || ''}`);
+    let den = now() + 3600;
+    if (rs) { const d = new Date(); d.setHours((+rs[1] % 12) + (/pm/i.test(rs[3]) ? 12 : 0), +(rs[2] || 0), 0, 0); if (d <= Date.now()) d.setDate(d.getDate() + 1); den = Math.floor(d / 1000); }
+    ghi(tkHetF(tk), { den, luc: new Date().toLocaleString('vi-VN'), ly: `${key}: ${String(r.loiRa || r.cuoi).trim().slice(-200)}` });
     fs.appendFileSync(st.log, `↪ Claude (${tk}) hết hạn mức → ${claudeTk() ? 'chuyển sang tài khoản ' + claudeTk() : 'cả 2 tài khoản hết, việc chờ'}; việc này xếp lại hàng chờ\n`);
     luuSt(key, { ...st, trang_thai: 'cho', pid: null, bat_dau: null });
     return dieuPhoi();
@@ -511,11 +596,44 @@ async function main() {
   const [cmd, a1, a2, a3] = process.argv.slice(2);
   if (cmd === 'chay') return chay(a1);
   if (cmd === 'giu') { // nhịp nền mỗi phút; tiến trình khác đã giữ thì thoát
-    const cu = +(fs.existsSync(GIU_PID) ? fs.readFileSync(GIU_PID, 'utf8') : 0);
-    if (cu && cu !== process.pid && giuConSong(cu)) return;
-    ghi(GIU_PID, String(process.pid));
-    const nhip = () => { try { ghi(GIU_PID, String(process.pid)); dieuPhoi(); } catch {} };
+    const [cu, ban] = docGiu(), toi = `${process.pid} ${GIU_BAN}`;
+    if (cu && cu !== process.pid && giuConSong(cu) && +ban >= +GIU_BAN) return;
+    ghi(GIU_PID, toi);
+    let lan = 0;
+    const nhip = () => {
+      if (docGiu()[0] !== process.pid) process.exit(0); // bản khác đã giành giu.pid → mình thoát
+      try { ghi(GIU_PID, toi); dieuPhoi(); } catch {}
+      if (lan++ % 5 === 0) donCuaSo(false); // 5 phút/lần
+    };
     nhip(); setInterval(nhip, 60000); return;
+  }
+  if (cmd === 'don-cua-so') return donCuaSo(/^-?-?thu$/i.test(a1 || '')); // -Thu = chỉ liệt kê
+  if (cmd === 'kiem-cua-so') { // tự kiểm hàm moCoi
+    const assert = require('assert'), T = 1e12, P = (pid, ppid, ten, tao, them = {}) => ({ pid, ppid, ten, tao, cmd: '', exe: '', ...them });
+    const ds = [
+      P(10, 1, 'WindowsSandboxRemoteSession.exe', T - 20 * 60000), // cha chết, 20 phút → đóng
+      P(11, 1, 'WindowsSandboxRemoteSession.exe', T - 5 * 60000), // mới 5 phút → chưa
+      P(20, 1, 'node.exe', T - 30 * 60000, { cmd: 'npm run thu-khach' }), P(21, 20, 'cmd.exe', T - 30 * 60000),
+      P(22, 21, 'electron.exe', T - 30 * 60000, { exe: 'E:\\AI\\Muse\\app\\node_modules\\electron\\dist\\electron.exe' }), // chuỗi mồ côi → đóng
+      P(30, 1, 'explorer.exe', T - 9e6), P(31, 30, 'electron.exe', T - 9e6, { exe: 'E:\\AI\\X\\electron.exe' }), // người dùng mở → không
+      P(40, 1, 'node.exe', T - 9e6, { cmd: 'E:\\AI\\Hion\\cai-dat\\ngam.js giu' }), P(41, 40, 'claude.exe', T - 9e6),
+      P(42, 41, 'electron.exe', T - 9e6, { exe: 'E:\\AI\\X\\electron.exe' }), // claude đang chạy → không
+      P(50, 1, 'node.exe', T - 9e6), P(51, 50, 'electron.exe', T - 9e6, { exe: 'C:\\Program Files\\App\\electron.exe' }), // ngoài E:\AI → không
+      P(60, 1, 'node.exe', T - 9e6), P(61, 60, 'cmd.exe', T - 9e6), // cmd không cửa sổ → không
+      P(70, 1, 'svchost.exe', T - 9e6), P(71, 70, 'WindowsSandboxRemoteSession.exe', T - 9e6), // gốc là dịch vụ → không
+      P(80, 99, 'cmd.exe', T - 9e6), P(99, 1, 'chrome.exe', T - 1000), // pid cha bị dùng lại (cha mới hơn con) = cha chết → đóng nếu có cửa sổ
+    ];
+    const m = new Map(ds.map((p) => [p.pid, p])), cs = new Set([80]);
+    assert.deepStrictEqual(ds.filter((p) => moCoi(p, m, cs, T)).map((p) => p.pid), [10, 22, 80]);
+    console.log('✅ moCoi ok'); return;
+  }
+  if (cmd === 'kiem-tai') { // tự kiểm hàm quaTai + in số đo hiện tại
+    const assert = require('assert'), n = { cpu: 70, chrome: 150, tienTrinh: 1000 };
+    assert.strictEqual(quaTai({ cpu: 10, chrome: 5, tienTrinh: 300 }, n), false);
+    assert.strictEqual(quaTai({ cpu: 70, chrome: 5, tienTrinh: 300 }, n), true);
+    assert.strictEqual(quaTai({ cpu: 10, chrome: 422, tienTrinh: 300 }, n), true);
+    assert.strictEqual(quaTai({ cpu: 10, chrome: 5, tienTrinh: 1295 }, n), true);
+    doTai(); console.log('✅ quaTai ok · ngưỡng', nguongTai(), '·', readJson(TAI_F)); return;
   }
   if (cmd === 'kiem') { // mã 0 = vai chạy ngầm · 1 = trong ô
     const v = timVai(a1); process.exit(v && batNgam(v.d, v.w) ? 0 : 1);

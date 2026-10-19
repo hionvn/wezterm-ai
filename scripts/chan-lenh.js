@@ -92,6 +92,8 @@ function xet(tool, lenhGoc, cwd = '') {
   // trước đó dạng này lọt qua luật "git push" (phát hiện khi push lúc 02:45 không bị chặn)
   const lenh = String(lenhGoc).replace(/\bgit(?:\.exe)?((?:\s+(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path)(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)|\s+--(?:no-pager|paginate|bare|literal-pathspecs|no-optional-locks|no-replace-objects)\b|\s+-[pP]\b)+)/gi, 'git');
   const timTrong = (ds, s) => { for (const [re, ly] of ds) if (re.test(s)) return ly; return null; };
+  // 19/10: worker ngầm mở Windows Sandbox để thử rồi chết → 5 cửa sổ máy ảo mồ côi làm máy lag
+  if (process.env.WEZ_NGAM && /WindowsSandbox|\.wsb\b/i.test(lenh)) return { muc: 'ngam', ly: 'mở Windows Sandbox' };
   let cam, dem;
   if (/^mcp__/.test(tool)) { cam = timTrong(MCP_CAM, tool); dem = timTrong(MCP_DEM, tool); }
   else { cam = timTrong(CAM, lenh); dem = timTrong(DEM, lenh); }
@@ -124,7 +126,9 @@ if (cmd === 'hook') {
     const { muc, ly } = xet(tool, lenh, data.cwd || '');
     if (!muc) return;
     ghiLog(muc, ly, lenh || tool);
-    if (muc === 'cam') {
+    if (muc === 'ngam') {
+      traLoi('deny', '⛔ Worker ngầm không được mở Windows Sandbox (cửa sổ máy ảo làm máy người dùng lag) — ghi việc cần thử sandbox vào brief cho Tổng quản chạy tay.');
+    } else if (muc === 'cam') {
       traLoi('deny', `⛔ Chặn cứng: ${ly}. Lệnh này không bao giờ được AI tự chạy. ` +
         'Nếu thật sự cần: ghi vào bàn duyệt (node E:\\AI\\Hion\\cai-dat\\duyet.js them <dự án> "…") để người dùng tự làm tay, rồi làm việc khác.');
     } else if (muc === 'dem') {
@@ -161,7 +165,7 @@ if (cmd === 'hook') {
 } else if (cmd === 'thu') {
   const lenh = process.argv.slice(3).join(' ');
   const r = xet(/^mcp__/.test(lenh) ? lenh : 'Bash', lenh, process.cwd());
-  console.log({ cam: '⛔ CẤM', dem: '🌙 CHẶN (đêm)', hoi: '❓ HỎI (ngày)' }[r.muc] || '✅ cho chạy', r.ly ? '— ' + r.ly : '');
+  console.log({ cam: '⛔ CẤM', ngam: '⛔ CẤM (worker ngầm)', dem: '🌙 CHẶN (đêm)', hoi: '❓ HỎI (ngày)' }[r.muc] || '✅ cho chạy', r.ly ? '— ' + r.ly : '');
 } else {
   console.log('Dùng: chan-lenh.js hook | mo [phút] | dong | thu "<lệnh>"');
 }
