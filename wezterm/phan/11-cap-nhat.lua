@@ -96,7 +96,7 @@ local function cap_nhat(window, pane, do_rieng)
   chay(do_rieng, 'han_muc', han_muc_status, window)
   -- 04/10: chỉ 1 lần, khỏi gửi lệnh cho giao diện mỗi lượt. 06/10: BỎ chữ ⌨ góc trái (báo copy mode) — active_key_table +
   -- set_left_status mỗi lượt phải chờ luồng giao diện: đo 150–950 ms/lượt = thủ phạm chính làm WezTerm chậm khi ~22 ô chạy
-  -- 19/10: góc trái giờ do han_muc_status vẽ (chỉ khi chuỗi đổi) → không xoá trái nữa
+  -- 19/10: góc phải = hạn mức (han_muc_status vẽ, chỉ khi chuỗi đổi); góc trái để trống (han_muc_status xoá 1 lần/cửa sổ)
 end
 
 -- CHỐNG CHẠY CHỒNG (04/10/2026): tách ô / mở tab trong Lua (pane:split, spawn_tab) là lệnh "nhường lượt" — trong lúc chờ,

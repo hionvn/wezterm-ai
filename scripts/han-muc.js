@@ -1,4 +1,4 @@
-// Hạn mức mọi gói AI cho góc TRÁI thanh tab WezTerm (19/10 chiều: chuyển từ phải sang trái, có ▶ ĐANG DÙNG / ⏸ CHỜ / ⛔ HẾT) (19/10/2026, người dùng yêu cầu).
+// Hạn mức mọi gói AI cho góc PHẢI thanh tab WezTerm (19/10; nhãn ▶ ĐANG DÙNG / ⏸ CHỜ / ⛔ HẾT, chữ rút gọn cho khỏi chiếm chỗ tab) (19/10/2026, người dùng yêu cầu).
 // Gom 60 giây/lần → %LOCALAPPDATA%\wez-ai\han-muc.json ({ t, text, parts:[{c,t}] }) + han-muc.txt. Lua (11-cap-nhat.lua) chỉ đọc file.
 // Dùng: node han-muc.js        → chạy 1 lần, in dòng hạn mức (tự kiểm)
 //       node han-muc.js chay   → chạy nền mãi (Lua tự bật khi file cũ > 5 phút; đã có bản chạy thì thoát)
@@ -78,13 +78,13 @@ async function gom() {
   const goi = [];
   goi.push({ ten: 'Grok', het: !fs.existsSync(GROK_EXE) ? -1 : g && g.den > now ? g.den : 0, n: chay.grok });
   let r9 = null; try { r9 = await so9r(now); } catch {}
-  goi.push({ ten: 'GPT 9router', het: rh && rh.den > now ? rh.den : !r9 ? -1 : r9.con === 0 ? (r9.hoi || -1) : 0, n: chay.codex,
-    them: r9 ? r9.con + '/' + r9.tong + ' tk còn' + (r9.tuan !== null ? ' · tuần ' + Math.round(r9.tuan) + '%' : '') : '9router tắt' });
-  for (const [ten, dir, f, h] of [['Claude vuanh', '.claude', 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
-    ['Claude hionvn', '.claude-tk2', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
+  goi.push({ ten: 'GPT9r', het: rh && rh.den > now ? rh.den : !r9 ? -1 : r9.con === 0 ? (r9.hoi || -1) : 0, n: chay.codex,
+    them: r9 ? r9.con + '/' + r9.tong + (r9.tuan !== null ? ' · T' + Math.round(r9.tuan) + '%' : '') : '9router tắt' });
+  for (const [ten, dir, f, h] of [['vuanh', '.claude', 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
+    ['hionvn', '.claude-tk2', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
     const c = await soClaude(dir, f, h, now);
     goi.push({ ten, het: c.het || 0, cu: c.cu, pct: Math.max(c.five || 0, c.week || 0),
-      them: c.five == null ? '? ' + (c.loi || 'chưa có số') : '5h ' + c.five + '%' + (c.five >= 85 && c.hoi ? ' ↻' + gio(c.hoi) : '') + ' · tuần ' + c.week + '%' });
+      them: c.five == null ? '? ' + (c.loi || 'chưa có số') : '5h' + c.five + '%' + (c.five >= 85 && c.hoi ? '↻' + gio(c.hoi) : '') + ' T' + c.week + '%' });
   }
   goi[3].tq = true;
   const dangDung = goi.findIndex(x => x.het === 0); // -1 = mọi gói hết
@@ -94,16 +94,16 @@ async function gom() {
     if (i) parts.push(SEP);
     parts.push({ c: CHU, t: x.ten + ' ' });
     if (x.het > 0 || x.het === -1) {
-      parts.push({ c: DO, t: (x.het === -1 ? '⛔ KHÔNG DÙNG ĐƯỢC' : '⛔ HẾT ↻' + gio(x.het)) });
+      parts.push({ c: DO, t: (x.het === -1 ? '⛔' : '⛔↻' + gio(x.het)) }); // ⛔ HẾT ↻giờ hồi
     } else if (i === dangDung || x.n > 0 || x.tq) {
-      const ai = [x.n ? x.n + ' worker' : i === dangDung ? 'worker' : '', x.tq ? 'Tổng quản' : ''].filter(Boolean).join(' + ');
-      parts.push({ c: x.pct >= 85 ? CAM : XANH, t: '▶ ĐANG DÙNG' + (ai ? ' (' + ai + ')' : '') });
-    } else parts.push({ c: XAM, t: '⏸ CHỜ' });
+      // ▶ ĐANG DÙNG: 18w = 18 worker ngầm đang chạy, TQ = ô Tổng quản
+      parts.push({ c: x.pct >= 85 ? CAM : XANH, t: '▶' + [x.n ? x.n + 'w' : '', x.tq ? 'TQ' : ''].filter(Boolean).join('+') });
+    } else parts.push({ c: XAM, t: '⏸' }); // ⏸ CHỜ: còn lượt, chưa tới lượt
     if (x.them) parts.push({ c: x.cu ? XAM : x.pct >= 85 ? CAM : XAM, t: ' ' + x.them });
   });
   for (const c of docJson('fuel-codex.json') || []) // Codex tài khoản riêng (Lua 07-nhien-lieu.lua ghi), chỉ ô dùng
-    parts.push(SEP, { c: CHU, t: (c.icon || 'Codex') + ' ' }, { c: mau(c.five || 0), t: '5h ' + Math.round(c.five || 0) + '%' + (c.week != null ? ' · tuần ' + Math.round(c.week) + '%' : '') });
-  parts.push({ c: '#5c6370', t: '  ' + gio(now) + '  ' }); // giờ lấy số
+    parts.push(SEP, { c: CHU, t: (c.icon || 'Codex') + ' ' }, { c: mau(c.five || 0), t: '5h' + Math.round(c.five || 0) + '%' + (c.week != null ? ' T' + Math.round(c.week) + '%' : '') });
+  parts.push({ c: '#5c6370', t: ' ' + gio(now) + ' ' }); // giờ lấy số
   const text = parts.map(p => p.t).join('');
   fs.mkdirSync(AIDIR, { recursive: true });
   fs.writeFileSync(path.join(AIDIR, 'han-muc.json.tmp'), JSON.stringify({ t: Math.floor(now), text, parts }));
@@ -122,7 +122,7 @@ if (process.argv[2] === 'chay') {
   gom().then(t => {
     console.log(t);
     const j = JSON.parse(fs.readFileSync(path.join(AIDIR, 'han-muc.json'), 'utf8'));
-    if (!j.text.includes('Claude hionvn') || !j.text.includes('GPT 9router') || !/▶ ĐANG DÙNG/.test(j.text) || !j.parts.every(p => /^#[0-9a-f]{6}$/.test(p.c))) {
+    if (!j.text.includes('hionvn') || !j.text.includes('GPT9r') || !j.text.includes('▶') || !j.parts.every(p => /^#[0-9a-f]{6}$/.test(p.c))) {
       console.error('TỰ KIỂM LỖI: thiếu mục hoặc màu sai'); process.exit(1);
     }
     console.log('Tự kiểm OK');
