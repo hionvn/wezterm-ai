@@ -187,9 +187,9 @@ end
 --   Tab đang xem: nền màu dự án, chữ đậm tối · tab khác: vạch màu dự án ▌ + chữ xám
 --   🔔 nền đỏ = cần duyệt · ✅ nền xanh dương = vừa xong · bỏ biểu tượng AI 🤖/🧩 cho đỡ rối
 --   Tên: tab có đặt tên (đội, 📄 tài liệu) thì ghi tên đó; 2 tab cùng dự án mà không đặt tên thì thêm tên phiên ngắn
--- 19/10/2026 (người dùng yêu cầu): HIỆN LẠI hạn mức mọi gói AI ở góc phải thanh tab (Claude 2 tài khoản · GPT 9router · Grok · Codex).
+-- 19/10/2026 (người dùng yêu cầu): HIỆN LẠI hạn mức mọi gói AI ở góc TRÁI thanh tab (chiều 19/10 chuyển từ phải sang) (Claude 2 tài khoản · GPT 9router · Grok · Codex).
 -- Số do cai-dat\han-muc.js (Node nền) gom 60 giây/lần → wez-ai\han-muc.json. Lua chỉ đọc file 30 giây/lần và CHỈ gọi
--- set_right_status khi chuỗi đổi (mỗi lần gọi phải chờ luồng giao diện — bài học 06/10). File cũ > 5 phút → bật lại script nền.
+-- set_left_status khi chuỗi đổi (mỗi lần gọi phải chờ luồng giao diện — bài học 06/10). File cũ > 5 phút → bật lại script nền.
 local HM = { at = 0, text = nil, fmt = nil, spawn = 0, shown = {} }
 local function han_muc_status(window)
   local now = os.time()
@@ -210,5 +210,9 @@ local function han_muc_status(window)
     end
   end
   local id = window:window_id()
-  if HM.fmt and HM.shown[id] ~= HM.text then HM.shown[id] = HM.text; window:set_right_status(HM.fmt) end
+  if HM.fmt and HM.shown[id] ~= HM.text then
+    -- 19/10 chiều (người dùng): chuyển sang TRÁI, sát tab Hion. Lần đầu mỗi cửa sổ xoá bản cũ bên phải.
+    if not HM.shown[id] then window:set_right_status('') end
+    HM.shown[id] = HM.text; window:set_left_status(HM.fmt)
+  end
 end
