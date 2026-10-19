@@ -185,7 +185,12 @@ function ai {
 
 # claudeRC : start Claude with Remote Control on, session named after the current folder
 #   (so it shows up by project name in the Claude phone app / claude.ai)
-function claudeRC { claude --remote-control (Split-Path -Leaf (Get-Location).Path) @args }
+#   Tổng quản (thư mục Hion) chạy tài khoản hionvn ~\.claude-tk2 (người dùng chốt 19/10/2026)
+function claudeRC {
+    $ten = Split-Path -Leaf (Get-Location).Path
+    if ($ten -eq 'Hion') { $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-tk2" }
+    claude --remote-control $ten @args
+}
 
 # aiall : open one tab per project in E:\AI, each running Claude with Remote Control
 #   -> on the phone you can switch between all projects
