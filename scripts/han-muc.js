@@ -70,6 +70,59 @@ function demChay() {
   return n;
 }
 
+// Codex tài khoản riêng (19/10: chuyển từ Lua 07-nhien-lieu.lua sang đây — wezterm.glob + đọc file phiên trong Lua làm lượt
+// update-status mất 260–7500 ms). Logic giữ y như Lua: ngày gần nhất (≤ 7 ngày) có phiên, 30 phiên cuối, bỏ phiên 9router,
+// lấy khung có giờ làm mới muộn nhất, trong khung lấy % cao nhất. Ghi fuel-codex.json (bang-doi.js, wez.ps1, Lua codex_warn đọc).
+const CX_FILE = {}; // [file] = { size, p5, r5, pw, rw }
+const CX_ROW = {};  // [số tk] = row cũ (phiên mới chưa có số → giữ số cũ)
+function codexRows(now) {
+  let bang = null; try { bang = JSON.parse(fs.readFileSync(path.join(process.env.USERPROFILE || '', '.codex-tai-khoan.json'), 'utf8')); } catch {}
+  const tks = (bang && bang.taiKhoan) || [{ so: 0, ten: 'Codex', thuMuc: path.join(process.env.USERPROFILE || '', '.codex') }];
+  const rows = [];
+  for (const tk of tks) {
+    let files = [];
+    for (let d = 0; d <= 6 && !files.length; d++) {
+      const t = new Date((now - d * 86400) * 1000);
+      const dir = path.join(tk.thuMuc || '', 'sessions', String(t.getFullYear()), String(t.getMonth() + 1).padStart(2, '0'), String(t.getDate()).padStart(2, '0'));
+      try { files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl')).sort().map(f => path.join(dir, f)); } catch {}
+    }
+    let s = null;
+    for (const f of files.slice(-30)) {
+      let sz = 0; try { sz = fs.statSync(f).size; } catch { continue; }
+      let c = CX_FILE[f];
+      if (!c || c.size !== sz) {
+        c = CX_FILE[f] = { size: sz };
+        try {
+          const fd = fs.openSync(f, 'r'), head = Buffer.alloc(Math.min(4096, sz));
+          fs.readSync(fd, head, 0, head.length, 0);
+          if (!head.toString('utf8').includes('"model_provider":"nine_router"')) {
+            const n = Math.min(98304, sz), b = Buffer.alloc(n);
+            fs.readSync(fd, b, 0, n, sz - n);
+            const t = b.toString('utf8');
+            for (const m of t.matchAll(/"primary":\{"used_percent":([\d.]+),"window_minutes":\d+,"resets_at":(\d+)\}/g)) {
+              const u = +m[1], r = +m[2]; if (!c.r5 || r > c.r5 || (r === c.r5 && u > c.p5)) { c.p5 = u; c.r5 = r; } }
+            for (const m of t.matchAll(/"secondary":\{"used_percent":([\d.]+),"window_minutes":\d+,"resets_at":(\d+)\}/g)) {
+              const u = +m[1], r = +m[2]; if (!c.rw || r > c.rw || (r === c.rw && u > c.pw)) { c.pw = u; c.rw = r; } }
+          }
+          fs.closeSync(fd);
+        } catch {}
+      }
+      if (c.r5 && (!s || c.r5 > s.r5 || (c.r5 === s.r5 && c.p5 > s.p5))) { s = s || {}; s.p5 = c.p5; s.r5 = c.r5; }
+      if (s && c.rw && (!s.rw || c.rw > s.rw || (c.rw === s.rw && c.pw > s.pw))) { s.pw = c.pw; s.rw = c.rw; }
+    }
+    if (s) {
+      const du_an = Object.entries((bang && bang.duAn) || {}).filter(([, v]) => v === tk.so).map(([k]) => k).join(', ');
+      CX_ROW[tk.so || 0] = { so: tk.so, ten: tk.ten || 'Codex', icon: (tk.ten || 'Codex').split(/\s/)[0], du_an,
+        five_raw: s.p5, five_reset: s.r5, week_raw: s.pw, week_reset: s.rw };
+    }
+    if (CX_ROW[tk.so || 0]) rows.push(CX_ROW[tk.so || 0]);
+  }
+  // đã qua giờ làm mới → 0 (06/10: số cũ 100% làm wez.ps1 tưởng Codex vẫn hết)
+  const out = rows.map(r => ({ ...r, five: r.five_reset && r.five_reset < now ? 0 : r.five_raw, week: r.week_reset && r.week_reset < now ? 0 : r.week_raw }));
+  fs.writeFileSync(path.join(AIDIR, 'fuel-codex.json'), JSON.stringify(out));
+  return out;
+}
+
 // Thứ tự worker giống ngam.js (thuTu + claudeTk, 19/10): Grok → GPT 9router → Claude vuanhtuanfpt → Claude hionvn.
 // Gói đầu tiên chưa hết = ▶ ĐANG DÙNG, gói sau còn hạn mức = ⏸ CHỜ, gói hết = ⛔ HẾT ↻giờ hồi. hionvn luôn chạy ô Tổng quản.
 async function gom() {
@@ -101,7 +154,7 @@ async function gom() {
     } else parts.push({ c: XAM, t: '⏸' }); // ⏸ CHỜ: còn lượt, chưa tới lượt
     if (x.them) parts.push({ c: x.cu ? XAM : x.pct >= 85 ? CAM : XAM, t: ' ' + x.them });
   });
-  for (const c of docJson('fuel-codex.json') || []) // Codex tài khoản riêng (Lua 07-nhien-lieu.lua ghi), chỉ ô dùng
+  for (const c of codexRows(now)) // Codex tài khoản riêng, chỉ ô dùng
     parts.push(SEP, { c: CHU, t: (c.icon || 'Codex') + ' ' }, { c: mau(c.five || 0), t: '5h' + Math.round(c.five || 0) + '%' + (c.week != null ? ' T' + Math.round(c.week) + '%' : '') });
   parts.push({ c: '#5c6370', t: ' ' + gio(now) + ' ' }); // giờ lấy số
   const text = parts.map(p => p.t).join('');
@@ -113,10 +166,19 @@ async function gom() {
 }
 
 if (process.argv[2] === 'chay') {
-  const PID = path.join(AIDIR, 'han-muc.pid');
-  try { process.kill(Number(fs.readFileSync(PID, 'utf8')), 0); process.exit(0); } catch {} // bản cũ còn sống → thoát
-  fs.writeFileSync(PID, String(process.pid));
-  const vong = () => gom().catch(() => {}).finally(() => setTimeout(vong, 60000));
+  // CHỈ 1 BẢN (19/10: từng có 3 bản chạy cùng lúc — pid trong file bị bản sau ghi đè, bản trước không biết).
+  // han-muc.pid = "pid bản" (bản = giờ sửa han-muc.js). Đang có bản sống cùng code → thoát. Khác code (vừa sửa) → giành lấy;
+  // mỗi vòng bản nào thấy pid trong file không phải mình thì tự thoát → tối đa 60 giây là còn đúng 1 bản.
+  const PID = path.join(AIDIR, 'han-muc.pid'), BAN = String(Math.floor(fs.statSync(__filename).mtimeMs));
+  const doc = () => { try { return fs.readFileSync(PID, 'utf8').trim().split(' '); } catch { return []; } };
+  const [p0, b0] = doc();
+  let song = false; try { song = !!p0 && +p0 !== process.pid && process.kill(+p0, 0); } catch {}
+  if (song && b0 === BAN) process.exit(0);
+  fs.writeFileSync(PID, process.pid + ' ' + BAN);
+  const vong = () => {
+    if (doc()[0] !== String(process.pid)) process.exit(0); // có bản khác giành → mình thoát
+    gom().catch(() => {}).finally(() => setTimeout(vong, 60000));
+  };
   vong();
 } else {
   gom().then(t => {
