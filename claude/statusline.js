@@ -150,11 +150,15 @@ process.stdin.on('end', () => {
     try {
       const fdir = path.join(process.env.LOCALAPPDATA || '', 'wez-ai');
       fs.mkdirSync(fdir, { recursive: true });
-      fs.writeFileSync(path.join(fdir, 'fuel-claude.json'), JSON.stringify({
+      const fuel = JSON.stringify({
         five: rl.five_hour && rl.five_hour.used_percentage, five_reset: rl.five_hour && rl.five_hour.resets_at,
         week: rl.seven_day && rl.seven_day.used_percentage, week_reset: rl.seven_day && rl.seven_day.resets_at,
         t: Math.floor(now),
-      }));
+      });
+      fs.writeFileSync(path.join(fdir, 'fuel-claude.json'), fuel); // file chung cũ: ngam.js đọc
+      // 19/10: thêm file theo tài khoản cho thanh hạn mức WezTerm (cai-dat\han-muc.js): ~\.claude-tk2 = hionvn, còn lại = vuanhtuanfpt
+      const tk = /claude-tk2/i.test(process.env.CLAUDE_CONFIG_DIR || '') ? 'hionvn' : 'vuanhtuanfpt';
+      fs.writeFileSync(path.join(fdir, 'fuel-claude-' + tk + '.json'), fuel);
     } catch {}
   }
   if (rl.five_hour && rl.five_hour.used_percentage != null) {

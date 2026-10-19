@@ -90,13 +90,13 @@ local function cap_nhat(window, pane, do_rieng)
       return
     end
   end
-  -- 03/10: BỎ phần thông tin bên phải thanh tab (⛽ hạn mức, AI, dự án, nhánh, số ô, giờ) để các tab có thêm chỗ
-  -- (người dùng yêu cầu). Hạn mức vẫn theo dõi ngầm: cảnh báo Codex ≥ 90% + ghi cho bảng tổng quan (Ctrl+Shift+U).
+  -- 03/10 bỏ thông tin bên phải thanh tab; 19/10 (người dùng yêu cầu) hiện lại CHỈ hạn mức mọi gói AI (han_muc_status, 07-nhien-lieu.lua).
   chay(do_rieng, 'fuel_cells', fuel_cells)
   chay(do_rieng, 'codex_warn', codex_warn, window)
+  chay(do_rieng, 'han_muc', han_muc_status, window)
   -- 04/10: chỉ 1 lần, khỏi gửi lệnh cho giao diện mỗi lượt. 06/10: BỎ chữ ⌨ góc trái (báo copy mode) — active_key_table +
   -- set_left_status mỗi lượt phải chờ luồng giao diện: đo 150–950 ms/lượt = thủ phạm chính làm WezTerm chậm khi ~22 ô chạy
-  if not RIGHT_CLEARED then window:set_right_status(''); window:set_left_status(''); RIGHT_CLEARED = true end
+  if not RIGHT_CLEARED then window:set_left_status(''); RIGHT_CLEARED = true end
 end
 
 -- CHỐNG CHẠY CHỒNG (04/10/2026): tách ô / mở tab trong Lua (pane:split, spawn_tab) là lệnh "nhường lượt" — trong lúc chờ,

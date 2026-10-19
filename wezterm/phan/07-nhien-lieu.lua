@@ -187,3 +187,28 @@ end
 --   Tab đang xem: nền màu dự án, chữ đậm tối · tab khác: vạch màu dự án ▌ + chữ xám
 --   🔔 nền đỏ = cần duyệt · ✅ nền xanh dương = vừa xong · bỏ biểu tượng AI 🤖/🧩 cho đỡ rối
 --   Tên: tab có đặt tên (đội, 📄 tài liệu) thì ghi tên đó; 2 tab cùng dự án mà không đặt tên thì thêm tên phiên ngắn
+-- 19/10/2026 (người dùng yêu cầu): HIỆN LẠI hạn mức mọi gói AI ở góc phải thanh tab (Claude 2 tài khoản · GPT 9router · Grok · Codex).
+-- Số do cai-dat\han-muc.js (Node nền) gom 60 giây/lần → wez-ai\han-muc.json. Lua chỉ đọc file 30 giây/lần và CHỈ gọi
+-- set_right_status khi chuỗi đổi (mỗi lần gọi phải chờ luồng giao diện — bài học 06/10). File cũ > 5 phút → bật lại script nền.
+local HM = { at = 0, text = nil, fmt = nil, spawn = 0, shown = {} }
+local function han_muc_status(window)
+  local now = os.time()
+  if now - HM.at >= 30 then
+    HM.at = now
+    local d = read_json(AIDIR .. '/han-muc.json')
+    if d and d.text and d.text ~= HM.text then
+      local cells = {}
+      for _, p in ipairs(d.parts or {}) do
+        cells[#cells + 1] = { Foreground = { Color = p.c } }
+        cells[#cells + 1] = { Text = p.t }
+      end
+      HM.text, HM.fmt = d.text, wezterm.format(cells)
+    end
+    if (not d or now - (d.t or 0) > 300) and now - HM.spawn > 300 then
+      HM.spawn = now
+      wezterm.background_child_process { 'node', HUB .. '/cai-dat/han-muc.js', 'chay' } -- đã có bản chạy thì nó tự thoát
+    end
+  end
+  local id = window:window_id()
+  if HM.fmt and HM.shown[id] ~= HM.text then HM.shown[id] = HM.text; window:set_right_status(HM.fmt) end
+end
