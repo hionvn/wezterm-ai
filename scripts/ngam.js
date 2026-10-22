@@ -82,7 +82,7 @@ const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
 // 19/10 người dùng: "Hết grok hết 9router mới chuyển sang vuanhtuanfpt, hết vuanhtuanfpt mới chuyển sang hionvn"
 // → mọi worker (trừ vai Codex tài khoản riêng, vai chỉ đọc "chan" = Claude) đi Grok → 9router → Claude (claudeTk: vuanhtuanfpt → hionvn).
 const thuTu = () => (fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
-const riengVai = (w) => w.chan || (w.ai === 'codex' && !w.router);
+const riengVai = (w) => !!w.chan; // 19/10: cả vai Codex thường cũng theo thứ tự (Codex tài khoản riêng hết 5h → 403/usage limit hàng loạt)
 const vaiDuPhong = (w) => (riengVai(w) ? w : { ...w, router: thuTu() === 'router' });
 function aiThat(d, w) {
   if (w.chan) return 'claude';

@@ -52,6 +52,15 @@
                                                            "command":  "node \"E:/AI/Hion/cai-dat/chan-lenh.js\" hook"
                                                        }
                                                    ]
+                                     },
+                                     {
+                                         "matcher":  "Bash",
+                                         "hooks":  [
+                                                       {
+                                                           "type":  "command",
+                                                           "command":  "\"C:/Users/Hion/AppData/Local/Microsoft/WinGet/Links/rtk.exe\" hook claude"
+                                                       }
+                                                   ]
                                      }
                                  ],
                   "PostToolUse":  [

@@ -143,6 +143,9 @@ async function gom() {
   const dangDung = goi.findIndex(x => x.het === 0); // -1 = mọi gói hết
   // worker Claude chạy ngầm tính cho tài khoản claudeTk đang chọn (vuanh, hết thì hionvn)
   (goi[2].het === 0 ? goi[2] : goi[3]).n = chay.claude;
+  // 19/10: ngam.js đang chặn mở việc mới vì máy tải cao (ngam\tai-may.json, mới < 3 phút)
+  const tai = docJson(path.join('ngam', 'tai-may.json'));
+  if (tai && tai.chan && Date.now() - tai.luc < 180000) parts.push({ c: CAM, t: '🐢 tải cao' }, SEP);
   goi.forEach((x, i) => {
     if (i) parts.push(SEP);
     parts.push({ c: CHU, t: x.ten + ' ' });

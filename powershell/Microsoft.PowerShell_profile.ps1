@@ -185,10 +185,10 @@ function ai {
 
 # claudeRC : start Claude with Remote Control on, session named after the current folder
 #   (so it shows up by project name in the Claude phone app / claude.ai)
-#   Tổng quản (thư mục Hion) chạy tài khoản hionvn ~\.claude-tk2 (người dùng chốt 19/10/2026)
+#   Mọi ô Claude chạy tài khoản chính hionvn ~\.claude-tk2 (người dùng chốt 19/10/2026: hionvn là chính, tk khác là phụ)
 function claudeRC {
     $ten = Split-Path -Leaf (Get-Location).Path
-    if ($ten -eq 'Hion') { $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-tk2" }
+    $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-tk2"
     claude --remote-control $ten @args
 }
 
