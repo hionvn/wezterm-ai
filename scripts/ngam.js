@@ -81,7 +81,8 @@ const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
 // đi GPT trước, 9router hết → Claude chính → Claude hionvn (claudeTk). Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
 // 19/10 người dùng: "Hết grok hết 9router mới chuyển sang vuanhtuanfpt, hết vuanhtuanfpt mới chuyển sang hionvn"
 // → mọi worker (trừ vai Codex tài khoản riêng, vai chỉ đọc "chan" = Claude) đi Grok → 9router → Claude (claudeTk: vuanhtuanfpt → hionvn).
-const thuTu = () => (fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
+// 23/10 (người dùng: "anthropic còn nhiều"): còn ngân sách API thì Claude (khoá API trực tiếp) đi TRƯỚC Grok/9router
+const thuTu = () => (apiCon() ? 'claude' : fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
 const riengVai = (w) => !!w.chan; // 19/10: cả vai Codex thường cũng theo thứ tự (Codex tài khoản riêng hết 5h → 403/usage limit hàng loạt)
 const vaiDuPhong = (w) => (riengVai(w) ? w : { ...w, router: thuTu() === 'router' });
 function aiThat(d, w) {
@@ -152,7 +153,10 @@ function claudeTk() {
   if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2') && !claudeGanHet()) return 'tk2';
   return '';
 }
-const claudeHetHan = () => (claudeTk() ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
+// 23/10 (người dùng: "cho các worker dùng trực tiếp api"): còn ngân sách API ("apiNganSach" USD, cộng dồn api-chi.json) thì việc Claude
+// không phải chờ gói hồi — chạy bằng ANTHROPIC_API_KEY (gắn ở chayAI).
+const apiCon = () => { try { return !!fs.readFileSync(path.join(WEZAI, 'anthropic-key.txt'), 'utf8').trim() && ((readJson(path.join(WEZAI, 'api-chi.json')) || {}).usd || 0) < (MAY.apiNganSach ?? 100); } catch { return false; } };
+const claudeHetHan = () => (claudeTk() || apiCon() ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
 // ===== Tự lấy việc (07/10, người dùng: "không cho phép các worker nghỉ, hãy cho làm việc liên tục") =====
 // Vai ngầm rảnh > 1 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" / lỗi
 // → nghỉ 2 phút rồi tự lấy lại. 08/10 (người dùng: "giao việc liên tục chứ để nghỉ thế"): đo lượt TB 2 phút, 45% báo
@@ -306,6 +310,15 @@ function loiVai(d, w) {
     'TIẾT KIỆM TOKEN: lệnh shell có output dài thì thêm tiền tố rtk (rtk git status/diff/log, rtk grep, rtk test <lệnh>, rtk err <lệnh>, rtk npm run …; Claude có hook tự gắn); đọc file theo đoạn (grep, sed -n, Read có offset/limit),không đọc lại file vừa đọc, không in log/diff dài (dùng tail, --stat); chạy test liên quan tới file đã sửa thay vì cả bộ (cả bộ chỉ trước khi báo xong việc lớn); trả lời cuối ngắn gọn. '+
     // 18/10: worker không commit → test đã commit mà mã chưa commit → bản sạch đỏ, phát hành hỏng 4 lần
     'Làm đúng phần mình; XONG VIỆC: chạy test liên quan, qua thì commit NGAY đúng file mình sửa (git add <từng file>, cả mã lẫn test đi kèm; không git add -A, không git stash, không commit file vai khác) với lời commit rõ nội dung, không push; KHÔNG commit khi chỉ ghi nhật ký (tu-lam-*.md, ra lại, kiểm lại không đổi) — nhật ký đi kèm commit của việc thật;  không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
+}
+
+// 23/10 (người dùng: "làm vòng tự học"): bài học tu-hoc.js rút mỗi tối (learn\bai-hoc\<DựÁn>.md, dòng "- [vai] …")
+// → kèm 6 bài mới nhất của đúng vai (và vai *) vào mọi lượt giao việc.
+function baiHoc(d, w) {
+  let ds = [];
+  try { ds = fs.readFileSync(path.join(HUB, 'learn', 'bai-hoc', `${d.du_an}.md`), 'utf8').split(/\r?\n/); } catch { return ''; }
+  const cua = ds.filter((l) => l.startsWith(`- [${w.vai}]`) || l.startsWith('- [*]')).slice(-6);
+  return cua.length ? `BÀI HỌC CỦA ĐỘI (rút từ lỗi đã gặp — làm theo để khỏi lặp lại):\n${cua.join('\n')}\n\n` : '';
 }
 
 // ===== chạy 1 lượt AI, ghi log dễ đọc =====
@@ -478,7 +491,7 @@ async function chay(key) {
   }
   const giay = Math.max(60, Math.floor((het - Date.now()) / 1000));
   // Codex không có system prompt riêng, và resume phiên không tồn tại thì lặng lẽ mở phiên mới → luôn kèm lời giao vai
-  const dau = (ai === 'codex' || ai === 'grok' ? loiVai(d, w) + '\n\n' : '') + (tomTat ? `TÓM TẮT PHIÊN TRƯỚC CỦA VAI NÀY:\n${tomTat}\n\n` : '');
+  const dau = (ai === 'codex' || ai === 'grok' ? loiVai(d, w) + '\n\n' : '') + baiHoc(d, w) + (tomTat ? `TÓM TẮT PHIÊN TRƯỚC CỦA VAI NÀY:\n${tomTat}\n\n` : '');
   let r = await chayAI({ ...chung, ses, giay, prompt: `${dau}VIỆC MỚI (giới hạn ${phut} phút): ${st.viec}` });
   // GPT qua 9router hết hạn mức → đánh dấu, trả việc về hàng chờ → lượt sau chạy Sonnet
   if (ai === 'codex' && w.router && (r.hetMuc || (r.code && !r.quaHan && HET_MUC.test(r.loiRa || '')))) {
