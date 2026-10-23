@@ -188,7 +188,8 @@ function drawRaw() {
     const gop = { chay: 0, cho: 0, ranh: 0, tat: 0 };
     for (const x of g) {
       if (x.state === 'tat') { gop.tat++; continue; }
-      if (x.state === 'ngam' && !moRong.has(name) && !['qua-han', 'loi'].includes(x.ngam)) { gop[x.ngam === 'chay' ? 'chay' : x.ngam === 'cho' ? 'cho' : 'ranh']++; continue; }
+      // 19/10 (người dùng: "cột phải lung tung, làm gọn"): dự án đang chạy chỉ hiện từng dòng worker ⏳ đang làm; chờ/rảnh gộp đếm
+      if (x.state === 'ngam' && !['qua-han', 'loi'].includes(x.ngam) && (!moRong.has(name) || x.ngam !== 'chay')) { gop[x.ngam === 'chay' ? 'chay' : x.ngam === 'cho' ? 'cho' : 'ranh']++; continue; }
       const ten = pad(cat(x.label, 24), 26);
       const t = x.since != null ? ago(x.since) : '';
       if (x.state === 'ngam') { // ⌛ quá hạn · ⛔ lỗi (log: wez.ps1 read DựÁn.Vai)

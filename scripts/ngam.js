@@ -135,6 +135,9 @@ function claudeGanHet() {
 // (đăng nhập 1 lần: $env:CLAUDE_CONFIG_DIR="$HOME\.claude-tk2"; claude → /login). projects\ nối junction về ~\.claude\projects
 // để --resume phiên cũ chạy được ở cả 2 tài khoản. Tài khoản đang hết (báo lỗi hạn mức) ghi claude-het-<tk>.json.
 const TK2 = path.join(require('os').homedir(), '.claude-tk2');
+// 22/10 (người dùng: "hionvn điều khiển lâu dài, vuanhtuanfpt chỉ để code"): app Claude trên máy chuyển sang hionvn nên ~\.claude
+// không còn là vuanh → tài khoản chính của worker ở hồ sơ riêng ~\.claude-vuanh. Chưa đăng nhập hồ sơ đó thì vẫn dùng ~\.claude như cũ.
+const VUANH = path.join(require('os').homedir(), '.claude-vuanh');
 const tkHetF = (tk) => path.join(WEZAI, `claude-het-${tk}.json`);
 const tkHet = (tk) => ((readJson(tkHetF(tk)) || {}).den || 0) > now();
 // Trả 'chinh' | 'tk2' | '' (cả 2 đang hết). Ưu tiên tài khoản chính; chính hồi là quay về.
@@ -300,7 +303,7 @@ function loiVai(d, w) {
   return `Bạn là worker ${d.logo || ''} ${d.du_an} · ${w.icon || ''} ${ten}. Phụ trách: ${w.viec}. Manager của bạn: ${d.du_an}.Manager.` +
     (w.quyen ? ` QUYỀN CỦA BẠN: ${w.quyen}` : '') +
     ` Luật chung: E:\\AI\\Hion\\quy-trinh-lien-mach.md. Thư mục làm việc: ${path.join(AI_ROOT, d.du_an, w.thuMuc || '')} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
-    'TIẾT KIỆM TOKEN: đọc file theo đoạn (grep, sed -n, Read có offset/limit), không đọc lại file vừa đọc, không in log/diff dài (dùng tail, --stat); chạy test liên quan tới file đã sửa thay vì cả bộ (cả bộ chỉ trước khi báo xong việc lớn); trả lời cuối ngắn gọn. '+
+    'TIẾT KIỆM TOKEN: lệnh shell có output dài thì thêm tiền tố rtk (rtk git status/diff/log, rtk grep, rtk test <lệnh>, rtk err <lệnh>, rtk npm run …; Claude có hook tự gắn); đọc file theo đoạn (grep, sed -n, Read có offset/limit),không đọc lại file vừa đọc, không in log/diff dài (dùng tail, --stat); chạy test liên quan tới file đã sửa thay vì cả bộ (cả bộ chỉ trước khi báo xong việc lớn); trả lời cuối ngắn gọn. '+
     // 18/10: worker không commit → test đã commit mà mã chưa commit → bản sạch đỏ, phát hành hỏng 4 lần
     'Làm đúng phần mình; XONG VIỆC: chạy test liên quan, qua thì commit NGAY đúng file mình sửa (git add <từng file>, cả mã lẫn test đi kèm; không git add -A, không git stash, không commit file vai khác) với lời commit rõ nội dung, không push; KHÔNG commit khi chỉ ghi nhật ký (tu-lam-*.md, ra lại, kiểm lại không đổi) — nhật ký đi kèm commit của việc thật;  không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
 }
@@ -314,6 +317,7 @@ function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
     // 18/10 (người dùng): worker Claude dùng API key trả trước tới trần "apiNganSach" USD (mặc định 100); chi cộng dồn ở api-chi.json
     const tk = ai === 'claude' ? (claudeTk() || 'chinh') : ''; // 19/10: chính trước, hết mới hionvn
     if (tk === 'tk2') env.CLAUDE_CONFIG_DIR = TK2;
+    else if (tk === 'chinh' && fs.existsSync(path.join(VUANH, '.credentials.json'))) env.CLAUDE_CONFIG_DIR = VUANH;
     if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach ?? 100)) env.ANTHROPIC_API_KEY = k; } catch {} } /* 19/10: apiNganSach 0 = worker dùng gói vuanhtuanfpt, không dùng API key */
     const chiDoc = /\bWrite\b/.test(String(w.chan || ''));
     let exe, args, moiSes = ses;
@@ -652,7 +656,8 @@ async function main() {
     const viec = fs.readFileSync(a2, 'utf8').replace(/^\uFEFF/, '').trim();
     const r = khoa(() => {
       const st = docSt(v.key) || {};
-      if (st.trang_thai === 'cho' || (st.trang_thai === 'chay' && song(st.pid))) return st;
+      // lượt TỰ LẤY còn trong hàng chờ (chưa chạy) thì việc giao tay thay luôn
+      if ((st.trang_thai === 'cho' && !st.tu_lam) || (st.trang_thai === 'chay' && song(st.pid))) return st;
       luuSt(v.key, { ...st, trang_thai: 'cho', viec, giao_luc: now(), bat_dau: null, ket_thuc: null, pid: null, log: null, ket_qua: null, tu: process.env.WEZTERM_PANE || '', tu_lam: false, tu_lam_nghi: null });
       oSt(v.key, 'work');
       return null;

@@ -133,7 +133,9 @@ async function gom() {
   let r9 = null; try { r9 = await so9r(now); } catch {}
   goi.push({ ten: 'GPT9r', het: rh && rh.den > now ? rh.den : !r9 ? -1 : r9.con === 0 ? (r9.hoi || -1) : 0, n: chay.codex,
     them: r9 ? r9.con + '/' + r9.tong + (r9.tuan !== null ? ' · T' + Math.round(r9.tuan) + '%' : '') : '9router tắt' });
-  for (const [ten, dir, f, h] of [['vuanh', '.claude', 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
+  // 22/10: vuanh chuyển sang hồ sơ riêng ~\.claude-vuanh (giống ngam.js); chưa đăng nhập thì đọc ~\.claude như cũ
+  const vuanhDir = fs.existsSync(path.join(process.env.USERPROFILE || '', '.claude-vuanh', '.credentials.json')) ? '.claude-vuanh' : '.claude';
+  for (const [ten, dir, f, h] of [['vuanh', vuanhDir, 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
     ['hionvn', '.claude-tk2', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
     const c = await soClaude(dir, f, h, now);
     goi.push({ ten, het: c.het || 0, cu: c.cu, pct: Math.max(c.five || 0, c.week || 0),
