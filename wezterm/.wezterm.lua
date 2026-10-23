@@ -1,9 +1,9 @@
--- Cấu hình WezTerm của đội AI (Hion) — BỘ NẠP (tách file 03/10/2026).
+-- Cấu hình WezTerm của đội AI (TongQuanAI) — BỘ NẠP (tách file 03/10/2026).
 -- Nội dung thật nằm ở ~\.wezterm\NN-ten.lua (01-co-ban … 12-menu). Bộ nạp ghép các phần theo thứ tự tên
 -- rồi chạy như MỘT file → mọi biến `local` dùng chung giữa các phần y như trước khi tách.
 -- Sửa phần nào thì mở đúng file đó; WezTerm tự nạp lại khi bất kỳ phần nào đổi.
 -- Lỗi được báo theo "tên phần:dòng", vd "06-bo-cuc.lua:42: …".
--- Kiểm tra trước khi lưu: E:\AI\Hion\cai-dat\kiem-cau-hinh.ps1 (cap-nhat.ps1 tự chạy).
+-- Kiểm tra trước khi lưu: E:\AI\TongQuanAI\cai-dat\kiem-cau-hinh.ps1 (cap-nhat.ps1 tự chạy).
 local wezterm = require 'wezterm'
 local dir = wezterm.home_dir .. '\\.wezterm'
 local files = wezterm.glob(dir:gsub('\\', '/') .. '/[0-9][0-9]-*.lua')

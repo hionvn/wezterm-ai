@@ -51,7 +51,7 @@ wezterm.on('format-tab-title', function(tab, tabs)
 end)
 
 -- Tiêu đề cửa sổ (thanh trên cùng + thanh tác vụ Windows) — 03/10 làm gọn: chỉ ghi tab đang xem + tổng báo động,
--- vd "💬 Chatbot · đội  —  🔔 1 cần duyệt · ✅ 2 xong" (trước đây liệt kê mọi AI trong tab → dài, rối)
+-- vd "💬 DuAnA · đội  —  🔔 1 cần duyệt · ✅ 2 xong" (trước đây liệt kê mọi AI trong tab → dài, rối)
 wezterm.on('format-window-title', function(tab, pane, tabs, panes)
   PERF.win_n = PERF.win_n + 1
   local proj, logo, title = tab_info(tab)

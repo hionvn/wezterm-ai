@@ -1,5 +1,5 @@
 -- ===== Bảng 📊 (báo cáo + checklist) tự hiện bên phải ô Tổng quản khi agent làm việc (03/10/2026) =====
--- Ô Tổng quản: sổ wez-ai\doi\Hion.json (manager.o). Có agent đang làm (⏳) hoặc còn việc ☐ chưa xong → mở bảng bên phải;
+-- Ô Tổng quản: sổ wez-ai\doi\TongQuanAI.json (manager.o). Có agent đang làm (⏳) hoặc còn việc ☐ chưa xong → mở bảng bên phải;
 -- mọi agent rảnh + hết việc dở quá 3 phút → tự đóng (chỉ bảng tự mở; bảng mở bằng Ctrl+Shift+U thì để yên).
 -- Tắt tự hiện: "bangTuDong": false trong ~\.wez-ai.json.
 local BOARD_MEMO = { t = 0, chua = 0, ranh_tu = nil }
@@ -33,7 +33,7 @@ local function tu_ngu()
   local home = (os.getenv('USERPROFILE') or HOME)
   for _, path in ipairs(so_doi_files()) do
     local r = read_json(path)
-    if r and r.du_an and r.du_an ~= 'Hion' and type(r.worker) == 'table' and #r.worker > 0 then
+    if r and r.du_an and r.du_an ~= 'TongQuanAI' and type(r.worker) == 'table' and #r.worker > 0 then
       local doi_ghi = false
       for _, w in ipairs(r.worker) do
         local id = w.o and tostring(w.o) or ''
@@ -109,7 +109,7 @@ end
 local function auto_board()
   if machine.bangTuDong == false then return end
   if dang_xep() then return end -- đang mở lại / xếp đội: đừng tách thêm ô bảng giữa chừng
-  local r = read_json(AIDIR .. '\\doi\\Hion.json')
+  local r = read_json(AIDIR .. '\\doi\\TongQuanAI.json')
   local tq = r and r.manager and pane_or_nil(r.manager.o)
   if not tq then return end
   local now = os.time()

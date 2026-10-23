@@ -1,11 +1,11 @@
 // Eval đội agent theo ngày (phần SỐ — đo được, không đoán). Tổng quản bổ sung phần nhận xét lúc tổng kết ca đêm.
 // Dùng: node eval-dem.js [YYYY-MM-DD]   (mặc định: hôm qua nếu trước 12 giờ trưa, không thì hôm nay)
 // Đọc %LOCALAPPDATA%\wez-ai\viec.json (mọi việc giao qua wez.ps1 send/giao) trong khung 12:00 ngày đó → 12:00 hôm sau.
-// Ghi: E:\AI\Hion\learn\so-lieu-<ngày>.json + E:\AI\Hion\learn\eval-<ngày>.md (phần số; không ghi đè phần nhận xét nếu đã có)
+// Ghi: E:\AI\TongQuanAI\learn\so-lieu-<ngày>.json + E:\AI\TongQuanAI\learn\eval-<ngày>.md (phần số; không ghi đè phần nhận xét nếu đã có)
 const fs = require('fs');
 const path = require('path');
 
-const HUB = 'E:\\AI\\Hion';
+const HUB = 'E:\\AI\\TongQuanAI';
 const LEARN = path.join(HUB, 'learn');
 const VIEC = path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'viec.json');
 

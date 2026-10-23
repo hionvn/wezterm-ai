@@ -1,5 +1,5 @@
 ﻿# Ô tài liệu bên phải của "bàn làm việc Tổng quản" trong WezTerm (Ctrl+Shift+H / Ctrl+Shift+J).
-# Hiển thị E:\AI\Hion\can-duyet.md + sổ tiến độ của mọi dự án (E:\AI\*\tien-do-*.md),
+# Hiển thị E:\AI\TongQuanAI\can-duyet.md + sổ tiến độ của mọi dự án (E:\AI\*\tien-do-*.md),
 # tự vẽ lại khi một trong các file đó thay đổi.
 # Mỗi việc "Đang chờ" có nút [✅ Duyệt] [✏️ Trả lời] [❌ Bỏ]: bấm chuột → ~/.wezterm.lua gọi duyet.js
 # (nút là link wezai-duyet:<việc>/<mã>). Không có WezTerm thì dùng: node duyet.js ok|sua|bo <số>.
@@ -7,7 +7,7 @@
 param([string]$File)
 $AIRoot = 'E:\AI'   # mặc định; máy khác ổ đĩa thì lấy từ ~\.wez-ai.json (khoi-phuc.ps1 tạo)
 if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.aiRoot) { $AIRoot = $c.aiRoot } }
-$canDuyet = Join-Path $AIRoot 'Hion\can-duyet.md'
+$canDuyet = Join-Path $AIRoot 'TongQuanAI\can-duyet.md'
 $tmp = Join-Path $env:TEMP 'ban-lam-viec-tong-quan.md'
 $glow = Get-Command glow -ErrorAction SilentlyContinue
 if (-not $glow) {
@@ -41,7 +41,7 @@ function Show-Pending {
         [Console]::Out.Write("     $ok  $sua  $bo`n")
     }
     Write-Host ''
-    Write-Host "  Bấm chuột vào nút · điện thoại: nhắn Claude Hion `"duyệt 2`" / `"bỏ 1 vì …`"" -ForegroundColor DarkGray
+    Write-Host "  Bấm chuột vào nút · điện thoại: nhắn Claude TongQuanAI `"duyệt 2`" / `"bỏ 1 vì …`"" -ForegroundColor DarkGray
 }
 
 function Get-Files {

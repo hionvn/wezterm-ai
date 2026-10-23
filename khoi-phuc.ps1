@@ -14,14 +14,29 @@ $here = $PSScriptRoot
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $utf8 = New-Object Text.UTF8Encoding $false
 
-# Thư mục chứa dự án: tham số -AIRoot > lần cài trước (~\.wez-ai.json) > E:\AI (hỏi lại nếu máy không có ổ E:)
+# Máy của chủ repo có ~\.wez-ai-rieng.json (danh sách giá trị riêng, ngoài repo) → cài từ bản sao đã đổi ngược về giá trị thật
+if ((Test-Path "$HOME\.wez-ai-rieng.json") -and -not $env:WEZAI_DA_NGUOC) {
+    $tam = Join-Path $env:TEMP "wezterm-ai-nguoc-$stamp"
+    Copy-Item $here $tam -Recurse -Force -Exclude '.git'
+    node (Join-Path $here 'lam-sach.js') --nguoc $tam
+    $env:WEZAI_DA_NGUOC = '1'
+    & (Join-Path $tam 'khoi-phuc.ps1') @PSBoundParameters
+    exit $LASTEXITCODE
+}
+
+# Thư mục chứa dự án: tham số -AIRoot > lần cài trước (~\.wez-ai.json) > hỏi người cài (gợi ý ổ còn trống nhiều nhất)
 if (-not $AIRoot -and (Test-Path "$HOME\.wez-ai.json")) { $AIRoot = (Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json).aiRoot }
-if (-not $AIRoot) { $AIRoot = 'E:\AI' }
-if (-not (Test-Path (Split-Path $AIRoot -Qualifier))) {
+if (-not $AIRoot) {
+    $o = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free } | Sort-Object Free -Descending | Select-Object -First 1
+    $goiY = if ($o) { "$($o.Root.TrimEnd('\'))\AI" } else { "$HOME\AI" }
+    $AIRoot = Read-Host "Để các dự án AI ở thư mục nào? (Enter = $goiY)"
+    if (-not $AIRoot) { $AIRoot = $goiY }
+}
+while (-not (Test-Path (Split-Path $AIRoot -Qualifier))) {
     $AIRoot = Read-Host "Máy không có ổ $(Split-Path $AIRoot -Qualifier). Để các dự án AI ở thư mục nào? (vd. D:\AI)"
 }
 $AIRoot = $AIRoot.TrimEnd('\')
-$hubScripts = Join-Path $AIRoot 'Hion\cai-dat'
+$hubScripts = Join-Path $AIRoot 'TongQuanAI\cai-dat'
 $hubFwd = $hubScripts -replace '\\', '/'
 
 function Copy-Safe($src, $dst) {
@@ -57,7 +72,7 @@ if ($CaiAI) {
 Write-Host "`n[2/9] Cấu hình chung của máy (~\.wez-ai.json)" -ForegroundColor Cyan
 $wezExe = 'C:\Program Files\WezTerm\wezterm.exe'
 if (-not (Test-Path $wezExe)) { $c = Get-Command wezterm -ErrorAction SilentlyContinue; if ($c) { $wezExe = $c.Source } }
-New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot 'Hion'), "$env:LOCALAPPDATA\wez-ai\alerts", "$env:LOCALAPPDATA\wez-ai\state" | Out-Null
+New-Item -ItemType Directory -Force -Path $AIRoot, (Join-Path $AIRoot 'TongQuanAI'), "$env:LOCALAPPDATA\wez-ai\alerts", "$env:LOCALAPPDATA\wez-ai\state" | Out-Null
 # Giữ mọi cài đặt riêng đã có (caDem, nguSauPhut, tuMoLai, chuNhan…), chỉ đặt lại aiRoot + wezterm
 $may = [ordered]@{}
 if (Test-Path "$HOME\.wez-ai.json") {
@@ -80,7 +95,7 @@ if (Test-Path $dk) { & $dk }
 Write-Host "`n[5/9] Claude: thanh trạng thái + hooks (báo động, trạng thái, khoá file)" -ForegroundColor Cyan
 Copy-Safe "$here\claude\statusline.js" "$HOME\.claude\statusline.js"
 $setPath = "$HOME\.claude\settings.json"
-$addText = (Get-Content "$here\claude\settings.phan-them.json" -Raw -Encoding UTF8).Replace('E:/AI/Hion/cai-dat', $hubFwd)
+$addText = (Get-Content "$here\claude\settings.phan-them.json" -Raw -Encoding UTF8).Replace('E:/AI/TongQuanAI/cai-dat', $hubFwd).Replace('C:/Users/TEN-BAN', ($HOME -replace '\\', '/'))
 $add = $addText | ConvertFrom-Json
 $add.statusLine.command = "node `"$($HOME -replace '\\','/')/.claude/statusline.js`""   # đúng thư mục người dùng máy mới
 if (Test-Path $setPath) {
@@ -113,7 +128,7 @@ else {
 # Luật chặn lệnh nguy hiểm cho mọi tài khoản Codex (~\.codex*\rules\default.rules)
 if (Get-Command node -ErrorAction SilentlyContinue) { node (Join-Path $hubScripts 'chan-lenh.js') cai-codex }
 
-Write-Host "`n[7/9] Lệnh tắt PowerShell (ai, ai2, hion, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
+Write-Host "`n[7/9] Lệnh tắt PowerShell (ai, ai2, tqai, bot...) + quy tắc chung của Claude và Codex" -ForegroundColor Cyan
 Copy-Safe "$here\powershell\Microsoft.PowerShell_profile.ps1" $PROFILE
 # Quy tắc chung nằm giữa 2 dòng đánh dấu "wezterm-ai: bat-dau / het" → cài lại chỉ thay đoạn đó, ghi chú riêng của người dùng giữ nguyên
 $rules = (Get-Content "$here\quy-tac\chung.md" -Raw -Encoding UTF8).Replace('E:\AI\', "$AIRoot\").Trim()
@@ -128,14 +143,14 @@ foreach ($dst in "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md") {
     [IO.File]::WriteAllText($dst, $cur, $utf8)
 }
 
-Write-Host "`n[8/9] Tổng quản + bộ mẫu cho dự án ($AIRoot\Hion)" -ForegroundColor Cyan
+Write-Host "`n[8/9] Tổng quản + bộ mẫu cho dự án ($AIRoot\TongQuanAI)" -ForegroundColor Cyan
 # Bộ mẫu chép vào cai-dat\mau (newproj và Tổng quản dùng); file của Tổng quản chỉ tạo khi CHƯA có — không bao giờ ghi đè
 $mauDst = Join-Path $hubScripts 'mau'
 New-Item -ItemType Directory -Force -Path $mauDst | Out-Null
 Copy-Item "$here\mau\*" $mauDst -Recurse -Force
 Write-Host "  ✓ $mauDst" -ForegroundColor Green
-foreach ($f in Get-ChildItem "$here\mau\Hion" -File) {
-    $dst = Join-Path $AIRoot "Hion\$($f.Name)"
+foreach ($f in Get-ChildItem "$here\mau\TongQuanAI" -File) {
+    $dst = Join-Path $AIRoot "TongQuanAI\$($f.Name)"
     if (Test-Path $dst) { Write-Host "  - giữ nguyên $dst (đã có)"; continue }
     [IO.File]::WriteAllText($dst, (Get-Content $f.FullName -Raw -Encoding UTF8).Replace('{{AIROOT}}', $AIRoot), $utf8)
     Write-Host "  ✓ $dst (mới)" -ForegroundColor Green

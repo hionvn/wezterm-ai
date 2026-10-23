@@ -6,9 +6,9 @@
 //   🌙 ĐÊM   — 22:00 → 06:30 chặn (push, deploy, merge PR, gửi email…); ban ngày thì hỏi người dùng
 //   Còn lại cho chạy.
 // Mở tạm cho việc ĐÊM (vd "tổng kết" sau 22h) — NGƯỜI DÙNG tự gõ trong ô Claude:
-//   ! node E:/AI/Hion/cai-dat/chan-lenh.js mo 30      (mở 30 phút; agent tự chạy lệnh này sẽ bị chặn)
+//   ! node E:/AI/TongQuanAI/cai-dat/chan-lenh.js mo 30      (mở 30 phút; agent tự chạy lệnh này sẽ bị chặn)
 //   (dấu / vì lệnh ! của Claude Code chạy bằng Git Bash — dấu \ bị nuốt)
-//   ! node E:\AI\Hion\cai-dat\chan-lenh.js dong
+//   ! node E:\AI\TongQuanAI\cai-dat\chan-lenh.js dong
 // Thử: node chan-lenh.js thu "git push origin main"
 // Nhật ký chặn: %LOCALAPPDATA%\wez-ai\chan-lenh.log
 // Đây là lan can, không phải bảo mật tuyệt đối: lệnh viết vòng (script trong file) vẫn lọt.
@@ -49,7 +49,7 @@ const DEM = [
   [/\bgit\s+push\b/i, 'git push (đẩy code lên GitHub)'],
   [/\bgh\s+(?:pr\s+merge|release\s+create|workflow\s+run)\b/i, 'merge PR / phát hành trên GitHub'],
   // 05/10: chỉ bắt khi `vercel` là LỆNH thật (đầu lệnh / sau ; & | ( / sau npx…), bỏ qua chữ "vercel" trong chuỗi có dấu nháy
-  // (lời nhắn giao việc, mẫu grep "deploy|vercel") — trước đó chặn nhầm Manager + Security Chatbot đứng chờ 8 tiếng.
+  // (lời nhắn giao việc, mẫu grep "deploy|vercel") — trước đó chặn nhầm Manager + Security DuAnA đứng chờ 8 tiếng.
   [{ test: (s) => /(?:^|[;&|(\n]\s*|\b(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+)vercel(?:\.cmd)?(?:\s+[^;|&\n]*?(?:--prod\b|\bdeploy\b|\bpromote\b)|\s*(?:$|[;&|)\n]))/i.test(s.replace(/"[^"]*"|'[^']*'/g, '""'))
       || /\bdeploy-env\.cjs\b[^;|&\n]*--vercel\b/i.test(s.replace(/"[^"]*"|'[^']*'/g, '""')) }, 'deploy Vercel'],
   [/\b(?:netlify|firebase|wrangler|fly|railway)\s+deploy\b/i, 'deploy'],
@@ -68,8 +68,8 @@ const MCP_DEM = [
 
 // Dự án được tự git push ban ngày (repo riêng tư) — khớp mục 8 "Đã cho phép" trong quy-trinh-lien-mach.md.
 // Đêm vẫn chặn; push ép / công khai repo vẫn CẤM.
-// 08/10 Hion: "Làm xong thì tự commit tự push" → mọi repo riêng tư (wezterm-ai công khai vẫn hỏi)
-const TU_PUSH = [/[\\/]AI[\\/](?:Chatbot|Coolguy|Sino|1Bill|Aff|KhoAI|Hion)(?=[\\/\s"';&]|$)/i];
+// 08/10 TongQuanAI: "Làm xong thì tự commit tự push" → mọi repo riêng tư (wezterm-ai công khai vẫn hỏi)
+const TU_PUSH = [/[\\/]AI[\\/](?:DuAnA|DuAnC|DuAnB|DuAnD|DuAnE|DuAnF|TongQuanAI)(?=[\\/\s"';&]|$)/i];
 
 function laDem(d = new Date()) {
   const p = d.getHours() * 60 + d.getMinutes();
@@ -130,7 +130,7 @@ if (cmd === 'hook') {
       traLoi('deny', '⛔ Worker ngầm không được mở Windows Sandbox (cửa sổ máy ảo làm máy người dùng lag) — ghi việc cần thử sandbox vào brief cho Tổng quản chạy tay.');
     } else if (muc === 'cam') {
       traLoi('deny', `⛔ Chặn cứng: ${ly}. Lệnh này không bao giờ được AI tự chạy. ` +
-        'Nếu thật sự cần: ghi vào bàn duyệt (node E:\\AI\\Hion\\cai-dat\\duyet.js them <dự án> "…") để người dùng tự làm tay, rồi làm việc khác.');
+        'Nếu thật sự cần: ghi vào bàn duyệt (node E:\\AI\\TongQuanAI\\cai-dat\\duyet.js them <dự án> "…") để người dùng tự làm tay, rồi làm việc khác.');
     } else if (muc === 'dem') {
       traLoi('deny', `🌙 Ca đêm (22:00–06:30) không được: ${ly}. Ghi vào bàn duyệt (duyet.js them) để sáng người dùng bấm, rồi làm việc kế tiếp — đừng đứng chờ, đừng tìm đường vòng.`);
     } else if (process.env.WEZ_NGAM) {

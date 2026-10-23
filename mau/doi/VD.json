@@ -1,7 +1,7 @@
 {
     "du_an": "VD",
     "logo": "🧪",
-    "ghi_chu": "Đội mẫu. Đổi tên file + du_an thành đúng tên thư mục dự án trong E:\\AI, chép vào E:\\AI\\Hion\\doi\\. ngam: true = worker chạy ngầm (không có ô).",
+    "ghi_chu": "Đội mẫu. Đổi tên file + du_an thành đúng tên thư mục dự án trong E:\\AI, chép vào E:\\AI\\TongQuanAI\\doi\\. ngam: true = worker chạy ngầm (không có ô).",
     "ngam": true,
     "manager": {
         "vai": "Manager",

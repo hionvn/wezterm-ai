@@ -6,7 +6,7 @@ local VIEWER = { 'powershell.exe', '-NoLogo', '-NoProfile', '-ExecutionPolicy', 
 local BOARD = { 'node', HUB .. '\\cai-dat\\bang-doi.js' }
 
 -- Đóng ĐÚNG ô theo số ô. KHÔNG dùng perform_action(CloseCurrentPane, ô): lệnh đó đóng ô ĐANG CHỌN của tab,
--- không phải ô truyền vào → 02/10 22h47 mở tài liệu 📄 mới đã đóng nhầm ô Manager Chatbot.
+-- không phải ô truyền vào → 02/10 22h47 mở tài liệu 📄 mới đã đóng nhầm ô Manager DuAnA.
 local function kill_pane(p)
   wezterm.background_child_process { wezterm.executable_dir .. '\\wezterm.exe', 'cli', '--no-auto-start',
     'kill-pane', '--pane-id', tostring(p:pane_id()) }
@@ -153,7 +153,7 @@ local pull_menu = wezterm.action_callback(function(window, pane)
   }, pane)
 end)
 
--- Ctrl+Shift+H: tab mới "Tổng quản" = Claude ở Hion bên trái + ô tài liệu cần duyệt bên phải
+-- Ctrl+Shift+H: tab mới "Tổng quản" = Claude ở TongQuanAI bên trái + ô tài liệu cần duyệt bên phải
 local open_desk = wezterm.action_callback(function(window, _)
   local tab, p = window:mux_window():spawn_tab { cwd = HUB, args = PS('claudeRC') }
   p:split { direction = 'Right', size = 0.38, cwd = HUB, args = VIEWER }
@@ -163,7 +163,7 @@ end)
 
 -- Ctrl+Shift+A: chọn dự án + AI từ danh sách, rồi chọn mở ở ô phải / ô dưới / tab mới
 local AIS = { { '🤖 Claude', 'claudeRC' }, { '🧩 Codex', 'codex' } } -- Gemini đã bỏ (02/10/2026)
--- Thứ tự theo cây đội agent ở Hion\cay-du-an.json: Tổng quản → các PM dự án → công cụ; thư mục khác xếp cuối
+-- Thứ tự theo cây đội agent ở TongQuanAI\cay-du-an.json: Tổng quản → các PM dự án → công cụ; thư mục khác xếp cuối
 local function projects()
   local dirs, seen, t = {}, {}, {}
   for _, path in ipairs(wezterm.read_dir(AI_ROOT)) do

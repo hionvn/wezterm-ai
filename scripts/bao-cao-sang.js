@@ -1,5 +1,5 @@
 // Báo cáo sáng của Tổng quản: một trang ngắn, nhìn là hiểu (sơ đồ cây đội agent, thanh tiến độ, biểu đồ nhỏ).
-//   node bao-cao-sang.js [--mo]   # viết E:\AI\Hion\bao-cao\<yyyy-mm-dd>.html (+ .md ngắn cho AI / điện thoại); --mo = mở trang trên trình duyệt
+//   node bao-cao-sang.js [--mo]   # viết E:\AI\TongQuanAI\bao-cao\<yyyy-mm-dd>.html (+ .md ngắn cho AI / điện thoại); --mo = mở trang trên trình duyệt
 // ~/.wezterm.lua tự chạy mỗi ngày từ 7 giờ (lần đầu WezTerm mở). Chỉ đọc file + git, không sửa dự án nào.
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +14,7 @@ function aiRoot() {
   return 'E:\\AI';
 }
 const ROOT = aiRoot();
-const HUB = path.join(ROOT, 'Hion');
+const HUB = path.join(ROOT, 'TongQuanAI');
 const read = (f) => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'); } catch (_) { return ''; } };
 const readJson = (f) => { try { return JSON.parse(read(f)); } catch (_) { return null; } };
 const git = (dir, ...a) => { try { return execFileSync('git', ['-C', dir, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return null; } };
@@ -37,10 +37,10 @@ const thu = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 
 const days7 = [...Array(7)].map((_, i) => new Date(d - (6 - i) * 864e5));
 
 // ---------- Dữ liệu ----------
-// 1Bill: Ngày X/100 + tiền cộng dồn (chỉ tiền đã về, ghi ở so-tien.md)
+// DuAnD: Ngày X/100 + tiền cộng dồn (chỉ tiền đã về, ghi ở so-tien.md)
 const START = new Date(2026, 9, 2);
 const dayN = Math.min(100, Math.max(1, Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - START) / 864e5) + 1));
-const tienTxt = (read(path.join(ROOT, '1Bill', 'so-tien.md')).match(/Cộng dồn:\s*([\d.]+)\s*đ/) || [])[1] || '0';
+const tienTxt = (read(path.join(ROOT, 'DuAnD', 'so-tien.md')).match(/Cộng dồn:\s*([\d.]+)\s*đ/) || [])[1] || '0';
 const tien = Number(tienTxt.replace(/\./g, '')) || 0;
 const mucTieu = dayN * 10_000_000;
 const trieu = (v) => (!v ? '0 đ' : v >= 1e9 ? (v / 1e9).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' tỷ' : Math.round(v / 1e6).toLocaleString('vi-VN') + ' triệu');
@@ -55,7 +55,7 @@ const quyetDinh = read(path.join(HUB, 'quyet-dinh.md')).split('\n').filter((l) =
 const demQua = read(path.join(HUB, 'ca-dem', `bao-cao-${today}.md`)).split('\n')
   .filter((l) => l.trim() && !/^#\s/.test(l)).map((l) => plain(l.replace(/^[-*]\s*/, ''))).slice(0, 12);
 
-// Cây dự án (Hion\cay-du-an.json) + mọi thư mục có AGENTS.md
+// Cây dự án (TongQuanAI\cay-du-an.json) + mọi thư mục có AGENTS.md
 const cay = (readJson(path.join(HUB, 'cay-du-an.json')) || {}).cay || [];
 const dirs = fs.readdirSync(ROOT, { withFileTypes: true }).filter((e) => e.isDirectory() && fs.existsSync(path.join(ROOT, e.name, 'AGENTS.md'))).map((e) => e.name);
 const order = [...cay.filter((n) => dirs.includes(n.ten)), ...dirs.filter((n) => !cay.some((c) => c.ten === n)).sort().map((n) => ({ ten: n, cap: -1, bieuTuong: '·', vai: 'khác' }))];
@@ -127,12 +127,12 @@ function node(p) {
   ].join('');
   const lam = p.lam[0] ? `<p class="now">⏳ ${esc(cut(p.lam[0], 110))}</p>` : '';
   const more = (p.lam.length > 1 || p.ket.length) ? `<details><summary>Chi tiết</summary>${p.lam.slice(1).map((l) => `<p>⏳ ${esc(l)}</p>`).join('')}${p.ket.map((l) => `<p>🧱 ${esc(l)}</p>`).join('')}</details>` : '';
-  return `<div class="node lv${p.cap}${p.ten === 'Hion' ? ' boss' : ''}"><div class="nh"><span class="ic">${p.bieuTuong || '·'}</span><b>${esc(p.ten)}</b><span class="role">${esc(p.vai || '')}</span></div>
+  return `<div class="node lv${p.cap}${p.ten === 'TongQuanAI' ? ' boss' : ''}"><div class="nh"><span class="ic">${p.bieuTuong || '·'}</span><b>${esc(p.ten)}</b><span class="role">${esc(p.vai || '')}</span></div>
     <div class="nb">${spark(p.commits)}<span class="cnt">${tong} commit / 7 ngày</span></div>${chips ? `<div class="chips">${chips}</div>` : ''}${lam}${more}</div>`;
 }
-const root = projects.filter((p) => p.cap === 0 && p.ten === 'Hion');
+const root = projects.filter((p) => p.cap === 0 && p.ten === 'TongQuanAI');
 const pms = projects.filter((p) => p.cap === 1);
-const tools = projects.filter((p) => !(p.cap === 0 && p.ten === 'Hion') && p.cap !== 1);
+const tools = projects.filter((p) => !(p.cap === 0 && p.ten === 'TongQuanAI') && p.cap !== 1);
 const pctTien = Math.min(100, (tien / 1e9) * 100), pctNgay = (dayN / 100) * 100;
 const cham = tien < mucTieu;
 
@@ -181,21 +181,21 @@ footer{font-size:.78rem;color:var(--muted)}
 </style></head><body><div class="wrap">
 <header><h1>☀️ Báo cáo sáng · ${thu} ${todayVN}</h1></header>
 
-<section class="card hero" aria-label="Tiến độ 1Bill">
+<section class="card hero" aria-label="Tiến độ DuAnD">
   <div class="day">Ngày ${dayN}<small>/100</small></div>
   <div class="prog">
     <div class="row"><span>💰 Tiền đã về</span><span class="track"><span class="fill" style="width:${pctTien}%"></span></span><b>${trieu(tien)}</b></div>
     <div class="row"><span>📅 Thời gian</span><span class="track"><span class="fill" style="width:${pctNgay}%;opacity:.45"></span></span><span>${dayN}%</span></div>
-    <div class="verdict ${cham ? 'bad' : 'ok'}">${cham ? `⚠️ Chậm ${trieu(mucTieu - tien)} so với mục tiêu tới hôm nay (${trieu(mucTieu)}).` : '✅ Đúng hoặc vượt mục tiêu tới hôm nay.'} Nguồn tiền: Chatbot.</div>
+    <div class="verdict ${cham ? 'bad' : 'ok'}">${cham ? `⚠️ Chậm ${trieu(mucTieu - tien)} so với mục tiêu tới hôm nay (${trieu(mucTieu)}).` : '✅ Đúng hoặc vượt mục tiêu tới hôm nay.'} Nguồn tiền: DuAnA.</div>
   </div>
 </section>
 
-${demQua.length ? `<section class="card"><h2>🌙 Đêm qua đội agent làm</h2><ul class="qd">${demQua.map((q) => `<li>${esc(cut(q, 200))}</li>`).join('')}</ul><p class="muted" style="font-size:.8rem;margin:10px 0 0">Chi tiết: Hion\\ca-dem\\bao-cao-${today}.md · eval: Hion\\learn\\</p></section>` : ''}
+${demQua.length ? `<section class="card"><h2>🌙 Đêm qua đội agent làm</h2><ul class="qd">${demQua.map((q) => `<li>${esc(cut(q, 200))}</li>`).join('')}</ul><p class="muted" style="font-size:.8rem;margin:10px 0 0">Chi tiết: TongQuanAI\\ca-dem\\bao-cao-${today}.md · eval: TongQuanAI\\learn\\</p></section>` : ''}
 
 <div class="grid2">
   <section class="card"><h2>🔔 Chờ anh duyệt (${cho.length})</h2>
     ${cho.length ? `<ol class="todo">${cho.map((c) => `<li><span>${c.tag ? `<span class="tag">${esc(c.tag)}</span>` : ''}${esc(cut(c.text, 150))}</span></li>`).join('')}</ol>` : '<p class="muted">✅ Không có việc nào.</p>'}
-    <p class="muted" style="font-size:.8rem;margin:10px 0 0">Bấm nút trong ô 📋 (Ctrl+Shift+J) hoặc nhắn Hion "duyệt 1".</p>
+    <p class="muted" style="font-size:.8rem;margin:10px 0 0">Bấm nút trong ô 📋 (Ctrl+Shift+J) hoặc nhắn TongQuanAI "duyệt 1".</p>
   </section>
   <section class="card"><h2>⛽ Hạn mức AI</h2><div class="fuel">
     ${fuel.map((f) => `<div class="fuelgrp"><b>${esc(f.ten)}${f.duAn ? ` <span class="muted">· ${esc(f.duAn)}</span>` : ''}</b>${meter('5 giờ', f.five)}${meter('Tuần', f.week, f.cu ? 'số từ phiên cũ hơn 5 giờ, có thể đã làm mới' : '')}</div>`).join('') || '<p class="muted">Chưa có số liệu.</p>'}
@@ -211,7 +211,7 @@ ${demQua.length ? `<section class="card"><h2>🌙 Đêm qua đội agent làm</h
 </section>
 
 ${quyetDinh.length ? `<section class="card"><h2>📝 Quyết định hôm qua / hôm nay</h2><ul class="qd">${quyetDinh.map((q) => `<li>${esc(cut(q, 180))}</li>`).join('')}</ul></section>` : ''}
-<footer>Tạo tự động lúc ${pad(d.getHours())}:${pad(d.getMinutes())} bởi Hion\\cai-dat\\bao-cao-sang.js · chỉ đọc file và git, không sửa dự án nào.</footer>
+<footer>Tạo tự động lúc ${pad(d.getHours())}:${pad(d.getMinutes())} bởi TongQuanAI\\cai-dat\\bao-cao-sang.js · chỉ đọc file và git, không sửa dự án nào.</footer>
 </div></body></html>`;
 
 // ---------- Bản .md ngắn (cho AI và điện thoại) ----------

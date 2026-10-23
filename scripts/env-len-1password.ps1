@@ -1,11 +1,11 @@
-﻿# Đẩy key trong file .env của một dự án lên 1Password (kho "Chatbot" hoặc kho tự chọn) — KHÔNG in giá trị ra màn hình.
+﻿# Đẩy key trong file .env của một dự án lên 1Password (kho "DuAnA" hoặc kho tự chọn) — KHÔNG in giá trị ra màn hình.
 # Người dùng tự chạy (AI không đọc file .env). Cần: app 1Password đã bật Settings → Developer → "Integrate with 1Password CLI".
-# Dùng:  E:\AI\Hion\cai-dat\env-len-1password.ps1 -File E:\AI\Chatbot\.env [-Vault Chatbot] [-Ten "Chatbot .env"]
+# Dùng:  E:\AI\TongQuanAI\cai-dat\env-len-1password.ps1 -File E:\AI\DuAnA\.env [-Vault DuAnA] [-Ten "DuAnA .env"]
 # Kết quả: 1 mục (Secure Note / API Credential) tên "<Ten>", mỗi dòng KEY=giá trị thành 1 trường mật (concealed).
-# Sau đó agent lấy key bằng: op read "op://Chatbot/Chatbot .env/BOTCAKE_TOKEN"  (1Password hỏi vân tay/mật khẩu mỗi phiên)
+# Sau đó agent lấy key bằng: op read "op://AI/DuAnA .env/BOTCAKE_TOKEN"  (1Password hỏi vân tay/mật khẩu mỗi phiên)
 param(
     [Parameter(Mandatory)][string]$File,
-    [string]$Vault = 'Chatbot',
+    [string]$Vault = 'DuAnA',
     [string]$Ten
 )
 if (-not (Test-Path $File)) { Write-Host "Không thấy file $File" -ForegroundColor Red; exit 1 }

@@ -1,4 +1,4 @@
--- Báo cáo sáng: mỗi ngày từ 7 giờ, lần đầu WezTerm chạy thì Tổng quản gom tiến độ + việc chờ duyệt → Hion\bao-cao\<ngày>.md và bật lên
+-- Báo cáo sáng: mỗi ngày từ 7 giờ, lần đầu WezTerm chạy thì Tổng quản gom tiến độ + việc chờ duyệt → TongQuanAI\bao-cao\<ngày>.md và bật lên
 local function morning_report()
   local today = wezterm.strftime('%Y-%m-%d')
   if wezterm.GLOBAL.bao_cao_ngay == today or tonumber(wezterm.strftime('%H')) < 7 then return end

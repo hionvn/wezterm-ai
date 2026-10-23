@@ -3,16 +3,16 @@
 // Quy tắc (sửa 03/10/2026 theo cách thầy Sơn — Linear chỉ giữ VIỆC, không chép dòng trạng thái):
 //   ⏳ "Đang làm" trong tien-do      → KHÔNG đồng bộ nữa (là ghi chú trạng thái; việc thật tạo bằng linear.js tao từ brief)
 //   🧱 "Đang kẹt"                    → Todo · nhãn "Kẹt"
-//   🔔 việc chờ Hion duyệt (ô 📋)    → Todo · nhãn "Cần Hion" · ưu tiên High
+//   🔔 việc chờ TongQuanAI duyệt (ô 📋)    → Todo · nhãn "Cần TongQuanAI" · ưu tiên High
 //   Việc đã có ticket mà không còn trong nguồn (đã xong / đã duyệt) → chuyển Done + bình luận.
-// Sổ ghi nhớ: %LOCALAPPDATA%\wez-ai\linear-map.json { khoá: { id, cot } }. Key lấy từ 1Password (op://Chatbot/Linear/credential).
+// Sổ ghi nhớ: %LOCALAPPDATA%\wez-ai\linear-map.json { khoá: { id, cot } }. Key lấy từ 1Password (op://AI/Linear/credential).
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const THU = process.argv.includes('--thu');
-const HUB = 'E:\\AI\\Hion';
+const HUB = 'E:\\AI\\TongQuanAI';
 const MAP = path.join(process.env.LOCALAPPDATA || '.', 'wez-ai', 'linear-map.json');
 const TEAM_KEY = 'HIO';
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
@@ -21,7 +21,7 @@ function key() {
   const ops = [path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'WinGet', 'Links', 'op.exe'), 'op'];
   for (const op of ops) {
     if (op !== 'op' && !fs.existsSync(op)) continue;
-    try { return execFileSync(op, ['read', 'op://Chatbot/Linear/credential'], { encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+    try { return execFileSync(op, ['read', 'op://AI/Linear/credential'], { encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
   }
   return null;
 }
@@ -52,7 +52,7 @@ async function q(query, variables = {}) {
   }
   for (const c of b.choDuyet) {
     const m = c.match(/^\[([^\]]+)\]\s*(.*)$/);
-    them(m ? m[1] : 'Hion', 'duyet', m ? m[2] : c);
+    them(m ? m[1] : 'TongQuanAI', 'duyet', m ? m[2] : c);
   }
 
   let map = {};
@@ -78,16 +78,16 @@ async function q(query, variables = {}) {
     return (nhan[ten] = r.issueLabelCreate.issueLabel.id);
   };
   const UU = { lam: 3, ket: 2, duyet: 2 };
-  const PROJECT = { Chatbot: '💬 Chatbot', Sino: '🛏️ Sino', Coolguy: '💈 Coolguy', Aff: '🎯 Aff Radar', '1Bill': '💰 1Bill', Hion: '👑 Hệ thống đội AI', 'wezterm-ai': '👑 Hệ thống đội AI' };
+  const PROJECT = { DuAnA: '💬 DuAnA', DuAnB: '🛏️ DuAnB', DuAnC: '💈 DuAnC', DuAnE: '🎯 DuAnE Radar', 'DuAnD': '💰 DuAnD', TongQuanAI: '👑 Hệ thống đội AI', 'wezterm-ai': '👑 Hệ thống đội AI' };
   const pj = Object.fromEntries((await q('{ projects(first:50){ nodes { id name } } }')).projects.nodes.map((p) => [p.name, p.id]));
 
   // 4) Tạo mới
   for (const w of moi) {
     const labels = [await lay(`Dự án: ${w.duAn}`, '#8b5cf6')];
     if (w.loai === 'ket') labels.push(await lay('Kẹt', '#eb5757'));
-    if (w.loai === 'duyet') labels.push(await lay('Cần Hion', '#f2c94c'));
+    if (w.loai === 'duyet') labels.push(await lay('Cần TongQuanAI', '#f2c94c'));
     const r = await q('mutation($i:IssueCreateInput!){ issueCreate(input:$i){ issue { identifier } } }',
-      { i: { teamId: t.id, title: w.title, description: `${w.desc}\n\n_Tự đồng bộ từ Company Brain (Hion\\brain) — sửa ở file tiến độ của dự án, không sửa ở đây._`, priority: UU[w.loai], stateId: cot[w.loai], labelIds: labels, ...(pj[PROJECT[w.duAn]] ? { projectId: pj[PROJECT[w.duAn]] } : {}) } });
+      { i: { teamId: t.id, title: w.title, description: `${w.desc}\n\n_Tự đồng bộ từ Company Brain (TongQuanAI\\brain) — sửa ở file tiến độ của dự án, không sửa ở đây._`, priority: UU[w.loai], stateId: cot[w.loai], labelIds: labels, ...(pj[PROJECT[w.duAn]] ? { projectId: pj[PROJECT[w.duAn]] } : {}) } });
     map[w.k] = { id: r.issueCreate.issue.identifier, loai: w.loai, cot: w.loai };
     console.log(`  + ${r.issueCreate.issue.identifier} [${w.duAn}/${w.loai}] ${cut(w.title, 70)}`);
   }
@@ -108,5 +108,5 @@ async function q(query, variables = {}) {
   }
   fs.mkdirSync(path.dirname(MAP), { recursive: true });
   fs.writeFileSync(MAP, JSON.stringify(map, null, 2));
-  console.log(`✅ Xong. Board: https://linear.app/hionvn/team/${TEAM_KEY}/active`);
+  console.log(`✅ Xong. Board: https://linear.app/ten-ban/team/${TEAM_KEY}/active`);
 })().catch((e) => { console.error('❌', e.message); process.exitCode = 1; });

@@ -4,7 +4,7 @@
 #   ... -Kiem    chỉ kiểm có bản mới không, ghi %LOCALAPPDATA%\wez-ai\ban-moi.json (WezTerm đọc để báo)
 #   ... -Ep      chạy cả trên máy chủ ("chuNhan": true trong ~\.wez-ai.json)
 # Cài lại = khoi-phuc.ps1 -CapNhat: file giống hệt thì bỏ qua, file khác thì sao lưu .bak-<giờ> rồi ghi đè;
-# cài đặt riêng trong ~\.wez-ai.json và file của Tổng quản (Hion\*.md) giữ nguyên.
+# cài đặt riêng trong ~\.wez-ai.json và file của Tổng quản (<thư mục Tổng quản>\*.md) giữ nguyên.
 param([switch]$Kiem, [switch]$Ep)
 $ErrorActionPreference = 'Continue'
 $here = $PSScriptRoot

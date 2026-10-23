@@ -1,12 +1,12 @@
 // ngam.js — worker CHẠY NGẦM (06/10/2026): không mở ô WezTerm, mỗi việc chạy 1 lần `claude -p` / `codex exec` trong nền,
-// tiếp tục ĐÚNG phiên của vai (nhớ việc trước). Bật trong Hion\doi\<dự án>.json: "ngam": true cho cả đội, hoặc từng vai
+// tiếp tục ĐÚNG phiên của vai (nhớ việc trước). Bật trong TongQuanAI\doi\<dự án>.json: "ngam": true cho cả đội, hoặc từng vai
 // ("ngam": false ở vai = đưa vai đó trở lại ô). Luôn giữ trong ô (bỏ qua "ngam"): vai Grok · vai "rc": true (Remote Control
 // trên điện thoại) · vai "giuO": "<lý do>" (cần dừng lại hỏi duyệt / dùng Chrome) · AI khác Claude/Codex.
 // wez.ps1 send / cho / read tự chuyển sang đây khi vai chạy ngầm. Lệnh tay:
 //   node ngam.js ds                       bảng mọi vai ngầm: ⏳ chạy · ⌛ hàng chờ · 🟢 rảnh · ⌛ quá hạn · ⛔ lỗi
-//   node ngam.js log Sino.Bot [dòng] [-f] xem log việc đang/vừa chạy (-f = theo dõi liên tục, Ctrl+C thoát)
-//   node ngam.js cho Sino.Bot[,Sino.SoLieu] [giây]   đợi xong, in kết quả (mã 0 xong · 1 quá hạn/lỗi · 2 hết giờ chờ)
-//   node ngam.js dung Sino.Bot            dừng việc đang chạy / bỏ khỏi hàng chờ · dung-het: dừng mọi việc ngầm
+//   node ngam.js log DuAnB.Bot [dòng] [-f] xem log việc đang/vừa chạy (-f = theo dõi liên tục, Ctrl+C thoát)
+//   node ngam.js cho DuAnB.Bot[,DuAnB.SoLieu] [giây]   đợi xong, in kết quả (mã 0 xong · 1 quá hạn/lỗi · 2 hết giờ chờ)
+//   node ngam.js dung DuAnB.Bot            dừng việc đang chạy / bỏ khỏi hàng chờ · dung-het: dừng mọi việc ngầm
 // Cấu hình chung ~\.wez-ai.json: "ngam": { "toiDa": 4 (số worker ngầm chạy cùng lúc, dư thì xếp hàng), "phut": 30 (giới hạn
 // mỗi việc; vai/đội ghi đè bằng "ngamPhut"), "token": 120000 (phiên dài hơn → tóm tắt rồi mở phiên mới) }
 // Dữ liệu: %LOCALAPPDATA%\wez-ai\ngam\<DựÁn.Vai>.json (trạng thái) · log\<DựÁn.Vai>\<giờ>.log · ket-qua\<DựÁn.Vai>-<giờ>.md · tom-tat\
@@ -77,16 +77,16 @@ const HET_MUC = /usage limit|rate.?limit|\b429\b|quota|exhaust|insufficient|out 
 const GROK_HET = path.join(WEZAI, 'grok-het.json');
 const API_KEY_F = path.join(WEZAI, 'anthropic-key.txt'), API_CHI = path.join(WEZAI, 'api-chi.json');
 const grokHet = () => ((readJson(GROK_HET) || {}).den || 0) > now();
-// 18/10: vai còn để "claude" mà cả 2 Claude hết → chạy GPT qua 9router (hết thì Codex tài khoản riêng). Vai router (mặc định đội Muse)
-// đi GPT trước, 9router hết → Claude chính → Claude hionvn (claudeTk). Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
-// 19/10 người dùng: "Hết grok hết 9router mới chuyển sang vuanhtuanfpt, hết vuanhtuanfpt mới chuyển sang hionvn"
-// → mọi worker (trừ vai Codex tài khoản riêng, vai chỉ đọc "chan" = Claude) đi Grok → 9router → Claude (claudeTk: vuanhtuanfpt → hionvn).
+// 18/10: vai còn để "claude" mà cả 2 Claude hết → chạy GPT qua 9router (hết thì Codex tài khoản riêng). Vai router (mặc định đội DuAnG)
+// đi GPT trước, 9router hết → Claude chính → Claude tkchinh (claudeTk). Grok chỉ chạy trong ô (wez.ps1), không có ở chạy ngầm.
+// 19/10 người dùng: "Hết grok hết 9router mới chuyển sang tkphumail, hết tkphumail mới chuyển sang tkchinh"
+// → mọi worker (trừ vai Codex tài khoản riêng, vai chỉ đọc "chan" = Claude) đi Grok → 9router → Claude (claudeTk: tkphumail → tkchinh).
 // 23/10 (người dùng: "anthropic còn nhiều"): còn ngân sách API thì Claude (khoá API trực tiếp) đi TRƯỚC Grok/9router
-const thuTu = () => (apiCon() ? 'claude' : fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
-const riengVai = (w) => !!w.chan; // 19/10: cả vai Codex thường cũng theo thứ tự (Codex tài khoản riêng hết 5h → 403/usage limit hàng loạt)
+const thuTu = () => (apiCon() && !MAY.apiChiEp ? 'claude' : fs.existsSync(GROK) && !grokHet() ? 'grok' : !routerHet() ? 'router' : 'claude');
+const riengVai = (w) => !!w.chan || !!w.epClaude; // 19/10: cả vai Codex thường cũng theo thứ tự (Codex tài khoản riêng hết 5h → 403/usage limit hàng loạt)
 const vaiDuPhong = (w) => (riengVai(w) ? w : { ...w, router: thuTu() === 'router' });
 function aiThat(d, w) {
-  if (w.chan) return 'claude';
+  if (w.chan || w.epClaude) return 'claude'; // epClaude (23/10): Tổng quản tạm ép 1 vai chạy Claude cho việc code khó
   if (!riengVai(w)) { const t = thuTu(); return t === 'router' ? 'codex' : t; }
   const t = (readJson(path.join(WEZAI, 'ai-tam.json')) || {})[`${d.du_an}.${w.vai}`];
   return t ? 'claude' : 'codex'; // ponytail: Codex hết → Claude luôn (Grok chỉ chạy trong ô)
@@ -132,23 +132,23 @@ function claudeGanHet() {
   if ((f.week || 0) >= tuan && !(f.week_reset && t >= f.week_reset)) return `Claude tuần ${f.week}% ≥ ${tuan}% — hồi ${new Date(f.week_reset * 1000).toLocaleString('vi-VN')}`;
   return '';
 }
-// 18/10 (người dùng: "thêm acc claude cũ hionvn, hết hạn mức thì chuyển"): hồ sơ Claude thứ 2 ở ~\.claude-tk2
+// 18/10 (người dùng: "thêm acc claude cũ tkchinh, hết hạn mức thì chuyển"): hồ sơ Claude thứ 2 ở ~\.claude-tk2
 // (đăng nhập 1 lần: $env:CLAUDE_CONFIG_DIR="$HOME\.claude-tk2"; claude → /login). projects\ nối junction về ~\.claude\projects
 // để --resume phiên cũ chạy được ở cả 2 tài khoản. Tài khoản đang hết (báo lỗi hạn mức) ghi claude-het-<tk>.json.
 const TK2 = path.join(require('os').homedir(), '.claude-tk2');
-// 22/10 (người dùng: "hionvn điều khiển lâu dài, vuanhtuanfpt chỉ để code"): app Claude trên máy chuyển sang hionvn nên ~\.claude
-// không còn là vuanh → tài khoản chính của worker ở hồ sơ riêng ~\.claude-vuanh. Chưa đăng nhập hồ sơ đó thì vẫn dùng ~\.claude như cũ.
-const VUANH = path.join(require('os').homedir(), '.claude-vuanh');
+// 22/10 (người dùng: "tkchinh điều khiển lâu dài, tkphumail chỉ để code"): app Claude trên máy chuyển sang tkchinh nên ~\.claude
+// không còn là tkphu → tài khoản chính của worker ở hồ sơ riêng ~\.claude-tkphu. Chưa đăng nhập hồ sơ đó thì vẫn dùng ~\.claude như cũ.
+const TKPHU = path.join(require('os').homedir(), '.claude-tkphu');
 const tkHetF = (tk) => path.join(WEZAI, `claude-het-${tk}.json`);
 const tkHet = (tk) => ((readJson(tkHetF(tk)) || {}).den || 0) > now();
 // Trả 'chinh' | 'tk2' | '' (cả 2 đang hết). Ưu tiên tài khoản chính; chính hồi là quay về.
 function claudeTk() {
-  // 18/10 người dùng chốt: worker = GPT qua 9router trước; 9router hết → Claude chính → Claude hionvn (tk2) CUỐI CÙNG
-  // (hionvn ưu tiên cho Tổng quản điều khiển).
-  // 19/10 người dùng: "worker làm với grok, 9router và claude hionvn, phiên này giữ làm tổng quản" → worker KHÔNG dùng tài khoản chính
-  // 19/10 sau: "Chuyển tổng quản sang hionvn" → đảo lại: Tổng quản dùng hionvn, worker CHỈ dùng tài khoản chính vuanhtuanfpt
-  // 19/10 cuối: hionvn là tài khoản chính (Tổng quản + mọi ô Claude) → fuel-claude.json giờ là hạn mức hionvn;
-  // worker dùng vuanhtuanfpt trước (chỉ đổi khi báo lỗi hạn mức), hết mới mượn hionvn tới ngưỡng "claudeDung".
+  // 18/10 người dùng chốt: worker = GPT qua 9router trước; 9router hết → Claude chính → Claude tkchinh (tk2) CUỐI CÙNG
+  // (tkchinh ưu tiên cho Tổng quản điều khiển).
+  // 19/10 người dùng: "worker làm với grok, 9router và claude tkchinh, phiên này giữ làm tổng quản" → worker KHÔNG dùng tài khoản chính
+  // 19/10 sau: "Chuyển tổng quản sang tkchinh" → đảo lại: Tổng quản dùng tkchinh, worker CHỈ dùng tài khoản chính tkphumail
+  // 19/10 cuối: tkchinh là tài khoản chính (Tổng quản + mọi ô Claude) → fuel-claude.json giờ là hạn mức tkchinh;
+  // worker dùng tkphumail trước (chỉ đổi khi báo lỗi hạn mức), hết mới mượn tkchinh tới ngưỡng "claudeDung".
   if (!tkHet('chinh')) return 'chinh';
   if (fs.existsSync(path.join(TK2, '.credentials.json')) && !tkHet('tk2') && !claudeGanHet()) return 'tk2';
   return '';
@@ -156,7 +156,8 @@ function claudeTk() {
 // 23/10 (người dùng: "cho các worker dùng trực tiếp api"): còn ngân sách API ("apiNganSach" USD, cộng dồn api-chi.json) thì việc Claude
 // không phải chờ gói hồi — chạy bằng ANTHROPIC_API_KEY (gắn ở chayAI).
 const apiCon = () => { try { return !!fs.readFileSync(path.join(WEZAI, 'anthropic-key.txt'), 'utf8').trim() && ((readJson(path.join(WEZAI, 'api-chi.json')) || {}).usd || 0) < (MAY.apiNganSach ?? 100); } catch { return false; } };
-const claudeHetHan = () => (claudeTk() || apiCon() ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
+// apiChiEp (23/10): tiền API chỉ cho vai epClaude, cả đội vẫn Grok/9router
+const claudeHetHan = () => (claudeTk() || (apiCon() && !MAY.apiChiEp) ? '' : (claudeGanHet() || 'cả 2 tài khoản Claude đang hết hạn mức'));
 // ===== Tự lấy việc (07/10, người dùng: "không cho phép các worker nghỉ, hãy cho làm việc liên tục") =====
 // Vai ngầm rảnh > 1 phút (Manager chưa giao lô kế) → tự xếp 1 việc "tự lấy việc". Trả lời "KHÔNG CÒN VIỆC" / lỗi
 // → nghỉ 2 phút rồi tự lấy lại. 08/10 (người dùng: "giao việc liên tục chứ để nghỉ thế"): đo lượt TB 2 phút, 45% báo
@@ -287,7 +288,7 @@ function dieuPhoi() {
     for (const { key, st } of hang) {
       if (dangChay >= TOI_DA || taiCao) break;
       const v = timVai(key);
-      if (claudeHet && v && aiThat(v.d, v.w) === 'claude') continue; // Claude gần hết hạn mức → việc Claude chờ, việc Codex vẫn chạy
+      if (claudeHet && v && aiThat(v.d, v.w) === 'claude' && !(v.w.epClaude && apiCon())) continue; // Claude gần hết hạn mức → việc Claude chờ, việc Codex vẫn chạy
       const c = cp.spawn(process.execPath, [__filename, 'chay', key], { detached: true, stdio: 'ignore', windowsHide: true, cwd: HUB });
       c.unref();
       st.trang_thai = 'chay'; st.pid = c.pid; st.bat_dau = now();
@@ -299,14 +300,14 @@ function dieuPhoi() {
 
 // ===== lời giao vai cho phiên mới =====
 const LUAT_NGAM = 'BẠN ĐANG CHẠY NGẦM: không có ô màn hình, không ai đọc câu hỏi giữa chừng. Không hỏi lại — tự chọn cách hợp lý và ghi "Đã tự chọn: …". ' +
-  'Việc 🔴 (tiền, gửi ra ngoài, xoá dữ liệu, push/deploy, đổi giá, sửa bot thật) → chạy node E:\\AI\\Hion\\cai-dat\\duyet.js them <dự án> "câu hỏi + gợi ý" rồi bỏ qua phần đó, làm tiếp phần còn lại. ' +
+  'Việc 🔴 (tiền, gửi ra ngoài, xoá dữ liệu, push/deploy, đổi giá, sửa bot thật) → chạy node E:\\AI\\TongQuanAI\\cai-dat\\duyet.js them <dự án> "câu hỏi + gợi ý" rồi bỏ qua phần đó, làm tiếp phần còn lại. ' +
   'Lệnh bị hook chặn → không tìm đường vòng. Có giới hạn thời gian: làm gọn, ghi kết quả vào file sớm. ' +
   'Câu trả lời CUỐI CÙNG của bạn được lưu làm file kết quả gửi Manager: viết đủ 5 trường (Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp) + "Skill: …".';
 function loiVai(d, w) {
   const ten = w.ten || w.vai;
   return `Bạn là worker ${d.logo || ''} ${d.du_an} · ${w.icon || ''} ${ten}. Phụ trách: ${w.viec}. Manager của bạn: ${d.du_an}.Manager.` +
     (w.quyen ? ` QUYỀN CỦA BẠN: ${w.quyen}` : '') +
-    ` Luật chung: E:\\AI\\Hion\\quy-trinh-lien-mach.md. Thư mục làm việc: ${path.join(AI_ROOT, d.du_an, w.thuMuc || '')} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
+    ` Luật chung: E:\\AI\\TongQuanAI\\quy-trinh-lien-mach.md. Thư mục làm việc: ${path.join(AI_ROOT, d.du_an, w.thuMuc || '')} (đọc AGENTS.md + tien-do của dự án khi cần). ` +
     'TIẾT KIỆM TOKEN: lệnh shell có output dài thì thêm tiền tố rtk (rtk git status/diff/log, rtk grep, rtk test <lệnh>, rtk err <lệnh>, rtk npm run …; Claude có hook tự gắn); đọc file theo đoạn (grep, sed -n, Read có offset/limit),không đọc lại file vừa đọc, không in log/diff dài (dùng tail, --stat); chạy test liên quan tới file đã sửa thay vì cả bộ (cả bộ chỉ trước khi báo xong việc lớn); trả lời cuối ngắn gọn. '+
     // 18/10: worker không commit → test đã commit mà mã chưa commit → bản sạch đỏ, phát hành hỏng 4 lần
     'Làm đúng phần mình; XONG VIỆC: chạy test liên quan, qua thì commit NGAY đúng file mình sửa (git add <từng file>, cả mã lẫn test đi kèm; không git add -A, không git stash, không commit file vai khác) với lời commit rõ nội dung, không push; KHÔNG commit khi chỉ ghi nhật ký (tu-lam-*.md, ra lại, kiểm lại không đổi) — nhật ký đi kèm commit của việc thật;  không gửi tin/đăng bài/chạm tiền khi chưa được duyệt.\n' + LUAT_NGAM;
@@ -324,14 +325,14 @@ function baiHoc(d, w) {
 // ===== chạy 1 lượt AI, ghi log dễ đọc =====
 function chayAI({ ai, d, w, ses, prompt, giay, logF, key }) {
   return new Promise((resolve) => {
-    const projDir = path.join(AI_ROOT, d.du_an, w.thuMuc || ''); // "thuMuc": chạy trong thư mục con (vd KhoAI build chỉ thấy app — sạch phòng)
+    const projDir = path.join(AI_ROOT, d.du_an, w.thuMuc || ''); // "thuMuc": chạy trong thư mục con (vd DuAnF build chỉ thấy app — sạch phòng)
     const env = { ...process.env, WEZTERM_PANE: `ngam-${key}`, WEZ_NGAM: key };
     for (const k of Object.keys(env)) if (/^CLAUDE/.test(k)) delete env[k];
     // 18/10 (người dùng): worker Claude dùng API key trả trước tới trần "apiNganSach" USD (mặc định 100); chi cộng dồn ở api-chi.json
-    const tk = ai === 'claude' ? (claudeTk() || 'chinh') : ''; // 19/10: chính trước, hết mới hionvn
+    const tk = ai === 'claude' ? (claudeTk() || 'chinh') : ''; // 19/10: chính trước, hết mới tkchinh
     if (tk === 'tk2') env.CLAUDE_CONFIG_DIR = TK2;
-    else if (tk === 'chinh' && fs.existsSync(path.join(VUANH, '.credentials.json'))) env.CLAUDE_CONFIG_DIR = VUANH;
-    if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach ?? 100)) env.ANTHROPIC_API_KEY = k; } catch {} } /* 19/10: apiNganSach 0 = worker dùng gói vuanhtuanfpt, không dùng API key */
+    else if (tk === 'chinh' && fs.existsSync(path.join(TKPHU, '.credentials.json'))) env.CLAUDE_CONFIG_DIR = TKPHU;
+    if (ai === 'claude') { try { const k = fs.readFileSync(API_KEY_F, 'utf8').trim(); if (k && (!MAY.apiChiEp || w.epClaude) && ((readJson(API_CHI) || {}).usd || 0) < (MAY.apiNganSach ?? 100)) env.ANTHROPIC_API_KEY = k; } catch {} } /* 19/10: apiNganSach 0 = worker dùng gói tkphumail, không dùng API key */
     const chiDoc = /\bWrite\b/.test(String(w.chan || ''));
     let exe, args, moiSes = ses;
     if (ai === 'claude') {
@@ -571,7 +572,7 @@ function baoManager(proj, key, nhan, kqF) {
     const man = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--escapes', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
     const tron = (s) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\([AB0]/g, '');
     const raw = man.split('\n').filter((l) => /^\s*[❯›]/.test(tron(l))).pop() || '';
-    // 08/10: Claude hiện câu gợi ý MỜ (vd "❯ 🌙 Chatbot.Security xong…") → trước đây tưởng chữ gõ dở, bỏ qua MỌI 🌙 → worker đứng không
+    // 08/10: Claude hiện câu gợi ý MỜ (vd "❯ 🌙 DuAnA.Security xong…") → trước đây tưởng chữ gõ dở, bỏ qua MỌI 🌙 → worker đứng không
     const nhap = /[❯›]\s*(?:\x1b\([AB0])?\x1b\[(?:0;)?2m/.test(raw) ? '' : tron(raw);
     // 07/10: ô Codex trống hiện chữ mờ "Ask Codex to do anything" → trước đây tưởng chữ gõ dở, Manager Codex không bao giờ nhận 🌙
     if (nhap.replace(/^\s*[❯›]\s*/, '').replace(/^(Ask Codex to do anything|Explain this codebase|Summarize recent commits|Implement \{feature\}|Find and fix a bug in @filename|Write tests for @filename|Improve documentation in @filename|Run \/review on my current changes|Use \/skills to list available skills)\s*$/, '').trim()) return;
@@ -579,7 +580,7 @@ function baoManager(proj, key, nhan, kqF) {
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--', msg], opt);
       ngu(400);
       cp.execFileSync(exe, ['cli', '--no-auto-start', 'send-text', '--pane-id', o, '--no-paste', '\r'], opt);
-      // 06/10: Enter có lúc không ăn (dòng 🌙 nằm ở ô nhập, Manager Chatbot đứng 15 phút) → kiểm lại, còn thì Enter lại
+      // 06/10: Enter có lúc không ăn (dòng 🌙 nằm ở ô nhập, Manager DuAnA đứng 15 phút) → kiểm lại, còn thì Enter lại
       for (let k = 0; k < 6; k++) { // 07/10: Manager Codex gom dòng dài thành [Pasted Content …] → kiểm cả chữ đó
         ngu(1000);
         const t = cp.execFileSync(exe, ['cli', '--no-auto-start', 'get-text', '--pane-id', o], { ...opt, stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
@@ -631,9 +632,9 @@ async function main() {
       P(10, 1, 'WindowsSandboxRemoteSession.exe', T - 20 * 60000), // cha chết, 20 phút → đóng
       P(11, 1, 'WindowsSandboxRemoteSession.exe', T - 5 * 60000), // mới 5 phút → chưa
       P(20, 1, 'node.exe', T - 30 * 60000, { cmd: 'npm run thu-khach' }), P(21, 20, 'cmd.exe', T - 30 * 60000),
-      P(22, 21, 'electron.exe', T - 30 * 60000, { exe: 'E:\\AI\\Muse\\app\\node_modules\\electron\\dist\\electron.exe' }), // chuỗi mồ côi → đóng
+      P(22, 21, 'electron.exe', T - 30 * 60000, { exe: 'E:\\AI\\DuAnG\\app\\node_modules\\electron\\dist\\electron.exe' }), // chuỗi mồ côi → đóng
       P(30, 1, 'explorer.exe', T - 9e6), P(31, 30, 'electron.exe', T - 9e6, { exe: 'E:\\AI\\X\\electron.exe' }), // người dùng mở → không
-      P(40, 1, 'node.exe', T - 9e6, { cmd: 'E:\\AI\\Hion\\cai-dat\\ngam.js giu' }), P(41, 40, 'claude.exe', T - 9e6),
+      P(40, 1, 'node.exe', T - 9e6, { cmd: 'E:\\AI\\TongQuanAI\\cai-dat\\ngam.js giu' }), P(41, 40, 'claude.exe', T - 9e6),
       P(42, 41, 'electron.exe', T - 9e6, { exe: 'E:\\AI\\X\\electron.exe' }), // claude đang chạy → không
       P(50, 1, 'node.exe', T - 9e6), P(51, 50, 'electron.exe', T - 9e6, { exe: 'C:\\Program Files\\App\\electron.exe' }), // ngoài E:\AI → không
       P(60, 1, 'node.exe', T - 9e6), P(61, 60, 'cmd.exe', T - 9e6), // cmd không cửa sổ → không

@@ -1,5 +1,5 @@
 // Company Brain (theo thầy Sơn, BTO buổi 8: 03:00 gom mọi dữ liệu về một chỗ) — chỉ đọc file + git, KHÔNG gọi AI (không tốn hạn mức).
-//   node brain.js            → E:\AI\Hion\brain\hom-nay.md (≤ 2 trang, Tổng quản đọc file này TRƯỚC thay vì mở từng tien-do)
+//   node brain.js            → E:\AI\TongQuanAI\brain\hom-nay.md (≤ 2 trang, Tổng quản đọc file này TRƯỚC thay vì mở từng tien-do)
 //                              + brain\du-an\<DựÁn>.md (chi tiết) + brain\brain.json (cho script) + brain\lich-su\<ngày>-<giờ>.md
 //   node brain.js --linear   → thêm ticket Linear chưa xong (cần 1Password mở khoá — chỉ dùng ban ngày)
 // Task Scheduler: WezAI-Brain-dem 03:00 · WezAI-Brain-trua 12:00 (--linear).
@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const HOME = process.env.USERPROFILE || '';
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(HOME, '.wez-ai.json'), 'utf8').replace(/^\uFEFF/, '')); } catch { return {}; } })();
 const ROOT = cfg.aiRoot || 'E:\\AI';
-const HUB = path.join(ROOT, 'Hion');
+const HUB = path.join(ROOT, 'TongQuanAI');
 const OUT = path.join(HUB, 'brain');
 const AIDIR = path.join(process.env.LOCALAPPDATA || '', 'wez-ai');
 const read = (f) => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'); } catch { return ''; } };
@@ -53,7 +53,7 @@ const duAn = order.map((ten) => {
 });
 
 // ---- Chung: tiền, việc chờ duyệt, quyết định, việc đang giao, hạn mức, eval ----
-const tienTxt = (read(path.join(ROOT, '1Bill', 'so-tien.md')).match(/Cộng dồn:\s*([\d.]+)\s*đ/) || [])[1] || '0';
+const tienTxt = (read(path.join(ROOT, 'DuAnD', 'so-tien.md')).match(/Cộng dồn:\s*([\d.]+)\s*đ/) || [])[1] || '0';
 const START = new Date(2026, 9, 2);
 const ngayN = Math.min(100, Math.max(1, Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - START) / 864e5) + 1));
 const choDuyet = bullets(section(read(path.join(HUB, 'can-duyet.md')), 'Đang chờ'));
@@ -84,8 +84,8 @@ const md = [
   `# 🧠 Company Brain · ${vn(d)} ${gio}`,
   `_Tự gom bởi cai-dat\\brain.js (chỉ đọc file + git). Tổng quản đọc file này trước; cần chi tiết mới mở brain\\du-an\\<DựÁn>.md hoặc tien-do của dự án._`, '',
   `## Toàn cục`,
-  `- **1Bill:** Ngày ${ngayN}/100 · tiền đã về ${tienTxt}đ / mục tiêu tới hôm nay ${(ngayN * 10).toLocaleString('vi-VN')} triệu`,
-  `- **Chờ Hion duyệt:** ${choDuyet.length} việc${choDuyet.length ? ' — ' + choDuyet.slice(0, 3).map((x) => cut(x, 70)).join(' · ') : ''}`,
+  `- **DuAnD:** Ngày ${ngayN}/100 · tiền đã về ${tienTxt}đ / mục tiêu tới hôm nay ${(ngayN * 10).toLocaleString('vi-VN')} triệu`,
+  `- **Chờ TongQuanAI duyệt:** ${choDuyet.length} việc${choDuyet.length ? ' — ' + choDuyet.slice(0, 3).map((x) => cut(x, 70)).join(' · ') : ''}`,
   `- **Việc đang giao (chưa xong):** ${dangGiao.length} · xong 24 giờ qua: ${xong24}`,
   `- **Hạn mức Claude:** 5 giờ ${fc ? fc.five : '?'}% · tuần ${fc ? fc.week : '?'}%`,
   ev ? `- **Eval gần nhất (${ev.ngay}):** giao ${ev.tong.giao} · xong ${ev.tong.xong} · bỏ ${ev.tong.bo} · dở ${ev.tong.dang}` : '- **Eval:** chưa có',

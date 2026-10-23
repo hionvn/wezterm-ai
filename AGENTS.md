@@ -5,10 +5,10 @@ Bản sao lưu + bộ cài cấu hình "đội AI trong WezTerm" (xem README.md)
 
 ## Quy ước
 - Trả lời người dùng bằng tiếng Việt.
-- Bản đang chạy thật nằm ở máy (~\.wezterm.lua, ~\.claude\..., E:\AI\Hion\cai-dat). Sửa ở đó trước, rồi chạy `cap-nhat.ps1` để chép vào repo.
-- Trước khi commit/push: quét khoá bí mật (API key, token, mật khẩu). Repo để Private.
+- Bản đang chạy thật nằm ở máy (~\.wezterm.lua, ~\.claude\..., E:\AI\TongQuanAI\cai-dat). Sửa ở đó trước, rồi chạy `cap-nhat.ps1` để chép vào repo.
+- Trước khi commit/push: quét khoá bí mật (API key, token, mật khẩu). Repo **CÔNG KHAI** (người dùng cho 02/10, 23/10 làm bản cho người khác dùng): cap-nhat.ps1 tự chạy lam-sach.js — thay giá trị riêng theo ~.wez-ai-rieng.json (ngoài repo) và dừng nếu còn sót. Gặp tên/tài khoản/id riêng mới → thêm cặp vào file đó, KHÔNG sửa tay trong repo. Không đưa brief/báo cáo có tên riêng vào repo.
 - File .ps1 phải lưu UTF-8 có BOM (PowerShell 5.1 mới đọc đúng tiếng Việt).
-- Không cố định đường dẫn máy: đọc `~\.wez-ai.json` (aiRoot, wezterm), mặc định `E:\AI`. Repo luôn ghi `E:\AI`; khoi-phuc.ps1 đổi theo máy.
+- Không cố định đường dẫn máy: đọc `~\.wez-ai.json` (aiRoot, hub, wezterm), mặc định `E:\AI` + hub `TongQuanAI`. Repo luôn ghi `E:\AI`; khoi-phuc.ps1 hỏi thư mục gốc khi cài lần đầu rồi đổi theo máy.
 - Hệ thống chỉ dùng Claude + Codex (đã bỏ Gemini CLI 02/10/2026 — người dùng thấy code kém; đừng thêm lại).
 - Quy tắc chung của 2 AI chỉ sửa ở 1 nơi: `~\.claude\CLAUDE.md` → chép sang `~\.codex\AGENTS.md` → cap-nhat.ps1 lưu thành `quy-tac/chung.md`.
 - Repo có git hook pre-commit quét khoá bí mật (`git config core.hooksPath .githooks`, khoi-phuc.ps1 tự bật).

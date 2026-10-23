@@ -9,9 +9,9 @@ Khác bản gốc chỉ chạy trên Mac, bản này chạy trên **Windows + Po
 ## Có gì
 | Tính năng | Phím / lệnh |
 |---|---|
-| **Worker chạy ngầm 🌙** (06/10/2026): worker không mở ô, chạy `claude -p` / `codex exec` trong nền, tiếp đúng phiên; hàng chờ, giới hạn số chạy cùng lúc, 30 phút/việc, tự tóm tắt phiên dài, dừng khi Claude gần hết hạn mức, tự báo Manager khi xong | `"ngam": true` trong `Hion\doi\<dự án>.json` · `node scripts/ngam.js ds · log · cho · dung` · mẫu `mau/doi/VD.json` |
+| **Worker chạy ngầm 🌙** (06/10/2026): worker không mở ô, chạy `claude -p` / `codex exec` trong nền, tiếp đúng phiên; hàng chờ, giới hạn số chạy cùng lúc, 30 phút/việc, tự tóm tắt phiên dài, dừng khi Claude gần hết hạn mức, tự báo Manager khi xong | `"ngam": true` trong `TongQuanAI\doi\<dự án>.json` · `node scripts/ngam.js ds · log · cho · dung` · mẫu `mau/doi/VD.json` |
 | Menu chọn dự án + AI, mở ở ô phải / ô dưới / tab mới | `Ctrl+Shift+A`, hoặc gõ `ai` |
-| Tab "Tổng quản": Claude ở `Hion` + ô 📋 Cần duyệt | `Ctrl+Shift+H` |
+| Tab "Tổng quản": Claude ở `TongQuanAI` + ô 📋 Cần duyệt | `Ctrl+Shift+H` |
 | Bật / tắt ô 📋 Cần duyệt (can-duyet.md + sổ tiến độ các dự án, tự cập nhật) | `Ctrl+Shift+J` |
 | Tài liệu AI vừa làm xong tự bật lên ô 📄 | AI chạy `node scripts/mo-tai-lieu.js <file>` |
 | Đẩy ô ra tab nền / kéo ô ở tab khác về | `Ctrl+Shift+B` / `Ctrl+Shift+G` |
@@ -30,23 +30,23 @@ Khác bản gốc chỉ chạy trên Mac, bản này chạy trên **Windows + Po
 | Lưu / mở lại bố cục (Claude tiếp tục đúng phiên cũ); tự lưu mỗi phút, có "Phiên trước" | `Ctrl+Shift+S` / `Ctrl+Shift+O` |
 | Tự chẩn đoán cài đặt (thiếu gì, sửa thế nào) | `scripts/kiem-tra.ps1` |
 | Chặn commit có khoá bí mật | tự động (git hook), hoặc `quet-bi-mat.ps1` |
-| Lệnh tắt PowerShell | `ai`, `codextk`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `hion` / `sino` / `cool` / `bot` [-All], `newproj` |
+| Lệnh tắt PowerShell | `ai`, `codextk`, `ai2` (Claude | Codex; `ai3` vẫn dùng được), `tqai` (vào Tổng quản) [-All], `newproj` |
 
-Sổ tay phím tắt + hướng dẫn theo tình huống: https://claude.ai/artifact/MXLJEZVUsnRzNN72AtFbo7
 
 ## Cấu trúc
 ```
 wezterm/.wezterm.lua              → ~\.wezterm.lua            (bộ nạp: ghép các phần bên dưới rồi chạy)
 wezterm/phan/NN-ten.lua           → ~\.wezterm\NN-ten.lua     (12 phần cấu hình theo chủ đề: 01-co-ban … 12-menu)
-scripts/*                         → E:\AI\Hion\cai-dat\   (wez.ps1, báo động, khoá file, tự bật tài liệu, ô Cần duyệt, kiểm tra)
+scripts/*                         → E:\AI\TongQuanAI\cai-dat\   (wez.ps1, báo động, khoá file, tự bật tài liệu, ô Cần duyệt, kiểm tra)
 claude/statusline.js              → ~\.claude\statusline.js
 claude/settings.phan-them.json    → gộp vào ~\.claude\settings.json (statusLine + hooks)
 codex/config.phan-them.toml       → gộp vào ~\.codex\config.toml (tiêu đề có run-state → báo động Codex)
-powershell/...profile.ps1         → $PROFILE (lệnh ai, hion, bot...)
+powershell/...profile.ps1         → $PROFILE (lệnh ai, tqai, newproj...)
 quy-tac/chung.md                  → đoạn đánh dấu "wezterm-ai" trong ~\.claude\CLAUDE.md, ~\.codex\AGENTS.md (bản chung, sửa trực tiếp)
-mau/Hion/*                        → Tổng quản: AGENTS.md, doi-agent.md, can-duyet.md, quyet-dinh.md, kho-kien-thuc.md (chỉ tạo khi chưa có)
-mau/du-an/*                       → mẫu Manager cho newproj / "khởi động đội" (chép vào Hion\cai-dat\mau)
-khoi-phuc.ps1                     cài lại tất cả lên máy mới (-AIRoot D:\AI nếu không có ổ E:)
+mau/TongQuanAI/*                        → Tổng quản: AGENTS.md, doi-agent.md, can-duyet.md, quyet-dinh.md, kho-kien-thuc.md (chỉ tạo khi chưa có)
+mau/du-an/*                       → mẫu Manager cho newproj / "khởi động đội" (chép vào TongQuanAI\cai-dat\mau)
+khoi-phuc.ps1                     cài lên máy mới (hỏi thư mục gốc; -AIRoot D:\AI để khỏi hỏi)
+lam-sach.js                       người phát hành: thay giá trị riêng bằng giá trị mẫu trước khi commit (danh sách ở ~\.wez-ai-rieng.json, ngoài repo)
 cap-nhat.ps1                      chép cấu hình đang dùng vào repo để sao lưu + quét khoá bí mật
 quet-bi-mat.ps1, .githooks/       quét khoá bí mật; git hook pre-commit chặn commit có khoá
 thu-cai/mo-may-ao.ps1             thử khoi-phuc.ps1 trên máy Windows sạch (Windows Sandbox), kết quả ở thu-cai/ket-qua/
@@ -56,15 +56,16 @@ Trạng thái chạy nằm ở `%LOCALAPPDATA%\wez-ai\` (alerts, state, khoa.jso
 
 ## Cài lên máy mới
 ```powershell
-gh repo clone hionvn/wezterm-ai E:\AI\wezterm-ai
-cd E:\AI\wezterm-ai
+# thay D:\AI bằng thư mục bạn muốn — bộ cài sẽ hỏi thư mục gốc
+git clone https://github.com/hionvn/wezterm-ai D:\AI\wezterm-ai
+cd D:\AI\wezterm-ai
 powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI
 ```
 Mọi file cũ trên máy được sao lưu thành `*.bak-<ngày giờ>` trước khi ghi đè. Sau đó tự đăng nhập từng AI.
 
 ## Cập nhật bản mới (nút bấm)
 - **Máy đã cài:** `Ctrl+Shift+P` → **⬆ Cập nhật đội AI**. Mở tab riêng: kéo bản mới từ GitHub (`git pull`), liệt kê thay đổi, cài lại bằng `khoi-phuc.ps1 -CapNhat`.
-  File giống hệt thì bỏ qua, file khác thì sao lưu `.bak-<giờ>` rồi ghi đè; cài đặt riêng trong `~\.wez-ai.json` và file của Tổng quản (`Hion\*.md`) giữ nguyên. File trong repo bị sửa tay được cất bằng `git stash`.
+  File giống hệt thì bỏ qua, file khác thì sao lưu `.bak-<giờ>` rồi ghi đè; cài đặt riêng trong `~\.wez-ai.json` và file của Tổng quản (`TongQuanAI\*.md`) giữ nguyên. File trong repo bị sửa tay được cất bằng `git stash`.
 - **Tự báo:** mỗi 6 giờ WezTerm kiểm ngầm (`cap-nhat-tu-github.ps1 -Kiem`, chỉ `git fetch`); có bản mới → thông báo Windows. Tắt: `"tuKiemCapNhat": false` trong `~\.wez-ai.json`.
 - Chạy tay: `powershell -ExecutionPolicy Bypass -File E:\AI\wezterm-ai\cap-nhat-tu-github.ps1`.
 - **Người phát hành (máy chủ, `"chuNhan": true`):** `cap-nhat.ps1` (chép cấu hình đang dùng vào repo + quét khoá) → commit → push. Máy chủ bấm nút chỉ hiện hướng dẫn này, không kéo về đè lên bản gốc.
@@ -72,7 +73,7 @@ Mọi file cũ trên máy được sao lưu thành `*.bak-<ngày giờ>` trướ
 ### Sau khi cài: đặt vai cho cả đội (5 phút)
 1. Mở WezTerm, đăng nhập `claude` và `codex`.
 2. Đặt các thư mục dự án vào thư mục AI (mặc định `E:\AI`, hoặc chỗ bạn chọn bằng `-AIRoot`). Tạo dự án mới: `newproj <tên>` — có sẵn vai 🧭 Manager và sổ tiến độ để bàn giao.
-3. Bấm `Ctrl+Shift+H` (tab Tổng quản) và nói **"khởi động đội"**: Tổng quản hỏi từng dự án làm gì, rồi tự điền vai cho cả đội (`Hion\AGENTS.md`, `doi-agent.md`, AGENTS.md từng dự án).
+3. Bấm `Ctrl+Shift+H` (tab Tổng quản) và nói **"khởi động đội"**: Tổng quản hỏi từng dự án làm gì, rồi tự điền vai cho cả đội (`TongQuanAI\AGENTS.md`, `doi-agent.md`, AGENTS.md từng dự án).
 4. Có nhiều tài khoản ChatGPT dùng Codex: tạo `~\.codex-tai-khoan.json` dạng `{ "taiKhoan": [{ "so": 1, "ten": "Codex-A", "gmail": "...", "thuMuc": "C:\\Users\\<bạn>\\.codex-tk1" }], "duAn": { "<Dự án>": 1 } }`, rồi vào từng thư mục dự án gõ `codex login`.
 
 Bộ cài tạo sẵn các file của Tổng quản (bàn duyệt, sổ quyết định, kho kiến thức, sơ đồ đội) từ thư mục `mau\` — **chỉ khi máy chưa có**, không ghi đè file của bạn. Quy tắc chung được thêm vào `~\.claude\CLAUDE.md` và `~\.codex\AGENTS.md` giữa hai dòng đánh dấu `wezterm-ai`; ghi chú riêng của bạn ngoài đoạn đó luôn được giữ.
@@ -85,7 +86,8 @@ rồi quét khoá bí mật, commit, push.
 
 ## Lưu ý
 - Không có API key / mật khẩu trong repo. Đừng thêm vào.
-- Mặc định dự án ở `E:\AI`, script ở `E:\AI\Hion\cai-dat`. Máy khác ổ đĩa: `khoi-phuc.ps1 -AIRoot D:\AI` (ghi vào `~\.wez-ai.json`, không cần sửa code).
-- Cài xong / lỗi lạ: chạy `E:\AI\Hion\cai-dat\kiem-tra.ps1` để xem thiếu gì.
+- **Thư mục gốc do bạn chọn** lúc cài (hoặc `-AIRoot D:\AI`), lưu ở `~\.wez-ai.json`; script ở `<gốc>\TongQuanAI\cai-dat`. Trong tài liệu, `E:\AI` chỉ là ví dụ.
+- Tính năng cần dịch vụ riêng (9router, Grok, 2 tài khoản Claude, khoá API, ca đêm, ntfy, Linear) mặc định tắt — xem mục 8 của [HUONG-DAN-NGUOI-MOI.md](HUONG-DAN-NGUOI-MOI.md).
+- Cài xong / lỗi lạ: chạy `E:\AI\TongQuanAI\cai-dat\kiem-tra.ps1` để xem thiếu gì.
 - Mở lại bố cục dựng theo cột rồi theo hàng: kiểu chia lồng nhau phức tạp chỉ gần đúng.
 - Cần WezTerm bản 20240203 trở lên, Node.js, glow (để hiện Markdown có màu).

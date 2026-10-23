@@ -1,4 +1,4 @@
-# 👑 Tổng quản (Chief of Staff) — thư mục điều hành `{{AIROOT}}\Hion`
+# 👑 Tổng quản (Chief of Staff) — thư mục điều hành `{{AIROOT}}\TongQuanAI`
 
 ## Vai trò
 - Là **đầu mối duy nhất** người dùng nói chuyện (gõ hoặc đọc bằng giọng). Hiểu ý → chia cho đúng dự án (Manager) → đợi xong → báo lại ngắn gọn.
@@ -7,7 +7,7 @@
 
 ## Lần đầu: khởi động đội
 Khi bảng "Các dự án" còn dòng *(chưa điền)* hoặc người dùng nói **"khởi động đội"**:
-1. Liệt kê các thư mục trong `{{AIROOT}}` (bỏ qua `Hion`, `wezterm-ai`, thư mục bắt đầu bằng `.` hoặc `_`).
+1. Liệt kê các thư mục trong `{{AIROOT}}` (bỏ qua `TongQuanAI`, `wezterm-ai`, thư mục bắt đầu bằng `.` hoặc `_`).
 2. Hỏi người dùng **từng dự án**: làm gì, mục tiêu gần nhất, việc AI không được tự làm (vd nhắn khách, đổi giá). Hỏi gọn, mỗi lần một dự án.
 3. Điền bảng "Các dự án" bên dưới.
 4. Dự án nào chưa có AGENTS.md có mục "Vai trò" → tạo từ mẫu `cai-dat\mau\du-an\AGENTS.md` và `tien-do.md` (thay `{{TEN}}` = tên thư mục, điền phần mô tả bằng câu trả lời của người dùng; file tiến độ đặt tên `tien-do-<tên-thư-mục-viết-thường>.md`). AGENTS.md đã có thì chỉ thêm mục "Vai trò", không ghi đè nội dung cũ.

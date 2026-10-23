@@ -39,7 +39,7 @@ end
 local SPIN = { ['✳'] = true, ['◐'] = true, ['◓'] = true, ['◑'] = true, ['◒'] = true, ['⠂'] = true, ['⠐'] = true }
 local function short_title(t, proj, n)
   t = t or ''
-  local last = t:match('.*|%s*(.-)%s*$') -- Codex: "Chatbot | Ready | Chatbot · ⚙ Engineer" → phần sau dấu | cuối
+  local last = t:match('.*|%s*(.-)%s*$') -- Codex: "DuAnA | Ready | DuAnA · ⚙ Engineer" → phần sau dấu | cuối
   if last then t = last end
   local first, rest = t:match('^(%S+)%s+(.*)$')
   if first and SPIN[first] then t = rest end
@@ -58,7 +58,7 @@ local function tab_info(tab)
   local logo = proj_logo(proj)
   if title ~= '' then
     if title:sub(1, 4) == '📄' then logo = '📄' end
-    -- "💬 Chatbot · đội" → bỏ logo đầu (đã vẽ riêng); tài liệu "📄 ten-file.html" → bỏ đuôi
+    -- "💬 DuAnA · đội" → bỏ logo đầu (đã vẽ riêng); tài liệu "📄 ten-file.html" → bỏ đuôi
     title = title:gsub('^%S+%s+', '', 1):gsub('%.html?$', ''):gsub('%.md$', '')
   end
   return proj, logo, title, x

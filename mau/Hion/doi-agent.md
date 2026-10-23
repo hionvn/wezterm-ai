@@ -4,7 +4,7 @@ Mô hình (theo buổi 8 khóa Build to Own): **người điều hành → Tổn
 
 ```
 Bạn (người điều hành) ── giao việc bằng chữ hoặc giọng nói
-   └─ 👑 Tổng quản = Claude ở {{AIROOT}}\Hion
+   └─ 👑 Tổng quản = Claude ở {{AIROOT}}\TongQuanAI
         ├─ 🧭 Manager dự án A = Claude ở {{AIROOT}}\<A>
         ├─ 🧭 Manager dự án B = Claude ở {{AIROOT}}\<B>
         └─ … mỗi Manager gọi Worker / agent chuyên môn khi cần

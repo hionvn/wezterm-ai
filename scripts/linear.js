@@ -1,6 +1,6 @@
 // Linear 2 chiều cho đội agent (cách thầy Sơn, 03/10/2026): Spec/brief → ticket ngắn → Project theo sản phẩm → agent theo vai.
 // Mỗi ticket = 1 việc thật có "Xong khi"; trạng thái dự án KHÔNG để trên Linear (đọc tien-do). Cột: Todo → In Progress → In Review → Done.
-// Key lấy từ 1Password lúc chạy (op://Chatbot/Linear/credential), không ghi ra file / màn hình.
+// Key lấy từ 1Password lúc chạy (op://AI/Linear/credential), không ghi ra file / màn hình.
 // 1Password đang khoá (ban đêm không ai mở) → lệnh ghi vào hàng chờ %LOCALAPPDATA%\wez-ai\linear-hang-doi.json, "dong-bo" chạy lại sau.
 //   node linear.js tao <DựÁn> "tiêu đề ngắn" ["mô tả"] [--vai Engineer] [--xong-khi "bằng chứng"] [--brief <file>] [--dem]
 //                       [--uu-tien 1-4] [--cot todo|dang|xong]   → in mã HIO-x (tự vào project + cycle tuần này)
@@ -17,8 +17,8 @@ const path = require('path');
 const TEAM_KEY = 'HIO';
 const HANG = path.join(process.env.LOCALAPPDATA || '.', 'wez-ai', 'linear-hang-doi.json');
 const COT = { todo: 'unstarted', dang: 'started', xong: 'completed' };
-// Project theo sản phẩm (tạo 03/10/2026). Hion + wezterm-ai chung project hệ thống.
-const PROJECT = { Chatbot: '💬 Chatbot', Sino: '🛏️ Sino', Coolguy: '💈 Coolguy', Aff: '🎯 Aff Radar', '1Bill': '💰 1Bill', Hion: '👑 Hệ thống đội AI', 'wezterm-ai': '👑 Hệ thống đội AI' };
+// Project theo sản phẩm (tạo 03/10/2026). TongQuanAI + wezterm-ai chung project hệ thống.
+const PROJECT = { DuAnA: '💬 DuAnA', DuAnB: '🛏️ DuAnB', DuAnC: '💈 DuAnC', DuAnE: '🎯 DuAnE Radar', 'DuAnD': '💰 DuAnD', TongQuanAI: '👑 Hệ thống đội AI', 'wezterm-ai': '👑 Hệ thống đội AI' };
 
 // Bash của agent thường thiếu thư mục WinGet trong PATH → thử thêm đường dẫn cài mặc định của op
 const OP = [process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'op.exe'), 'op'].filter(Boolean);
@@ -26,7 +26,7 @@ function key() {
   for (const op of OP) {
     if (op !== 'op' && !fs.existsSync(op)) continue;
     try {
-      return execFileSync(op, ['read', 'op://Chatbot/Linear/credential'], { encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      return execFileSync(op, ['read', 'op://AI/Linear/credential'], { encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     } catch {}
   }
   return null;

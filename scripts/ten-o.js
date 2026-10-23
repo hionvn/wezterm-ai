@@ -1,6 +1,6 @@
-// Thanh tên 1 dòng trên đỉnh mỗi ô AI trong WezTerm: "🤖 Claude · Chatbot › thư-mục-con", nền màu dự án, giãn theo bề ngang ô.
+// Thanh tên 1 dòng trên đỉnh mỗi ô AI trong WezTerm: "🤖 Claude · DuAnA › thư-mục-con", nền màu dự án, giãn theo bề ngang ô.
 // WezTerm (~\.wezterm.lua, hàm process_headers) tự tách ô này phía trên ô AI và ghi thông tin vào %LOCALAPPDATA%\wez-ai\ten-o.json:
-//   { "tat": false, "o": { "<id ô tên>": { "icon": "🤖", "ai": "Claude", "proj": "Chatbot", "logo": "💬", "sub": "...", "color": "#c678dd" } } }
+//   { "tat": false, "o": { "<id ô tên>": { "icon": "🤖", "ai": "Claude", "proj": "DuAnA", "logo": "💬", "sub": "...", "color": "#c678dd" } } }
 // Ô tên tự đóng khi không còn trong file (ô AI bên dưới đã đóng, chuyển tab, hoặc tắt bằng Ctrl+Shift+T).
 // Sổ đội %LOCALAPPDATA%\wez-ai\doi\<dự án>.json (manager + worker theo số ô AI) → thanh tên ghi vai + ai quản lý:
 //   worker:  "● ⚙️ Engineer · 💬 CHATBOT ← 🧭 Manager ô 25"   manager: "🧭 Manager · 💬 CHATBOT → 4 worker: ô 20-23"

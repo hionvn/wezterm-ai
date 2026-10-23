@@ -14,7 +14,7 @@ local function pane_kind(p)
   return ({ Claude = 'claude', Codex = 'codex' })[ai] or 'shell'
 end
 
--- Sổ đội (wez-ai\doi\<dự án>.json) → [số ô] = vai trong đội; khoá công cụ (chan) lấy từ định nghĩa Hion\doi\<dự án>.json.
+-- Sổ đội (wez-ai\doi\<dự án>.json) → [số ô] = vai trong đội; khoá công cụ (chan) lấy từ định nghĩa TongQuanAI\doi\<dự án>.json.
 -- Lưu vào bố cục để khi mở lại, ô đội có lại đúng tên, Remote Control, khoá chỉ đọc; sổ đội ghi số ô mới.
 local function doi_map()
   local m = {}
@@ -90,11 +90,11 @@ local function write_layout(path)
 end
 
 local function q(s) return "'" .. (tostring(s):gsub("'", "''")) .. "'" end
--- 04/10: giống $DEEPSEEK_ENV trong Hion\cai-dat\wez.ps1 (Claude Code chạy bằng DeepSeek; key lấy từ biến người dùng lúc chạy)
+-- 04/10: giống $DEEPSEEK_ENV trong TongQuanAI\cai-dat\wez.ps1 (Claude Code chạy bằng DeepSeek; key lấy từ biến người dùng lúc chạy)
 local DEEPSEEK_ENV = "$env:ANTHROPIC_AUTH_TOKEN = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User'); $env:ANTHROPIC_BASE_URL = 'https://api.deepseek.com/anthropic'; Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue; $env:ANTHROPIC_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_OPUS_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_SONNET_MODEL = 'deepseek-flash[1m]'; $env:ANTHROPIC_DEFAULT_HAIKU_MODEL = 'deepseek-flash'; $env:CLAUDE_CODE_SUBAGENT_MODEL = 'deepseek-flash'; $env:CLAUDE_CODE_AUTO_COMPACT_WINDOW = '786432'"
 local TIEP = 'Tiếp tục việc đang làm dở trước khi WezTerm khởi động lại (đọc lại tiến độ nếu cần).'
 local function restore_args(it)
-  -- 03/10: lần khởi động lại thật, các ô Claude mở lại bị chạy trong E:\AI\Hion thay vì thư mục dự án
+  -- 03/10: lần khởi động lại thật, các ô Claude mở lại bị chạy trong E:\AI\TongQuanAI thay vì thư mục dự án
   -- (tham số cwd của split không được tôn trọng) → luôn tự cd vào đúng thư mục trước khi chạy AI
   local PS0 = PS
   local function PS(cmd, khong_profile)
@@ -103,7 +103,7 @@ local function restore_args(it)
   end
   if it.kind == 'claude' then
     -- 03/10 (lần 2): ô không có mã phiên từng dùng `--continue` → vớ phiên mới nhất trong thư mục = phiên của ô KHÁC
-    -- (ra 3 ô Security, 3 Sino Manager, 2 Tổng quản cùng một phiên). Luật mới: mỗi phiên chỉ mở ở MỘT ô;
+    -- (ra 3 ô Security, 3 DuAnB Manager, 2 Tổng quản cùng một phiên). Luật mới: mỗi phiên chỉ mở ở MỘT ô;
     -- không có mã phiên / phiên đã có ô khác giữ → mở PowerShell trống (không chạy AI, không tốn hạn mức).
     local DA_MO = wezterm.GLOBAL.phien_da_mo or {}
     if not it.session or DA_MO[it.session] then
@@ -112,7 +112,7 @@ local function restore_args(it)
     DA_MO[it.session] = true
     wezterm.GLOBAL.phien_da_mo = DA_MO
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or '' -- đang làm dở → tự làm tiếp
-    if it.doi and it.doi ~= 'Hion' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
+    if it.doi and it.doi ~= 'TongQuanAI' then -- ô trong đội: giữ tên, Remote Control, khoá công cụ; gọi thẳng claude → không cần profile
       -- 04/10: vai "deepseek" = Claude Code chạy bằng DeepSeek: đặt biến (key đọc lúc chạy, không ghi file), bỏ Remote Control
       local ds = it.doi_ai == 'deepseek'
       -- 05/10: DeepSeek báo "Invalid schema for function Artifact" → luôn chặn Artifact
@@ -124,13 +124,13 @@ local function restore_args(it)
         .. (ds and '' or (' --remote-control ' .. q(it.doi .. '-' .. it.vai)))
         .. (chan and (' ' .. q('--disallowedTools=' .. (chan:gsub('%s+', ',')))) or '') .. tiep, true)
     end
-    -- ô ngoài đội + Tổng quản Hion: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
+    -- ô ngoài đội + Tổng quản TongQuanAI: claudeRC (hàm trong profile, Remote Control theo tên thư mục)
     return PS('claudeRC --resume ' .. it.session .. tiep)
   end
   if it.kind == 'codex' then
     local tiep = it.state == 'work' and (' ' .. q(TIEP)) or ''
     -- 04/10: BỎ "codex resume --last" và mở theo tên: Codex tự đổi tên phiên ("Đọc POS và báo cáo…") nên mở theo tên luôn
-    -- thất bại → tụt xuống --last = phiên gần nhất của tài khoản → 4 worker Sino cùng mở MỘT phiên, 6 ô Aff cùng một phiên.
+    -- thất bại → tụt xuống --last = phiên gần nhất của tài khoản → 4 worker DuAnB cùng mở MỘT phiên, 6 ô DuAnE cùng một phiên.
     -- Giờ: ô trong đội mở lại theo MÃ PHIÊN (UUID, sổ đội trường session) với đúng CODEX_HOME của vai; mỗi mã chỉ mở ở 1 ô.
     local DA_MO = wezterm.GLOBAL.phien_da_mo or {}
     local sid = it.session and tostring(it.session):match('^%x+%-%x+%-%x+%-%x+%-%x+$')
@@ -212,16 +212,16 @@ local function plan_tab(t)
       from = #steps
     end
   end
-  -- 06/10: tab thuộc dự án nào (sổ đội, không có thì theo thư mục ô đầu) → mỗi dự án mở lại trong 1 cửa sổ riêng; Hion ở cửa sổ chính
+  -- 06/10: tab thuộc dự án nào (sổ đội, không có thì theo thư mục ô đầu) → mỗi dự án mở lại trong 1 cửa sổ riêng; TongQuanAI ở cửa sổ chính
   local da
   for _, it in ipairs(keep) do if it.doi then da = it.doi break end end
   local c = keep[1].cwd or ''
   if not da and c:lower():sub(1, #AI_ROOT + 1) == AI_ROOT:lower() .. '\\' then da = c:sub(#AI_ROOT + 2):match('^[^\\/]+') end
-  if da and da:lower() == 'hion' then da = nil end
+  if da and da:lower() == 'tqai' then da = nil end
   return { title = t.title, steps = steps, made = {}, du_an = da }
 end
 
--- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (Chatbot.Engineer…) trỏ đúng
+-- Sổ đội: ô của đội vừa mở lại có số ô mới → ghi lại để thanh tên, statusline, wez.ps1 (DuAnA.Engineer…) trỏ đúng
 local function ghi_so_doi(plan)
   local by_doi = {}
   for k, s in ipairs(plan.steps) do

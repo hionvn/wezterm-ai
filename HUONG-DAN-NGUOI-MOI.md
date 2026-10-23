@@ -11,7 +11,7 @@ Bạn là **chủ**. Bạn không tự gõ từng việc cho từng AI — bạn
 
 ```
 Bạn (chủ)
- └─ 👑 Tổng quản      — 1 ô Claude ở thư mục Hion. Bạn nói chuyện với nó.
+ └─ 👑 Tổng quản      — 1 ô Claude ở thư mục TongQuanAI. Bạn nói chuyện với nó.
      └─ 🧭 Manager     — mỗi dự án 1 ô Claude. Nhận việc từ Tổng quản, chia cho worker, gom kết quả.
          └─ Worker     — Engineer, Nội dung, Số liệu, Kiểm soát… Làm từng việc cụ thể.
 ```
@@ -30,14 +30,16 @@ Mở **PowerShell** (bấm phím Windows, gõ `powershell`, Enter) rồi chạy 
 
 ```powershell
 winget install Git.Git GitHub.cli OpenJS.NodeJS.LTS wez.wezterm charmbracelet.glow
-# đóng PowerShell, mở lại, rồi:
-git clone https://github.com/hionvn/wezterm-ai E:\AI\wezterm-ai
-cd E:\AI\wezterm-ai
+# đóng PowerShell, mở lại, rồi (thay D:\AI bằng thư mục bạn muốn):
+git clone https://github.com/hionvn/wezterm-ai D:\AI\wezterm-ai
+cd D:\AI\wezterm-ai
 powershell -ExecutionPolicy Bypass -File .\khoi-phuc.ps1 -CaiAI
 ```
 
-- Máy không có ổ `E:` → thêm `-AIRoot D:\AI` vào cuối lệnh cuối.
+- **Thư mục gốc do bạn chọn.** Bộ cài hỏi *"Để các dự án AI ở thư mục nào?"* — Enter để nhận gợi ý (ổ còn trống nhiều nhất `\AI`), hoặc gõ đường dẫn khác. Muốn khỏi hỏi: thêm `-AIRoot D:\AI`. Lựa chọn lưu ở `~\.wez-ai.json` (trường `aiRoot`), mọi script đọc từ đó.
+- Trong tài liệu này, **`E:\AI` chỉ là ví dụ** — đọc là *thư mục gốc của bạn*. Thư mục Tổng quản là `<gốc>\TongQuanAI`.
 - Bộ cài sao lưu mọi file cũ thành `*.bak-<giờ>` trước khi ghi đè — không mất gì.
+- Thử trước trên máy ảo sạch (cần bật Windows Sandbox): `thu-cai\mo-may-ao.ps1`.
 
 **Đăng nhập AI** (trong PowerShell):
 ```powershell
@@ -45,17 +47,17 @@ claude        # làm theo hướng dẫn trên màn hình, xong gõ /exit
 codex login   # nếu dùng Codex
 ```
 
-**Kiểm tra:** `E:\AI\Hion\cai-dat\kiem-tra.ps1` — dòng nào ❌ thì làm theo gợi ý bên cạnh.
+**Kiểm tra:** `E:\AI\TongQuanAI\cai-dat\kiem-tra.ps1` — dòng nào ❌ thì làm theo gợi ý bên cạnh.
 
 ---
 
 ## 3. Ngày đầu tiên
 
-1. Mở **WezTerm**. Hiện menu `ai` → chọn **Hion** → Enter (Claude). Đây là ô **Tổng quản**.
+1. Mở **WezTerm**. Hiện menu `ai` → chọn **TongQuanAI** → Enter (Claude). Đây là ô **Tổng quản**.
 2. Đặt thư mục dự án của bạn vào `E:\AI\` (vd `E:\AI\ShopCuaToi`). Dự án mới tinh: gõ `newproj ShopCuaToi` trong PowerShell.
 3. Nói với Tổng quản: **"khởi động đội"**. Nó hỏi từng dự án làm gì rồi tự tạo vai cho cả đội.
-4. Tạo đội cho dự án: chép `E:\AI\wezterm-ai\mau\doi\VD.json` thành `E:\AI\Hion\doi\ShopCuaToi.json`, đổi `"du_an"` thành `ShopCuaToi`, sửa vai cho hợp (hoặc nhờ Tổng quản: *"tạo đội cho ShopCuaToi theo mẫu VD.json"*).
-5. Mở đội: nói với Tổng quản *"mở đội ShopCuaToi"* — hoặc tự gõ `E:\AI\Hion\cai-dat\wez.ps1 doi ShopCuaToi`. Manager mở ở cửa sổ riêng, tự đọc dự án rồi bắt đầu giao việc cho worker.
+4. Tạo đội cho dự án: chép `E:\AI\wezterm-ai\mau\doi\VD.json` thành `E:\AI\TongQuanAI\doi\ShopCuaToi.json`, đổi `"du_an"` thành `ShopCuaToi`, sửa vai cho hợp (hoặc nhờ Tổng quản: *"tạo đội cho ShopCuaToi theo mẫu VD.json"*).
+5. Mở đội: nói với Tổng quản *"mở đội ShopCuaToi"* — hoặc tự gõ `E:\AI\TongQuanAI\cai-dat\wez.ps1 doi ShopCuaToi`. Manager mở ở cửa sổ riêng, tự đọc dự án rồi bắt đầu giao việc cho worker.
 
 ---
 
@@ -96,10 +98,10 @@ Từ 06/10/2026 worker mặc định **chạy ngầm**: không mở ô, mỗi vi
 
 **Lệnh xem** (gõ trong PowerShell):
 ```powershell
-node E:\AI\Hion\cai-dat\ngam.js ds                     # danh sách mọi worker ngầm + trạng thái
-E:\AI\Hion\cai-dat\wez.ps1 read ShopCuaToi.Engineer     # 40 dòng nhật ký cuối của worker
-E:\AI\Hion\cai-dat\wez.ps1 read ShopCuaToi.Engineer 100 -f   # xem trực tiếp, Ctrl+C để thoát
-node E:\AI\Hion\cai-dat\ngam.js dung ShopCuaToi.Engineer     # dừng việc đang chạy
+node E:\AI\TongQuanAI\cai-dat\ngam.js ds                     # danh sách mọi worker ngầm + trạng thái
+E:\AI\TongQuanAI\cai-dat\wez.ps1 read ShopCuaToi.Engineer     # 40 dòng nhật ký cuối của worker
+E:\AI\TongQuanAI\cai-dat\wez.ps1 read ShopCuaToi.Engineer 100 -f   # xem trực tiếp, Ctrl+C để thoát
+node E:\AI\TongQuanAI\cai-dat\ngam.js dung ShopCuaToi.Engineer     # dừng việc đang chạy
 ```
 Nhật ký đọc được bằng mắt: 💬 AI nói gì · 🔧 lệnh đã chạy · ⛔ chỗ bị chặn/lỗi. Kết quả mỗi việc là 1 file trong `%LOCALAPPDATA%\wez-ai\ngam\ket-qua\`.
 
@@ -111,7 +113,7 @@ Nhật ký đọc được bằng mắt: 💬 AI nói gì · 🔧 lệnh đã ch
 - Claude gần hết hạn mức (5 giờ ≥ 85% hoặc tuần ≥ 95%) → việc Claude mới tự xếp hàng tới khi hồi; việc Codex vẫn chạy.
 - Worker xong → tự gõ 1 dòng 🌙 vào ô Manager để Manager giao việc kế ngay.
 
-**Bật / tắt** — trong `E:\AI\Hion\doi\<dự án>.json`:
+**Bật / tắt** — trong `E:\AI\TongQuanAI\doi\<dự án>.json`:
 - `"ngam": true` ở đầu file → cả đội chạy ngầm.
 - `"ngam": false` trong một vai → vai đó quay lại ô (rồi chạy `wez.ps1 doi <dự án>`).
 - Vai luôn ở trong ô: vai dùng Grok, vai có `"rc": true` (điều khiển từ app Claude điện thoại), vai có `"giuO": "lý do"` (vd sửa hệ thống thật bằng Chrome — cần người xem).
@@ -140,14 +142,41 @@ Nhật ký đọc được bằng mắt: 💬 AI nói gì · 🔧 lệnh đã ch
 | Cả máy chậm | `(Get-Process).Count` và `Get-Process chrome` — AI hay bỏ quên Chrome chạy ẩn |
 | Bảng 📊 không có 🌙 | Bảng mở trước khi cập nhật → `Ctrl+Shift+U` hai lần |
 | Worker ngầm báo ⛔ lỗi | `wez.ps1 read <Dự án>.<Vai>` xem dòng ⛔ cuối; thường do hết hạn mức hoặc chưa đăng nhập |
-| Lỗi cài đặt lạ | `E:\AI\Hion\cai-dat\kiem-tra.ps1` |
+| Lỗi cài đặt lạ | `E:\AI\TongQuanAI\cai-dat\kiem-tra.ps1` |
 | Muốn bỏ chế độ ngầm | Xoá `"ngam": true` trong file đội rồi `wez.ps1 doi <dự án>` |
 
 **Cập nhật bản mới:** `Ctrl+Shift+P` → **⬆ Cập nhật đội AI**.
 
 ---
 
-## 8. Ba lời khuyên
+## 8. Tính năng tuỳ chọn (mặc định tắt)
+
+Bản cài chạy được ngay chỉ với **1 tài khoản Claude** (+ Codex nếu có). Những phần dưới cần dịch vụ riêng — bật khi bạn đã có:
+
+| Tính năng | Cần gì | Bật thế nào |
+|---|---|---|
+| Nhiều tài khoản Codex song song | nhiều tài khoản ChatGPT | `~\.codex-tai-khoan.json` (xem README) rồi `codex login` trong từng dự án |
+| 2 tài khoản Claude (hết tài khoản 1 tự sang tài khoản 2) | tài khoản Claude thứ 2 | `$env:CLAUDE_CONFIG_DIR="$HOME\.claude-tk2"; claude` → `/login` |
+| Worker dùng khoá API Anthropic khi gói hết | khoá API | lưu khoá vào `%LOCALAPPDATA%\wez-ai\anthropic-key.txt` + `"apiNganSach": <USD>` trong `~\.wez-ai.json` |
+| Xoay vòng tài khoản / model rẻ qua 9router | cài 9router (cổng 20128) | `"router": true` ở vai trong file đội; `scripts\giu-9router.ps1` giữ 9router luôn chạy |
+| Worker Grok | Grok Build CLI | `"ai": "grok"` ở vai |
+| Ca đêm (giao việc tự động 22:00 → 06:15) | — | `"caDem": true` trong `~\.wez-ai.json` + Task Scheduler gọi `ca-dem.ps1` |
+| Báo sang điện thoại khi cần duyệt | app ntfy | `wez.ps1 dienthoai bat` |
+| Đồng bộ việc sang Linear | Linear + 1Password CLI | `scripts\linear.js` (khoá lấy từ 1Password, không ghi file) |
+
+Mọi cài đặt riêng của máy nằm ở `~\.wez-ai.json` — cập nhật bản mới **không ghi đè** file này.
+
+---
+
+## 9. Gỡ cài
+
+1. Xoá các dòng `wezterm-ai` trong `~\.claude\settings.json` (statusLine + hooks) và đoạn giữa 2 dòng đánh dấu `wezterm-ai` trong `~\.claude\CLAUDE.md`, `~\.codex\AGENTS.md`.
+2. Khôi phục file cũ từ bản sao lưu `*.bak-<giờ>` (`~\.wezterm.lua`, `$PROFILE`, `~\.claude\statusline.js`).
+3. Xoá `~\.wezterm\`, `~\.wez-ai.json`, `%LOCALAPPDATA%\wez-ai\` và thư mục `<gốc>\TongQuanAI\cai-dat`. Các thư mục dự án của bạn không bị đụng tới.
+
+---
+
+## 10. Ba lời khuyên
 
 1. **Nói mục tiêu, đừng nói từng bước.** *"Tuần này cần 20 đơn từ khách cũ"* tốt hơn *"viết tin nhắn A rồi gửi B"*.
 2. **Mỗi sáng xem ô 📋.** Đội chỉ kẹt khi chờ bạn duyệt.

@@ -22,15 +22,15 @@ foreach ($lan in 1, 2) {
 # Các file đáng lẽ phải có sau khi cài
 $can = "$HOME\.wez-ai.json", "$HOME\.wezterm.lua", "$HOME\.claude\settings.json", "$HOME\.claude\statusline.js",
     "$HOME\.claude\CLAUDE.md", "$HOME\.codex\AGENTS.md", "$HOME\.codex\config.toml", $PROFILE,
-    'C:\AI\Hion\cai-dat\wez.ps1', 'C:\AI\Hion\cai-dat\khoa.js', 'C:\AI\Hion\cai-dat\kiem-tra.ps1', 'C:\AI\Hion\cai-dat\wez-alert.js',
-    'C:\AI\Hion\AGENTS.md', 'C:\AI\Hion\doi-agent.md', 'C:\AI\Hion\can-duyet.md', 'C:\AI\Hion\quyet-dinh.md', 'C:\AI\Hion\kho-kien-thuc.md', 'C:\AI\Hion\cai-dat\mau\du-an\AGENTS.md'
+    'C:\AI\TongQuanAI\cai-dat\wez.ps1', 'C:\AI\TongQuanAI\cai-dat\khoa.js', 'C:\AI\TongQuanAI\cai-dat\kiem-tra.ps1', 'C:\AI\TongQuanAI\cai-dat\wez-alert.js',
+    'C:\AI\TongQuanAI\AGENTS.md', 'C:\AI\TongQuanAI\doi-agent.md', 'C:\AI\TongQuanAI\can-duyet.md', 'C:\AI\TongQuanAI\quyet-dinh.md', 'C:\AI\TongQuanAI\kho-kien-thuc.md', 'C:\AI\TongQuanAI\cai-dat\mau\du-an\AGENTS.md'
 foreach ($f in $can) { Ghi ("{0}  {1}" -f $(if (Test-Path $f) { '✅' } else { '❌ THIẾU' }), $f) }
 
 # Nội dung phải đúng theo máy (ổ C:\AI chứ không phải E:\AI)
 $cfg = Get-Content "$HOME\.wez-ai.json" -Raw | ConvertFrom-Json
 Ghi "aiRoot trong ~\.wez-ai.json = $($cfg.aiRoot)  $(if ($cfg.aiRoot -eq 'C:\AI') { '✅' } else { '❌' })"
 $hooks = Get-Content "$HOME\.claude\settings.json" -Raw
-Ghi "Hooks Claude trỏ C:/AI/Hion/cai-dat: $(if ($hooks -match 'C:/AI/Hion/cai-dat' -and $hooks -notmatch 'E:/AI') { '✅' } else { '❌' })"
+Ghi "Hooks Claude trỏ C:/AI/TongQuanAI/cai-dat: $(if ($hooks -match 'C:/AI/TongQuanAI/cai-dat' -and $hooks -notmatch 'E:/AI') { '✅' } else { '❌' })"
 $rules = Get-Content "$HOME\.claude\CLAUDE.md" -Raw
 Ghi "Quy tắc đổi E:\AI → C:\AI: $(if ($rules -notmatch 'E:\\AI\\' -and $rules -match 'C:\\AI\\') { '✅' } else { '❌' })"
 Ghi "Codex có run-state: $(if (Select-String "$HOME\.codex\config.toml" -Pattern 'run-state' -Quiet) { '✅' } else { '❌' })"

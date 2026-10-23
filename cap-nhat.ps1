@@ -3,9 +3,9 @@
 #   powershell -ExecutionPolicy Bypass -File .\cap-nhat.ps1
 # Tự quét khoá bí mật ở cuối. Sau đó: git commit + push (AI làm giúp được).
 $here = $PSScriptRoot
-$AIRoot = 'E:\AI'
-if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.aiRoot) { $AIRoot = $c.aiRoot } }
-$caiDat = Join-Path $AIRoot 'Hion\cai-dat'
+$AIRoot = 'E:\AI'; $Hub = 'TongQuanAI'   # tên thư mục Tổng quản: trường "hub" trong ~\.wez-ai.json
+if (Test-Path "$HOME\.wez-ai.json") { $c = Get-Content "$HOME\.wez-ai.json" -Raw -Encoding UTF8 | ConvertFrom-Json; if ($c.aiRoot) { $AIRoot = $c.aiRoot }; if ($c.hub) { $Hub = $c.hub } }
+$caiDat = Join-Path $AIRoot "$Hub\cai-dat"
 $utf8 = New-Object Text.UTF8Encoding $false
 
 # Chạy thử mọi cấu hình / script trước (03/10/2026): có lỗi thì DỪNG, không chép bản hỏng vào repo
@@ -59,7 +59,7 @@ if (Test-Path $mauMay) {
 # Claude: chỉ lấy phần statusLine + hooks của settings.json (phần còn lại là cài đặt riêng máy)
 $s = Get-Content "$HOME\.claude\settings.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $part = [ordered]@{ statusLine = $s.statusLine; hooks = $s.hooks }
-$json = ($part | ConvertTo-Json -Depth 20).Replace(($caiDat -replace '\\', '/'), 'E:/AI/Hion/cai-dat')
+$json = ($part | ConvertTo-Json -Depth 20).Replace(($caiDat -replace '\\', '/'), "E:/AI/$Hub/cai-dat")
 [IO.File]::WriteAllText((Join-Path $here 'claude\settings.phan-them.json'), $json, $utf8)
 Write-Host '  ✓ claude\settings.phan-them.json'
 
@@ -70,6 +70,12 @@ if ($tt) {
     $lines = Get-Content $f -Encoding UTF8 | ForEach-Object { if ($_ -match '^\s*terminal_title\s*=') { $tt.Line.Trim() } else { $_ } }
     [IO.File]::WriteAllLines($f, [string[]]$lines, $utf8); Write-Host '  ✓ codex\config.phan-them.toml'
 }
+
+# Repo CÔNG KHAI: thay giá trị riêng (tài khoản, tên dự án, thư mục Tổng quản…) bằng giá trị mẫu theo ~\.wez-ai-rieng.json (ngoài repo)
+Write-Host "`nLàm sạch thông tin cá nhân:" -ForegroundColor Cyan
+node (Join-Path $here 'lam-sach.js')
+node (Join-Path $here 'lam-sach.js') --kiem
+if ($LASTEXITCODE) { Write-Host '⛔ Còn thông tin cá nhân → KHÔNG commit. Thêm cặp thay thế vào ~\.wez-ai-rieng.json rồi chạy lại.' -ForegroundColor Red; exit 1 }
 
 Write-Host "`nQuét khoá bí mật:" -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'quet-bi-mat.ps1')

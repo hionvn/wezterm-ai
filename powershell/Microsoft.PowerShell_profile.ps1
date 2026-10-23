@@ -41,7 +41,7 @@ function codextk {
         $ok = if (Test-Path (Join-Path $t.thuMuc 'auth.json')) { 'da dang nhap' } else { 'CHUA dang nhap' }
         Write-Host ("  {0}) {1,-28} {2,-26} du an: {3,-10} {4}" -f $t.so, $t.ten, $t.gmail, $proj, $ok)
     }
-    Write-Host '  Dang nhap lai: vao thu muc du an (vd cd E:\AI\Sino) roi go: codex login' -ForegroundColor DarkGray
+    Write-Host '  Dang nhap lai: vao thu muc du an (vd cd E:\AI\DuAnB) roi go: codex login' -ForegroundColor DarkGray
 }
 
 # deepseek [args] : Claude Code running on DeepSeek (04/10/2026). Key = user env var DEEPSEEK_API_KEY (never stored in a file).
@@ -89,12 +89,12 @@ $AITools = [ordered]@{
     '2' = @{ Name = 'Codex (GPT)'; Cmd = 'codex' }
     '3' = @{ Name = 'Grok'; Cmd = 'grok' }
 }
-# Get-AIProjects : folders in E:\AI ordered as the agent-team tree in Hion\cay-du-an.json
+# Get-AIProjects : folders in E:\AI ordered as the agent-team tree in TongQuanAI\cay-du-an.json
 #   (Tong quan -> PM du an -> cong cu); folders not in the tree go last, under "Khac".
 function Get-AIProjects {
     $dirs = @(Get-ChildItem $AIRoot -Directory | Sort-Object Name)
     $tree = @()
-    $f = Join-Path $AIRoot 'Hion\cay-du-an.json'
+    $f = Join-Path $AIRoot 'TongQuanAI\cay-du-an.json'
     if (Test-Path $f) { try { $tree = @((Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json).cay) } catch {} }
     $out = @()
     foreach ($n in $tree) {
@@ -185,7 +185,7 @@ function ai {
 
 # claudeRC : start Claude with Remote Control on, session named after the current folder
 #   (so it shows up by project name in the Claude phone app / claude.ai)
-#   Mọi ô Claude chạy tài khoản chính hionvn ~\.claude-tk2 (người dùng chốt 19/10/2026: hionvn là chính, tk khác là phụ)
+#   Mọi ô Claude chạy tài khoản chính tkchinh ~\.claude-tk2 (người dùng chốt 19/10/2026: tkchinh là chính, tk khác là phụ)
 function claudeRC {
     $ten = Split-Path -Leaf (Get-Location).Path
     $env:CLAUDE_CONFIG_DIR = "$HOME\.claude-tk2"
@@ -197,8 +197,8 @@ function claudeRC {
 function aiall {
     foreach ($d in Get-ChildItem $AIRoot -Directory | Sort-Object Name) {
         if ($env:WEZTERM_PANE) {
-            # WezTerm: one new window per project (06/10; Hion stays in this window), tab titled with the project name
-            $nw = if ($d.Name -ne 'Hion') { '--new-window' } else { $null }
+            # WezTerm: one new window per project (06/10; TongQuanAI stays in this window), tab titled with the project name
+            $nw = if ($d.Name -ne 'TongQuanAI') { '--new-window' } else { $null }
             $id = & $WezExe cli --no-auto-start spawn $nw --cwd "$($d.FullName)" -- powershell -NoExit -Command claudeRC
             & $WezExe cli set-tab-title --pane-id $id.Trim() $d.Name
             continue
@@ -215,10 +215,10 @@ function Enter-AIProject {
     Set-Location $dir
     if ($All) { ai2 $dir } else { claudeRC }
 }
-function hion { param([switch]$All) Enter-AIProject 'Hion'    -All:$All }
-function sino { param([switch]$All) Enter-AIProject 'Sino'    -All:$All }
-function cool { param([switch]$All) Enter-AIProject 'Coolguy' -All:$All }
-function bot  { param([switch]$All) Enter-AIProject 'Chatbot' -All:$All }
+function tqai { param([switch]$All) Enter-AIProject 'TongQuanAI'    -All:$All }
+function duanb { param([switch]$All) Enter-AIProject 'DuAnB'    -All:$All }
+function cool { param([switch]$All) Enter-AIProject 'DuAnC' -All:$All }
+function bot  { param([switch]$All) Enter-AIProject 'DuAnA' -All:$All }
 
 # newproj <name> : create (or complete) E:\AI\<name> with git + shared AI instructions, then cd into it
 #   Existing files are never overwritten; only missing ones are added.
@@ -246,7 +246,7 @@ function newproj {
         '.gitignore'            = "node_modules/`n.env`n__pycache__/`n.venv/`n.claude/settings.local.json`n"
     }
     # Có bộ mẫu của wezterm-ai thì dùng: AGENTS.md ghi sẵn vai Manager + file tiến độ để bàn giao
-    $mau = Join-Path $AIRoot 'Hion\cai-dat\mau\du-an'
+    $mau = Join-Path $AIRoot 'TongQuanAI\cai-dat\mau\du-an'
     if (Test-Path "$mau\AGENTS.md") {
         $thay = { param($s) $s.Replace('{{TEN}}', $Name).Replace('{{ten}}', $Name.ToLower()).Replace('{{AIROOT}}', $AIRoot) }
         $files['AGENTS.md'] = & $thay (Get-Content "$mau\AGENTS.md" -Raw -Encoding UTF8)

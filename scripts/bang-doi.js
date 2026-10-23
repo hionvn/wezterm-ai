@@ -2,7 +2,7 @@
 // Mỗi dòng = 1 ô AI: dự án · vai · ⏳ đang làm / 🔔 cần duyệt / 🟢 rảnh · bao lâu rồi. Bấm vào dòng → nhảy tới ô đó
 // (link wezai-o:<số ô>, ~/.wezterm.lua sự kiện open-uri xử lý). Tự hiện bên phải ô Tổng quản khi agent làm việc; Ctrl+Shift+U bật/tắt.
 // Đọc: wezterm cli list · sổ đội %LOCALAPPDATA%\wez-ai\doi\*.json · trạng thái wez-ai\state · báo động wez-ai\alerts
-//       · hạn mức wez-ai\fuel-claude.json, fuel-codex.json · thứ tự + logo dự án Hion\cay-du-an.json
+//       · hạn mức wez-ai\fuel-claude.json, fuel-codex.json · thứ tự + logo dự án TongQuanAI\cay-du-an.json
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -60,7 +60,7 @@ function viecList(now) {
   const homNay = vs.filter((v) => v.t >= t0 && !v.bo);
   const chua = vs.filter((v) => !v.xong && !v.bo);
   const xong = homNay.filter((v) => v.xong);
-  if (!vs.length) return [`${B}📋 VIỆC ĐÃ GIAO${R} ${DIM}— chưa có (giao bằng wez.ps1 send Chatbot.Engineer "việc" thì hiện ở đây)${R}`, ''];
+  if (!vs.length) return [`${B}📋 VIỆC ĐÃ GIAO${R} ${DIM}— chưa có (giao bằng wez.ps1 send DuAnA.Engineer "việc" thì hiện ở đây)${R}`, ''];
   const lines = [`${B}📋 VIỆC ĐÃ GIAO${R}  hôm nay ${rgb('#98c379')}${B}${xong.length}/${homNay.length} xong${R}` + (chua.length ? `  ·  ${rgb('#e5c07b')}${chua.length} chưa xong${R}` : '')];
   // chưa xong (mọi ngày) trước, rồi 8 việc xong gần nhất hôm nay; giữ đúng số thứ tự
   const show = [...chua, ...xong.slice(-8)].sort((a, b) => a.so - b.so);
@@ -108,7 +108,7 @@ function drawRaw() {
   // gom ô theo dự án
   const groups = {}, docs = [];
   const coMat = new Set(ngu.map((z) => `${z.du_an}.${z.vai}`)); // vai đang có ô hoặc đang ngủ
-  const moRong = new Set(); // 17/10 (người dùng: "list các worker Muse ở cột phải"): dự án không tạm dừng → hiện từng worker ngầm; dự án tạm dừng → gộp 1 dòng
+  const moRong = new Set(); // 17/10 (người dùng: "list các worker DuAnG ở cột phải"): dự án không tạm dừng → hiện từng worker ngầm; dự án tạm dừng → gộp 1 dòng
   for (const z of ngu) (groups[z.du_an] = groups[z.du_an] || []).push({ id: '', tabNo: 99, label: z.label, state: 'ngu', since: z.since, manager: false, inTeam: true });
   // 06/10: worker chạy ngầm (ngam.js) — không có ô; hiện 🌙 + trạng thái việc ngầm
   try {
@@ -157,7 +157,7 @@ function drawRaw() {
   // vẽ
   const [cols, rows] = coO();
   const out = [];
-  viecList(now); // 04/10: KHÔNG hiện checklist nữa (Hion: bảng chỉ để danh sách agent) — vẫn chạy để tự ☑ việc xong trong viec.json (eval, Brain dùng)
+  viecList(now); // 04/10: KHÔNG hiện checklist nữa (TongQuanAI: bảng chỉ để danh sách agent) — vẫn chạy để tự ☑ việc xong trong viec.json (eval, Brain dùng)
   const fc = readJson(path.join(WEZAI, 'fuel-claude.json'));
   let fx = readJson(path.join(WEZAI, 'fuel-codex.json'));
   if (!Array.isArray(fx)) fx = []; // Lua ghi bảng rỗng thành {} (06/10: "fx is not iterable")

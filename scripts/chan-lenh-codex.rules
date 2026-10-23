@@ -1,5 +1,5 @@
-# === chan-lenh (Hion, 03/10/2026) — Codex KHÔNG được chạy các lệnh dưới (YOLO vẫn bị chặn) ===
-# Bản gốc: E:\AI\Hion\cai-dat\chan-lenh-codex.rules · cài vào mọi CODEX_HOME: node E:\AI\Hion\cai-dat\chan-lenh.js cai-codex
+# === chan-lenh (TongQuanAI, 03/10/2026) — Codex KHÔNG được chạy các lệnh dưới (YOLO vẫn bị chặn) ===
+# Bản gốc: E:\AI\TongQuanAI\cai-dat\chan-lenh-codex.rules · cài vào mọi CODEX_HOME: node E:\AI\TongQuanAI\cai-dat\chan-lenh.js cai-codex
 # Codex là worker: không push / deploy / phát hành — việc đó của Manager (Claude, có hook chan-lenh.js).
 prefix_rule(pattern=["git", "push"], decision="forbidden", justification="Worker Codex không push. Báo Manager / ghi duyet.js them.")
 # 04/10: "git -C <thư mục> push" / "git -c x=y push" lọt luật tiền tố ở trên → cấm hẳn -C / -c (dùng cd vào thư mục rồi chạy git)

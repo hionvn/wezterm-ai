@@ -1,7 +1,7 @@
 ﻿# kiem-cau-hinh.ps1 — chạy thử mọi file cấu hình / script của đội AI trước khi lưu (03/10/2026).
 # Lỗi ở đâu báo đúng file. Mã thoát: 0 = ổn · 1 = có lỗi (cap-nhat.ps1 dừng, không chép sang repo).
 # Sinh ra sau 2 lần trong 03/10 sửa hỏng ~\.wezterm.lua (nhân đôi nửa file, lỗi goto) mà chỉ phát hiện khi WezTerm báo lỗi.
-#   powershell -ExecutionPolicy Bypass -File E:\AI\Hion\cai-dat\kiem-cau-hinh.ps1
+#   powershell -ExecutionPolicy Bypass -File E:\AI\TongQuanAI\cai-dat\kiem-cau-hinh.ps1
 $loi = 0
 function Ok($m) { Write-Host "  ✅ $m" }
 function Hong($m) { Write-Host "  ❌ $m" -ForegroundColor Red; $script:loi++ }
@@ -48,7 +48,7 @@ $jLoi = 0
 foreach ($f in Get-ChildItem (Join-Path (Split-Path $caiDat) 'doi') -Filter *.json -File -ErrorAction SilentlyContinue) {
     try { $null = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json } catch { Hong "doi\$($f.Name): JSON hỏng"; $jLoi++ }
 }
-if (-not $jLoi) { Ok 'định nghĩa đội (Hion\doi\*.json) đọc được' }
+if (-not $jLoi) { Ok 'định nghĩa đội (TongQuanAI\doi\*.json) đọc được' }
 
 if ($loi) { Write-Host "❌ Có $loi lỗi — sửa xong rồi mới lưu / commit." -ForegroundColor Red; exit 1 }
 Write-Host '✅ Cấu hình ổn.' -ForegroundColor Green

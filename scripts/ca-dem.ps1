@@ -1,13 +1,13 @@
 ﻿# Ca đêm của đội agent (theo night plan thầy Sơn, BTO buổi 8) — Task Scheduler gọi theo giờ:
 #   lap 22:00 · p1 23:00 · p2 01:00 · p3 03:00 · p4 05:00 · tongket 06:15
-#   lap/tongket gửi cho 👑 Tổng quản (ô ghi trong %LOCALAPPDATA%\wez-ai\doi\Hion.json);
-#   p1–p4 gửi cho Manager các dự án có trong kế hoạch đêm E:\AI\Hion\ca-dem\<ngày>.json {"du_an":[...]}.
-# Chỉ việc 🟢 (luật: E:\AI\Hion\quy-trinh-lien-mach.md mục 9). Không push, không tiền, không gửi ra ngoài.
+#   lap/tongket gửi cho 👑 Tổng quản (ô ghi trong %LOCALAPPDATA%\wez-ai\doi\TongQuanAI.json);
+#   p1–p4 gửi cho Manager các dự án có trong kế hoạch đêm E:\AI\TongQuanAI\ca-dem\<ngày>.json {"du_an":[...]}.
+# Chỉ việc 🟢 (luật: E:\AI\TongQuanAI\quy-trinh-lien-mach.md mục 9). Không push, không tiền, không gửi ra ngoài.
 # Bật/tắt: "caDem": true|false trong ~\.wez-ai.json (mặc định tắt). Thử tay: ca-dem.ps1 p1 -Thu (chỉ in, không gửi).
-# Nhật ký: E:\AI\Hion\ca-dem\nhat-ky-<ngày>.md
+# Nhật ký: E:\AI\TongQuanAI\ca-dem\nhat-ky-<ngày>.md
 param([Parameter(Mandatory)][ValidateSet('lap', 'p1', 'p2', 'p3', 'p4', 'tongket')][string]$Pha, [switch]$Thu)
 
-$HUB = 'E:\AI\Hion'
+$HUB = 'E:\AI\TongQuanAI'
 $WEZ = Join-Path $HUB 'cai-dat\wez.ps1'
 $dir = Join-Path $HUB 'ca-dem'
 New-Item -ItemType Directory -Force $dir | Out-Null
@@ -27,14 +27,14 @@ try {
     if ($f.five -ge 85 -and $Pha -ne 'tongket') { Ghi "Hạn mức Claude 5 giờ đang $($f.five)% → bỏ pha này"; exit 0 }
 } catch {}
 
-$luat = 'Luật: E:\AI\Hion\quy-trinh-lien-mach.md mục 9 (ca đêm). CHỈ việc 🟢; việc 🔴 → duyet.js them rồi làm việc khác; không push, không deploy, không tiền, không gửi ra ngoài; 1Password đêm không có người mở khoá → việc cần key để sáng.'
+$luat = 'Luật: E:\AI\TongQuanAI\quy-trinh-lien-mach.md mục 9 (ca đêm). CHỈ việc 🟢; việc 🔴 → duyet.js them rồi làm việc khác; không push, không deploy, không tiền, không gửi ra ngoài; 1Password đêm không có người mở khoá → việc cần key để sáng.'
 $loi = @{
-    lap     = "🌙 CA ĐÊM $ngay — LẬP KẾ HOẠCH (22:00). Đọc E:\AI\Hion\brain\hom-nay.md (Company Brain gom lúc 21:55: tiến độ, kẹt, cần duyệt, việc ☐ mọi dự án) — cần chi tiết mới mở brain\du-an\<DựÁn>.md. Chọn việc 🟢 đã rõ cho đêm nay (mỗi dự án ≤ 3, ưu tiên việc ra tiền). Ghi E:\AI\Hion\ca-dem\$ngay.md (bảng: dự án · việc · Xong khi · ai làm) và E:\AI\Hion\ca-dem\$ngay.json dạng {`"du_an`":[`"Chatbot`",…]}. Tạo ticket Linear cho từng việc: node E:\AI\Hion\cai-dat\linear.js tao <DựÁn> `"tiêu đề`" (lỗi 1Password thì nó tự xếp hàng, sáng đồng bộ). CHƯA giao — 23:00 các Manager tự nhận. $luat"
-    p1      = "🌙 CA ĐÊM $ngay · PHA 1 (23:00–01:00) LÀM: đọc E:\AI\Hion\ca-dem\$ngay.md phần dự án của bạn, giao worker theo brief 6 mục, chạy tới xong, commit cục bộ. Ticket: bắt đầu → node E:\AI\Hion\cai-dat\linear.js dang <HIO-x>; làm xong → linear.js soat <HIO-x> `"đầu ra`" (chờ soát, chưa Done). $luat"
+    lap     = "🌙 CA ĐÊM $ngay — LẬP KẾ HOẠCH (22:00). Đọc E:\AI\TongQuanAI\brain\hom-nay.md (Company Brain gom lúc 21:55: tiến độ, kẹt, cần duyệt, việc ☐ mọi dự án) — cần chi tiết mới mở brain\du-an\<DựÁn>.md. Chọn việc 🟢 đã rõ cho đêm nay (mỗi dự án ≤ 3, ưu tiên việc ra tiền). Ghi E:\AI\TongQuanAI\ca-dem\$ngay.md (bảng: dự án · việc · Xong khi · ai làm) và E:\AI\TongQuanAI\ca-dem\$ngay.json dạng {`"du_an`":[`"DuAnA`",…]}. Tạo ticket Linear cho từng việc: node E:\AI\TongQuanAI\cai-dat\linear.js tao <DựÁn> `"tiêu đề`" (lỗi 1Password thì nó tự xếp hàng, sáng đồng bộ). CHƯA giao — 23:00 các Manager tự nhận. $luat"
+    p1      = "🌙 CA ĐÊM $ngay · PHA 1 (23:00–01:00) LÀM: đọc E:\AI\TongQuanAI\ca-dem\$ngay.md phần dự án của bạn, giao worker theo brief 6 mục, chạy tới xong, commit cục bộ. Ticket: bắt đầu → node E:\AI\TongQuanAI\cai-dat\linear.js dang <HIO-x>; làm xong → linear.js soat <HIO-x> `"đầu ra`" (chờ soát, chưa Done). $luat"
     p2      = "🌙 CA ĐÊM $ngay · PHA 2 (01:00–03:00) NGHIÊN CỨU / NHÁP: làm nốt việc pha 1, rồi việc nghiên cứu, đối soát số liệu, viết nháp trong kế hoạch. $luat"
-    p3      = "🌙 CA ĐÊM $ngay · PHA 3 (03:00–05:00) SOÁT CHÉO: cho Security/Kiểm soát soát mọi thay đổi từ 22:00 (git log --since=`"$ngay 22:00`"); việc code thì soát chéo Claude↔Codex (wez.ps1 review <dự án>); lỗi mức cao sửa ngay. Người làm không tự duyệt. Soát ĐẠT → node E:\AI\Hion\cai-dat\linear.js xong <HIO-x> `"bằng chứng`"; chưa đạt → linear.js dang <HIO-x> `"lỗi cần sửa`". $luat"
-    p4      = "🌙 CA ĐÊM $ngay · PHA 4 (05:00–06:15) TEST + BÁO CÁO: chạy kiểm thử của dự án; cập nhật tien-do; ghi E:\AI\Hion\ca-dem\$ngay-<DựÁn>.md — mỗi việc 5 trường (Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp) + 'Đã tự chọn'; chuyển ticket: node E:\AI\Hion\cai-dat\linear.js xong|soat|dang <HIO-x> (Done chỉ khi đã qua soát). $luat"
-    tongket = "☀️ CA ĐÊM $ngay — TỔNG KẾT + EVAL (06:15). 1) node E:\AI\Hion\cai-dat\eval-dem.js $ngay (ra learn\so-lieu-$ngay.json + learn\eval-$ngay.md phần số). 2) node E:\AI\Hion\cai-dat\brain.js rồi đọc brain\hom-nay.md + ca-dem\$ngay-*.md + nhat-ky-$ngay.md, viết E:\AI\Hion\ca-dem\bao-cao-$sang.md (≤ 1 trang: ✅ đã xong · 🧱 kẹt · 🔔 cần Hion · số liệu) — báo cáo sáng tự gắn vào. 3) Bổ sung learn\eval-$ngay.md: mỗi agent đúng đề không, bị trả lại không, lỗi gì; bài học mới → learn\bai-hoc.md (đếm số lần gặp); bài học gặp ≥ 2 lần → đề xuất đóng thành skill bằng duyet.js them Hion. 4) node E:\AI\Hion\cai-dat\linear.js dong-bo. $luat"
+    p3      = "🌙 CA ĐÊM $ngay · PHA 3 (03:00–05:00) SOÁT CHÉO: cho Security/Kiểm soát soát mọi thay đổi từ 22:00 (git log --since=`"$ngay 22:00`"); việc code thì soát chéo Claude↔Codex (wez.ps1 review <dự án>); lỗi mức cao sửa ngay. Người làm không tự duyệt. Soát ĐẠT → node E:\AI\TongQuanAI\cai-dat\linear.js xong <HIO-x> `"bằng chứng`"; chưa đạt → linear.js dang <HIO-x> `"lỗi cần sửa`". $luat"
+    p4      = "🌙 CA ĐÊM $ngay · PHA 4 (05:00–06:15) TEST + BÁO CÁO: chạy kiểm thử của dự án; cập nhật tien-do; ghi E:\AI\TongQuanAI\ca-dem\$ngay-<DựÁn>.md — mỗi việc 5 trường (Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp) + 'Đã tự chọn'; chuyển ticket: node E:\AI\TongQuanAI\cai-dat\linear.js xong|soat|dang <HIO-x> (Done chỉ khi đã qua soát). $luat"
+    tongket = "☀️ CA ĐÊM $ngay — TỔNG KẾT + EVAL (06:15). 1) node E:\AI\TongQuanAI\cai-dat\eval-dem.js $ngay (ra learn\so-lieu-$ngay.json + learn\eval-$ngay.md phần số). 2) node E:\AI\TongQuanAI\cai-dat\brain.js rồi đọc brain\hom-nay.md + ca-dem\$ngay-*.md + nhat-ky-$ngay.md, viết E:\AI\TongQuanAI\ca-dem\bao-cao-$sang.md (≤ 1 trang: ✅ đã xong · 🧱 kẹt · 🔔 cần TongQuanAI · số liệu) — báo cáo sáng tự gắn vào. 3) Bổ sung learn\eval-$ngay.md: mỗi agent đúng đề không, bị trả lại không, lỗi gì; bài học mới → learn\bai-hoc.md (đếm số lần gặp); bài học gặp ≥ 2 lần → đề xuất đóng thành skill bằng duyet.js them TongQuanAI. 4) node E:\AI\TongQuanAI\cai-dat\linear.js dong-bo. $luat"
 }
 
 function Gui($dich, $text) {
@@ -55,7 +55,7 @@ function Gui($dich, $text) {
     }
 }
 
-if ($Pha -in 'lap', 'tongket') { Gui 'Hion.TongQuan' $loi[$Pha]; exit 0 }
+if ($Pha -in 'lap', 'tongket') { Gui 'TongQuanAI.TongQuan' $loi[$Pha]; exit 0 }
 
 $ke = Join-Path $dir "$ngay.json"
 if (-not (Test-Path $ke)) { Ghi "Chưa có kế hoạch $ke → bỏ pha (Tổng quản chưa lập lúc 22:00?)"; exit 0 }

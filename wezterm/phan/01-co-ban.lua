@@ -1,4 +1,4 @@
--- Cài đặt WezTerm của Hion (tạo 01/10/2026).
+-- Cài đặt WezTerm của TongQuanAI (tạo 01/10/2026).
 -- Mục tiêu: dùng giống Windows Terminal (menu `ai`, chia cột, Alt+mũi tên)
 -- và để AI tổng quản điều khiển các ô bằng `wezterm cli`.
 local wezterm = require 'wezterm'
@@ -7,7 +7,7 @@ local config = wezterm.config_builder()
 
 -- Cấu hình chung của máy (khoi-phuc.ps1 tạo): ~\.wez-ai.json = { "aiRoot": "E:\\AI", "wezterm": "...\\wezterm.exe" }
 -- Không có file thì dùng mặc định bên dưới.
-local HOME = os.getenv('USERPROFILE') or 'C:\\Users\\Hion'
+local HOME = os.getenv('USERPROFILE') or 'C:\\Users\\TongQuanAI'
 local machine = {}
 do
   local f = io.open(HOME .. '\\.wez-ai.json', 'rb')
@@ -19,7 +19,7 @@ do
 end
 wezterm.add_to_config_reload_watch_list(HOME .. '\\.wez-ai.json') -- sửa file này là WezTerm tự nạp lại
 local AI_ROOT = (machine.aiRoot or 'E:\\AI'):gsub('[\\/]+$', '')
-local HUB = AI_ROOT .. '\\Hion'
+local HUB = AI_ROOT .. '\\TongQuanAI'
 local AIDIR = (os.getenv('LOCALAPPDATA') or (HOME .. '\\AppData\\Local')) .. '\\wez-ai'
 
 -- Chạy một lệnh trong PowerShell (có nạp profile: ai, claudeRC, codex...).
@@ -35,7 +35,7 @@ local function PSN(cmd)
     'Get-ChildItem Env:CLAUDE* -ErrorAction SilentlyContinue | Remove-Item; ' .. cmd }
 end
 
--- Mở lên là vào menu `ai` (chọn dự án rồi chọn AI), bắt đầu ở Hion
+-- Mở lên là vào menu `ai` (chọn dự án rồi chọn AI), bắt đầu ở TongQuanAI
 config.default_prog = PS('ai')
 config.default_cwd = HUB
 

@@ -34,22 +34,22 @@ process.stdin.on('end', () => {
   const dir = ws.current_dir || data.cwd || process.cwd();
   const projDir = ws.project_dir || dir;
   const project = projDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
-  const projColors = { hion: yellow, sino: red, coolguy: blue, chatbot: magenta };
+  const projColors = { tqai: yellow, duanb: red, duanc: blue, duana: magenta };
   const palette = [cyan, green, orange, magenta, blue];
   let pc = projColors[project.toLowerCase()];
   if (!pc) { let h = 0; for (const ch of project) h = (h * 31 + ch.charCodeAt(0)) >>> 0; pc = palette[h % palette.length]; }
-  // Màu + logo riêng từng dự án lấy từ Hion\cay-du-an.json (trường "mau", "logo") — giống tab WezTerm
+  // Màu + logo riêng từng dự án lấy từ TongQuanAI\cay-du-an.json (trường "mau", "logo") — giống tab WezTerm
   let logo = '📁';
   try {
-    const cay = JSON.parse(fs.readFileSync(path.join(projDir, '..', 'Hion', 'cay-du-an.json'), 'utf8').replace(/^﻿/, '')).cay || [];
+    const cay = JSON.parse(fs.readFileSync(path.join(projDir, '..', 'TongQuanAI', 'cay-du-an.json'), 'utf8').replace(/^﻿/, '')).cay || [];
     const it = cay.find((n) => String(n.ten).toLowerCase() === project.toLowerCase());
     const m = it && /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(it.mau || '');
     if (m) pc = `[1;38;2;${parseInt(m[1], 16)};${parseInt(m[2], 16)};${parseInt(m[3], 16)}m`;
     if (it && it.logo) logo = it.logo;
   } catch {}
-  // Nhãn chức vụ theo sơ đồ tổ chức: Hion = Chief of Staff, thư mục dự án = Manager dự án đó;
+  // Nhãn chức vụ theo sơ đồ tổ chức: TongQuanAI = Chief of Staff, thư mục dự án = Manager dự án đó;
   // ô có tên trong sổ đội (%LOCALAPPDATA%\wez-ai\doi\<dự án>.json) là worker → "⚙️ ENGINEER ← MANAGER ô 24"
-  let role = project.toLowerCase() === 'hion' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
+  let role = project.toLowerCase() === 'tqai' ? '👑 TỔNG QUẢN' : `🧭 MANAGER ${project.toUpperCase()}`;
   let isWorker = false; // worker trong đội → thanh trạng thái 1 dòng (ô lưới 2×2 thấp, đỡ mất chỗ)
   try {
     const pane = String(process.env.WEZTERM_PANE || '');
@@ -58,7 +58,7 @@ process.stdin.on('end', () => {
     const w = pane && ws.find((x) => String(x.o) === pane);
     if (w) { role = `${w.icon} ${(w.ten || w.vai).toUpperCase()}${R}${dim} ← 🧭 Manager ${doi.manager ? 'ô ' + doi.manager.o : '(chưa có)'}${R}${pc}${bold}`; isWorker = true; }
     // 03/10: dự án đã có đội mà ô này không phải Manager / worker (vd phiên review, phiên mở thêm) → không gắn nhãn Manager
-    // 04/10: sau khởi động lại sổ có thể còn số ô Manager cũ (Hion ghi ô 4 trong khi Tổng quản là ô 0) → Manager là Claude
+    // 04/10: sau khởi động lại sổ có thể còn số ô Manager cũ (TongQuanAI ghi ô 4 trong khi Tổng quản là ô 0) → Manager là Claude
     // mà ô đó không còn file trạng thái (wez-ai\state\<ô>.json, hook Claude ghi) thì coi như ô chết, không gắn "phiên phụ"
     else if (pane && doi.manager && String(doi.manager.o) !== pane) {
       const chet = doi.manager.ai === 'claude' && !fs.existsSync(path.join(process.env.LOCALAPPDATA || '', 'wez-ai', 'state', String(doi.manager.o) + '.json'));
@@ -156,8 +156,8 @@ process.stdin.on('end', () => {
         t: Math.floor(now),
       });
       fs.writeFileSync(path.join(fdir, 'fuel-claude.json'), fuel); // file chung cũ: ngam.js đọc
-      // 19/10: thêm file theo tài khoản cho thanh hạn mức WezTerm (cai-dat\han-muc.js): ~\.claude-tk2 = hionvn, còn lại = vuanhtuanfpt
-      const tk = /claude-tk2/i.test(process.env.CLAUDE_CONFIG_DIR || '') ? 'hionvn' : 'vuanhtuanfpt';
+      // 19/10: thêm file theo tài khoản cho thanh hạn mức WezTerm (cai-dat\han-muc.js): ~\.claude-tk2 = tkchinh, còn lại = tkphumail
+      const tk = /claude-tk2/i.test(process.env.CLAUDE_CONFIG_DIR || '') ? 'tkchinh' : 'tkphumail';
       fs.writeFileSync(path.join(fdir, 'fuel-claude-' + tk + '.json'), fuel);
     } catch {}
   }

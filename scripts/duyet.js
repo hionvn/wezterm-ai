@@ -1,5 +1,5 @@
-// Bàn duyệt của Tổng quản: thêm / duyệt / yêu cầu sửa / bỏ một việc trong E:\AI\Hion\can-duyet.md
-// và ghi lại quyết định vào E:\AI\Hion\quyet-dinh.md (sổ quyết định — AI dự án đọc để làm tiếp).
+// Bàn duyệt của Tổng quản: thêm / duyệt / yêu cầu sửa / bỏ một việc trong E:\AI\TongQuanAI\can-duyet.md
+// và ghi lại quyết định vào E:\AI\TongQuanAI\quyet-dinh.md (sổ quyết định — AI dự án đọc để làm tiếp).
 //   node duyet.js list                          # xem việc đang chờ (số thứ tự + mã)
 //   node duyet.js them <dự án> "câu hỏi"        # AI thêm việc cần người dùng quyết
 //   node duyet.js ok   <số|mã> [ghi chú]        # ✅ duyệt
@@ -18,7 +18,7 @@ function aiRoot() {
   } catch (_) { }
   return 'E:\\AI';
 }
-const HUB = path.join(aiRoot(), 'Hion');
+const HUB = path.join(aiRoot(), 'TongQuanAI');
 const FILE = path.join(HUB, 'can-duyet.md');
 const LOG = path.join(HUB, 'quyet-dinh.md');
 const HEAD_CHO = '## Đang chờ';
@@ -92,7 +92,7 @@ function decide(verb, key, note) {
   console.log(`${VERB[verb]}: ${tag}${it.text.slice(0, 80)}`);
 }
 
-// 04/10/2026: duyệt / sửa / bỏ xong → 60 giây sau tự chạy linear-sync.js (đóng ticket "Cần Hion" đã quyết),
+// 04/10/2026: duyệt / sửa / bỏ xong → 60 giây sau tự chạy linear-sync.js (đóng ticket "Cần TongQuanAI" đã quyết),
 // thay vì chờ tới 12:00. Duyệt nhiều việc liền nhau thì chỉ hẹn 1 lần (khoá 3 phút). Tắt: biến DUYET_KHONG_SYNC=1.
 function hẹnĐồngBộLinear() {
   if (process.env.DUYET_KHONG_SYNC) return;

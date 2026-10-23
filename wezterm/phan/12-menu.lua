@@ -55,9 +55,9 @@ end)
 wezterm.on('tat-du-an', function(window, pane)
   wezterm.log_warn('tat-du-an: đã nhận lệnh') -- để biết phím có tới WezTerm không
   local doi = doi_map()
-  local hion = read_json(AIDIR .. '\\doi\\Hion.json')
+  local tqai = read_json(AIDIR .. '\\doi\\TongQuanAI.json')
   local giu = { [tostring(wezterm.GLOBAL.board_o or '')] = true }
-  if hion and hion.manager then giu[tostring(hion.manager.o)] = true end
+  if tqai and tqai.manager then giu[tostring(tqai.manager.o)] = true end
   local nhom, thu_tu = {}, {}
   for _, mw in ipairs(wezterm.mux.all_windows()) do
     for _, tab in ipairs(mw:tabs()) do

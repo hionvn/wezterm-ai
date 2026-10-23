@@ -19,8 +19,8 @@ config.webgpu_power_preference = 'HighPerformance' -- card rời NVIDIA RTX 3060
 config.cursor_blink_rate = 0
 config.check_for_updates = false
 
--- Màu + logo riêng từng dự án: lấy từ Hion\cay-du-an.json (trường "mau", "logo"); dự án lạ → màu theo tên, logo 📁
-local proj_colors = { hion = '#e5c07b', sino = '#e06c75', coolguy = '#61afef', chatbot = '#c678dd' }
+-- Màu + logo riêng từng dự án: lấy từ TongQuanAI\cay-du-an.json (trường "mau", "logo"); dự án lạ → màu theo tên, logo 📁
+local proj_colors = { tqai = '#e5c07b', duanb = '#e06c75', duanc = '#61afef', duana = '#c678dd' }
 local proj_logos = {}
 do
   local f = io.open(HUB .. '\\cay-du-an.json', 'rb')
@@ -46,7 +46,7 @@ local function proj_color(name)
   return palette[h % #palette + 1]
 end
 
--- Lấy đường dẫn thư mục của ô (dạng E:\AI\Sino\...)
+-- Lấy đường dẫn thư mục của ô (dạng E:\AI\DuAnB\...)
 local function pane_dir(p)
   local cwd = p.current_working_dir
   if cwd == nil then return nil end
@@ -70,7 +70,7 @@ end
 local function which_ai(p)
   local s = ((p.foreground_process_name or '') .. ' ' .. (p.title or '')):lower()
   if s:find('codex') then return '🧩', 'Codex' end
-  -- tiêu đề Codex kiểu "Chatbot | Ready | tên phiên" / "| Working |" không có chữ codex (03/10: mở lại bị nhận nhầm là PowerShell)
+  -- tiêu đề Codex kiểu "DuAnA | Ready | tên phiên" / "| Working |" không có chữ codex (03/10: mở lại bị nhận nhầm là PowerShell)
   if s:find('| ready |', 1, true) or s:find('| working |', 1, true) or s:find('| waiting', 1, true) then return '🧩', 'Codex' end
   if s:find('claude') or s:find('✳') or s:find('◐') or s:find('◓') or s:find('◑') or s:find('◒') then return '🤖', 'Claude' end
   if s:find('powershell') or s:find('pwsh') then return '⌨️', 'PowerShell' end

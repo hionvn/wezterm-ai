@@ -123,8 +123,8 @@ function codexRows(now) {
   return out;
 }
 
-// Thứ tự worker giống ngam.js (thuTu + claudeTk, 19/10): Grok → GPT 9router → Claude vuanhtuanfpt → Claude hionvn.
-// Gói đầu tiên chưa hết = ▶ ĐANG DÙNG, gói sau còn hạn mức = ⏸ CHỜ, gói hết = ⛔ HẾT ↻giờ hồi. hionvn luôn chạy ô Tổng quản.
+// Thứ tự worker giống ngam.js (thuTu + claudeTk, 19/10): Grok → GPT 9router → Claude tkphumail → Claude tkchinh.
+// Gói đầu tiên chưa hết = ▶ ĐANG DÙNG, gói sau còn hạn mức = ⏸ CHỜ, gói hết = ⛔ HẾT ↻giờ hồi. tkchinh luôn chạy ô Tổng quản.
 async function gom() {
   const now = Date.now() / 1000, parts = [], SEP = { c: '#5c6370', t: ' │ ' }, chay = demChay();
   const g = docJson('grok-het.json'), rh = docJson('router-het.json');
@@ -133,17 +133,17 @@ async function gom() {
   let r9 = null; try { r9 = await so9r(now); } catch {}
   goi.push({ ten: 'GPT9r', het: rh && rh.den > now ? rh.den : !r9 ? -1 : r9.con === 0 ? (r9.hoi || -1) : 0, n: chay.codex,
     them: r9 ? r9.con + '/' + r9.tong + (r9.tuan !== null ? ' · T' + Math.round(r9.tuan) + '%' : '') : '9router tắt' });
-  // 22/10: vuanh chuyển sang hồ sơ riêng ~\.claude-vuanh (giống ngam.js); chưa đăng nhập thì đọc ~\.claude như cũ
-  const vuanhDir = fs.existsSync(path.join(process.env.USERPROFILE || '', '.claude-vuanh', '.credentials.json')) ? '.claude-vuanh' : '.claude';
-  for (const [ten, dir, f, h] of [['vuanh', vuanhDir, 'fuel-claude-vuanhtuanfpt.json', 'claude-het-chinh.json'],
-    ['hionvn', '.claude-tk2', 'fuel-claude-hionvn.json', 'claude-het-tk2.json']]) {
+  // 22/10: tkphu chuyển sang hồ sơ riêng ~\.claude-tkphu (giống ngam.js); chưa đăng nhập thì đọc ~\.claude như cũ
+  const tkphuDir = fs.existsSync(path.join(process.env.USERPROFILE || '', '.claude-tkphu', '.credentials.json')) ? '.claude-tkphu' : '.claude';
+  for (const [ten, dir, f, h] of [['tkphu', tkphuDir, 'fuel-claude-tkphumail.json', 'claude-het-chinh.json'],
+    ['tkchinh', '.claude-tk2', 'fuel-claude-tkchinh.json', 'claude-het-tk2.json']]) {
     const c = await soClaude(dir, f, h, now);
     goi.push({ ten, het: c.het || 0, cu: c.cu, pct: Math.max(c.five || 0, c.week || 0),
       them: c.five == null ? '? ' + (c.loi || 'chưa có số') : '5h' + c.five + '%' + (c.five >= 85 && c.hoi ? '↻' + gio(c.hoi) : '') + ' T' + c.week + '%' });
   }
   goi[3].tq = true;
   const dangDung = goi.findIndex(x => x.het === 0); // -1 = mọi gói hết
-  // worker Claude chạy ngầm tính cho tài khoản claudeTk đang chọn (vuanh, hết thì hionvn)
+  // worker Claude chạy ngầm tính cho tài khoản claudeTk đang chọn (tkphu, hết thì tkchinh)
   (goi[2].het === 0 ? goi[2] : goi[3]).n = chay.claude;
   // 19/10: ngam.js đang chặn mở việc mới vì máy tải cao (ngam\tai-may.json, mới < 3 phút)
   const tai = docJson(path.join('ngam', 'tai-may.json'));
@@ -189,7 +189,7 @@ if (process.argv[2] === 'chay') {
   gom().then(t => {
     console.log(t);
     const j = JSON.parse(fs.readFileSync(path.join(AIDIR, 'han-muc.json'), 'utf8'));
-    if (!j.text.includes('hionvn') || !j.text.includes('GPT9r') || !j.text.includes('▶') || !j.parts.every(p => /^#[0-9a-f]{6}$/.test(p.c))) {
+    if (!j.text.includes('tkchinh') || !j.text.includes('GPT9r') || !j.text.includes('▶') || !j.parts.every(p => /^#[0-9a-f]{6}$/.test(p.c))) {
       console.error('TỰ KIỂM LỖI: thiếu mục hoặc màu sai'); process.exit(1);
     }
     console.log('Tự kiểm OK');

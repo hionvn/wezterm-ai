@@ -42,11 +42,11 @@ config.keys = {
   { key = 'w', mods = 'CTRL|ALT', action = act.EmitEvent 'tat-du-an' },     -- như trên; laptop hay cần Fn cho F4 nên thêm phím này
   -- Ctrl+Alt+1…5: mở đội dự án = wez.ps1 doi <dự án> (cửa sổ riêng, chung tiến trình; đội đang mở thì giữ nguyên) (06/10)
   -- KHÔNG dùng --always-new-process: wez.ps1 chọn socket mới nhất + số ô trùng giữa các tiến trình → điều khiển nhầm đội
-  { key = '1', mods = 'CTRL|ALT', action = mo_doi 'Chatbot' },
-  { key = '2', mods = 'CTRL|ALT', action = mo_doi 'Sino' },
-  { key = '3', mods = 'CTRL|ALT', action = mo_doi 'Coolguy' },
-  { key = '4', mods = 'CTRL|ALT', action = mo_doi '1Bill' },
-  { key = '5', mods = 'CTRL|ALT', action = mo_doi 'Aff' },
+  { key = '1', mods = 'CTRL|ALT', action = mo_doi 'DuAnA' },
+  { key = '2', mods = 'CTRL|ALT', action = mo_doi 'DuAnB' },
+  { key = '3', mods = 'CTRL|ALT', action = mo_doi 'DuAnC' },
+  { key = '4', mods = 'CTRL|ALT', action = mo_doi 'DuAnD' },
+  { key = '5', mods = 'CTRL|ALT', action = mo_doi 'DuAnE' },
   -- Ctrl+Shift+P: MENU GỌN của đội AI (03/10, người dùng thấy bảng lệnh gốc quá nhiều dòng thừa) · bảng gốc → Ctrl+Shift+Alt+P
   { key = 'P', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },
   { key = 'p', mods = 'CTRL|SHIFT', action = act.EmitEvent 'menu-doi' },

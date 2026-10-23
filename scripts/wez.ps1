@@ -6,19 +6,19 @@
 #   .\wez.ps1 send 3 "câu" -Ep                      # vẫn gửi dù ô đang bận (vd. trạng thái bị kẹt)
 #   .\wez.ps1 cho 3 [số giây]                       # đợi ô 3 làm xong (mặc định tối đa 1800 giây) rồi in 40 dòng cuối
 #   .\wez.ps1 cho 3,5,7                             # đợi nhiều ô cùng lúc (giao việc song song)
-#   .\wez.ps1 giao Sino codex "Viết bài đăng FB…"    # mở Codex mới ở E:\AI\Sino (tab nền) với việc đó, in PANEID
-#   .\wez.ps1 giao Sino claude "…" -Cho -Ra E:\AI\Hion\ket-qua.txt   # … rồi đợi xong và lưu kết quả
-#   .\wez.ps1 review Chatbot [codex|claude]         # nhờ AI kia review chéo thay đổi chưa commit (kết quả bật lên)
+#   .\wez.ps1 giao DuAnB codex "Viết bài đăng FB…"    # mở Codex mới ở E:\AI\DuAnB (tab nền) với việc đó, in PANEID
+#   .\wez.ps1 giao DuAnB claude "…" -Cho -Ra E:\AI\TongQuanAI\ket-qua.txt   # … rồi đợi xong và lưu kết quả
+#   .\wez.ps1 review DuAnA [codex|claude]         # nhờ AI kia review chéo thay đổi chưa commit (kết quả bật lên)
 #   .\wez.ps1 read 3 40                            # đọc 40 dòng cuối của ô 3
 #   .\wez.ps1 nen 3                                 # đẩy ô 3 ra tab nền
 #   .\wez.ps1 chinh 3                               # kéo ô 3 về cạnh ô đang gọi lệnh
-#   .\wez.ps1 mo E:\AI\Chatbot\tien-do-chatbot.md   # bật tài liệu lên cho người dùng xem
+#   .\wez.ps1 mo E:\AI\DuAnA\tien-do-duana.md   # bật tài liệu lên cho người dùng xem
 #   .\wez.ps1 dienthoai bat                         # báo sang điện thoại (app ntfy) khi ô cần duyệt quá 5 phút · tat · thu
 #   .\wez.ps1 cli <lệnh wezterm cli bất kỳ>
-#   .\wez.ps1 doi Chatbot                           # mở đội của dự án theo Hion\doi\Chatbot.json (Manager cạnh ô đang gọi + worker ở tab riêng);
-#                                                   #   ô nào đã mở thì giữ, chỉ mở ô còn thiếu; tự ghi số ô mới vào sổ đội · `doi Chatbot tat` = tắt cả đội
-#   .\wez.ps1 doi Chatbot xep                      # xếp lại bố cục chuẩn khi bị lệch (giữ nguyên phiên các ô)
-#   Mọi lệnh nhận số ô cũng nhận TÊN VAI: send Chatbot.Engineer "việc" · cho Chatbot.Design,Chatbot.Marketing · read Chatbot.Manager
+#   .\wez.ps1 doi DuAnA                           # mở đội của dự án theo TongQuanAI\doi\DuAnA.json (Manager cạnh ô đang gọi + worker ở tab riêng);
+#                                                   #   ô nào đã mở thì giữ, chỉ mở ô còn thiếu; tự ghi số ô mới vào sổ đội · `doi DuAnA tat` = tắt cả đội
+#   .\wez.ps1 doi DuAnA xep                      # xếp lại bố cục chuẩn khi bị lệch (giữ nguyên phiên các ô)
+#   Mọi lệnh nhận số ô cũng nhận TÊN VAI: send DuAnA.Engineer "việc" · cho DuAnA.Design,DuAnA.Marketing · read DuAnA.Manager
 #   (tra sổ đội %LOCALAPPDATA%\wez-ai\doi\<dự án>.json; số ô cũ chết thì tự tìm lại theo tên ô → không phải nhớ số ô)
 # Mã thoát của `cho`: 0 = xong · 1 = ô đang chờ bạn duyệt · 2 = hết giờ chờ · 3 = send bị từ chối vì ô bận
 param([Parameter(Position = 0)][string]$Cmd = 'list', [switch]$Ep, [switch]$Cho, [string]$Ra, [switch]$Canh,
@@ -72,8 +72,8 @@ function Sync-Doi($proj) {
     if (@(@($d.manager) + @($d.worker) | Where-Object { $_ -and "$($_.o)" -ne '' -and -not $coO["$($_.o)"] }).Count) { $panes = @(Get-Panes -Thuc) }
     $doi = $false
     $ds = @(@($d.manager) + @($d.worker) | Where-Object { $_ -and $_.vai })
-    # tên vai đúng nguyên chữ: "Săn" KHÔNG khớp "Săn 2" (04/10: Aff.San và Aff.San2 cùng trỏ ô 47 vì "Săn" khớp tiêu đề "🔎 Săn 2")
-    # 05/10: phân biệt hoa thường + tên dài thắng: "Bot" không lấy ô "🛠️ Áp bot" của ApBot (Sino.Bot từng chiếm ô 57 → ApBot bị mở trùng phiên)
+    # tên vai đúng nguyên chữ: "Săn" KHÔNG khớp "Săn 2" (04/10: DuAnE.San và DuAnE.San2 cùng trỏ ô 47 vì "Săn" khớp tiêu đề "🔎 Săn 2")
+    # 05/10: phân biệt hoa thường + tên dài thắng: "Bot" không lấy ô "🛠️ Áp bot" của ApBot (DuAnB.Bot từng chiếm ô 57 → ApBot bị mở trùng phiên)
     function KhopTen1($title, $m) { $t = if ($m.ten) { $m.ten } else { $m.vai }; "$title" -cmatch "(^|[^\p{L}])$([regex]::Escape($t))(?!\s*\p{N})([^\p{L}\p{N}]|$)" }
     function KhopTen($title, $m) {
         if (-not (KhopTen1 $title $m)) { return $false }
@@ -82,14 +82,14 @@ function Sync-Doi($proj) {
     }
     $daGiu = @{}   # ô đã thuộc một vai → không gán thêm cho vai khác
     foreach ($m in $ds) {
-        # 04/10: số ô có thể đã bị dùng lại sau khởi động lại (sổ Aff ghi Manager = ô 22 trong khi ô 22 là Coolguy · Kiểm soát)
+        # 04/10: số ô có thể đã bị dùng lại sau khởi động lại (sổ DuAnE ghi Manager = ô 22 trong khi ô 22 là DuAnC · Kiểm soát)
         # → chỉ tin ô cũ khi ô đó đúng là của dự án này (thư mục ô nằm trong E:\AI\<dự án>, hoặc tiêu đề có tên dự án)
         #   và tiêu đề không mang tên một vai KHÁC của đội
         $cuP = if ($m.o) { $panes | Where-Object { "$($_.pane_id)" -eq "$($m.o)" } | Select-Object -First 1 }
         if ($cuP -and -not $daGiu["$($m.o)"]) {
             $cwdP = [uri]::UnescapeDataString("$($cuP.cwd)") -replace '\\', '/'
             $vaiKhac = $ds | Where-Object { $_ -ne $m -and (KhopTen $cuP.title $_) } | Select-Object -First 1
-            # 05/10: tiêu đề chỉ tính khi đúng dạng ô đội "<dự án> · <vai>" — ô Tổng quản (thư mục Hion) bị Claude tự đặt tên "Aff.Manager Ted's…" từng bị nhận là Manager Aff → báo cáo worker chạy nhầm sang Tổng quản
+            # 05/10: tiêu đề chỉ tính khi đúng dạng ô đội "<dự án> · <vai>" — ô Tổng quản (thư mục TongQuanAI) bị Claude tự đặt tên "DuAnE.Manager Ted's…" từng bị nhận là Manager DuAnE → báo cáo worker chạy nhầm sang Tổng quản
             if (($cwdP -match "/AI/$([regex]::Escape($proj))(/|$)" -or "$($cuP.title)" -match "$([regex]::Escape($proj))\s*·") -and (-not $vaiKhac -or (KhopTen $cuP.title $m))) {
                 $daGiu["$($m.o)"] = $true; continue
             }
@@ -124,7 +124,7 @@ function Save-Viec($vs) {
 function Add-Viec($id, $text) {
     $vs = @(Read-Viec | Where-Object { $_ -and $_.so })
     $so = if ($vs.Count) { [int](($vs | Measure-Object so -Maximum).Maximum) + 1 } else { 1 }
-    # tên người nhận: theo sổ đội (vd "💬 Chatbot · ⚙️ Engineer"), không thì dự án + số ô
+    # tên người nhận: theo sổ đội (vd "💬 DuAnA · ⚙️ Engineer"), không thì dự án + số ô
     $ai = if ("$id" -like 'ngam-*') { "🌙 $("$id".Substring(5)) (ngầm)" } else { "ô $id" }
     foreach ($f in Get-ChildItem $doiDir -Filter *.json -ErrorAction SilentlyContinue) {
         $d = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -139,11 +139,11 @@ function Add-Viec($id, $text) {
 
 # Vai chạy ngầm? (ngam.js kiem: "ngam" bật và không thuộc nhóm phải giữ ô — Grok / Remote Control / giuO)
 function Test-Ngam($s) { if ("$s" -notmatch '^[^./\d][^./]*[./].+$') { return $false }; node "$PSScriptRoot\ngam.js" kiem "$s"; return ($LASTEXITCODE -eq 0) }
-# "24" → 24 · "Chatbot.Engineer" / "chatbot/manager" → số ô theo sổ đội
+# "24" → 24 · "DuAnA.Engineer" / "duana/manager" → số ô theo sổ đội
 function Resolve-Id($s, [switch]$Thuc) {
     $s = "$s"
     if ($s -match '^\d+$') { return $s }
-    if ($s -notmatch '^([^./]+)[./](.+)$') { Write-Error "Không hiểu ô '$s' (dùng số ô hoặc DựÁn.Vai, vd Chatbot.Engineer)"; exit 1 }
+    if ($s -notmatch '^([^./]+)[./](.+)$') { Write-Error "Không hiểu ô '$s' (dùng số ô hoặc DựÁn.Vai, vd DuAnA.Engineer)"; exit 1 }
     $proj = $Matches[1]; $vai = $Matches[2]
     $d = Sync-Doi $proj
     if (-not $d) { Write-Error "Chưa có sổ đội $proj — mở đội: wez.ps1 doi $proj"; exit 1 }
@@ -167,7 +167,7 @@ function Resolve-Id($s, [switch]$Thuc) {
                 $t = (& $exe cli --no-auto-start get-text --pane-id $m.o) -join "`n"
                 if ($t -match 'Update available|Skip until next') { & $exe cli --no-auto-start send-text --no-paste --pane-id $m.o ([string][char]27); continue }
                 # 05/10: phiên bỏ lâu → Claude hỏi "Resume / Start a new conversation" (dấu ❯ của hộp này từng bị tưởng là sẵn sàng → lời giao việc rơi vào hộp,
-                # ô kẹt — Coolguy.Bot 04/10). Chọn 1. Resume (Enter) để giữ trí nhớ phiên — đúng mục đích đánh thức.
+                # ô kẹt — DuAnC.Bot 04/10). Chọn 1. Resume (Enter) để giữ trí nhớ phiên — đúng mục đích đánh thức.
                 if ($t -match 'Start a new conversation|Resuming it will use') { & $exe cli --no-auto-start send-text --no-paste --pane-id $m.o "`r"; Start-Sleep 2; continue }
                 if ($t -match 'Ask Codex|for shortcuts|❯|auto mode|bypass permissions') { break }
             }
@@ -180,9 +180,9 @@ function Resolve-Id($s, [switch]$Thuc) {
     return "$($m.o)"
 }
 
-# ===== Codex trước, Claude dự phòng (04/10/2026, Hion: "ưu tiên dùng Codex trước") =====
+# ===== Codex trước, Claude dự phòng (04/10/2026, TongQuanAI: "ưu tiên dùng Codex trước") =====
 # Vai định nghĩa ai=codex: giao việc lúc tài khoản Codex của vai đó ≥ 90% (5 giờ) hoặc ≥ 95% (tuần) → vai TẠM chạy Claude
-# (cùng quyền, cùng khoá); Codex hồi lại (< 80% / < 90%) → về Codex. Ghi ở wez-ai\doi\ai-tam.json { "Sino.Bot": {ai, tu, ly} }.
+# (cùng quyền, cùng khoá); Codex hồi lại (< 80% / < 90%) → về Codex. Ghi ở wez-ai\doi\ai-tam.json { "DuAnB.Bot": {ai, tu, ly} }.
 # Chuyển AI khác loại theo vai — KHÔNG nhảy giữa các tài khoản Codex (luật 02/10). Ngưỡng: "codexChuyenClaude" trong ~\.wez-ai.json.
 $aiTamF = Join-Path $env:LOCALAPPDATA 'wez-ai\ai-tam.json'   # ngoài thư mục doi\ (script khác đọc mọi *.json ở đó như sổ đội)
 function Read-AiTam { if (Test-Path $aiTamF) { try { return (Get-Content $aiTamF -Raw -Encoding UTF8 | ConvertFrom-Json) } catch {} }; return [pscustomobject]@{} }
@@ -208,7 +208,7 @@ function Grok-DanhDau($gio, $ly) {
     [IO.File]::WriteAllText($grokHetF, ($o | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 }
 function Grok-BaoLoi($o) {   # dòng cuối ô Grok (sát ô nhập) có báo hết hạn mức?
-    # 17/10: quét 40 dòng → báo nhầm khi worker đang viết code có chữ "quota"/"usage limit" (Muse) → chỉ xét 10 dòng cuối, và phải là câu lỗi
+    # 17/10: quét 40 dòng → báo nhầm khi worker đang viết code có chữ "quota"/"usage limit" (DuAnG) → chỉ xét 10 dòng cuối, và phải là câu lỗi
     $t = (& $exe cli --no-auto-start get-text --pane-id $o 2>$null | Where-Object { $_.Trim() } | Select-Object -Last 10) -join "`n"
     return $t -match '(?i)(error|lỗi|failed|exceeded|reached|hit your|you.ve hit)[^\n]{0,80}(rate.?limit|\b429\b|quota|usage limit|too many requests|out of credits|insufficient (credits|balance))|(rate.?limit|\b429\b|too many requests)[^\n]{0,40}(error|exceeded|reached|try again)'
 }
@@ -455,12 +455,12 @@ switch ($Cmd) {
         }
     }
     # review <dự án> [codex|claude] [-Cho]: nhờ AI kia review chéo thay đổi chưa commit (mặc định Codex review việc Claude làm).
-    #   Reviewer chỉ đọc, ghi kết quả vào Hion\bao-cao\review-<dự án>-<giờ>.md rồi bật lên.
+    #   Reviewer chỉ đọc, ghi kết quả vào TongQuanAI\bao-cao\review-<dự án>-<giờ>.md rồi bật lên.
     'review' {
         if ($Rest.Count -lt 1) { Write-Error 'Cách dùng: wez.ps1 review <dự án> [codex|claude] [-Cho]'; exit 1 }
         $who = if ($Rest.Count -gt 1) { "$($Rest[1])".ToLower() } else { 'codex' }
         $aiRoot = if ($cfg -and $cfg.aiRoot) { $cfg.aiRoot } else { 'E:\AI' }
-        $outFile = Join-Path $aiRoot ("Hion\bao-cao\review-{0}-{1}.md" -f $Rest[0], (Get-Date -Format 'yyyyMMdd-HHmm'))
+        $outFile = Join-Path $aiRoot ("TongQuanAI\bao-cao\review-{0}-{1}.md" -f $Rest[0], (Get-Date -Format 'yyyyMMdd-HHmm'))
         New-Item -ItemType Directory -Force -Path (Split-Path $outFile) | Out-Null
         $task = "Bạn là agent REVIEW của dự án này: chỉ đọc, KHÔNG sửa file, KHÔNG commit. " +
             "Xem thay đổi chưa commit (git status, git diff HEAD); nếu không có thì xem commit gần nhất (git show HEAD). " +
@@ -475,7 +475,7 @@ switch ($Cmd) {
         $id = Resolve-Id $Rest[0]; $n = if ($Rest.Count -gt 1) { [int]$Rest[1] } else { 40 }
         Read-Pane $id $n
     }
-    # doi <dự án> [tat]: mở / tắt đội agent theo Hion\doi\<dự án>.json — Manager cạnh ô đang gọi, worker đứng cạnh nhau ở tab riêng.
+    # doi <dự án> [tat]: mở / tắt đội agent theo TongQuanAI\doi\<dự án>.json — Manager cạnh ô đang gọi, worker đứng cạnh nhau ở tab riêng.
     #   Ô nào của đội đang mở thì giữ nguyên, chỉ mở ô còn thiếu; số ô mới tự ghi vào sổ đội (thanh tên + statusline đọc sổ này).
     'doi' {
         $proj = "$($Rest[0])"
@@ -545,18 +545,18 @@ switch ($Cmd) {
         if ($ngamVai.Count) { $tenWorker = (@($tenWorker) + @("🌙 chạy ngầm (không có ô, giao + cho như thường; xem việc: wez.ps1 read <Vai>): " + (($ngamVai.Keys | ForEach-Object { "$($def.du_an).$_" }) -join ', ')) | Where-Object { $_ }) -join ' · ' }
         if (-not $tenWorker) { $tenWorker ="chưa có worker (tự làm; code dài giao lẻ bằng wez.ps1 giao $($def.du_an) codex; cần đội thì báo Tổng quản)" }
         # Lời nhắn đầu tiên cho từng vai — gọi nhau bằng TÊN (DựÁn.Vai), không dùng số ô
-        # tên hiển thị (có dấu, vd "Số liệu") khác tên gọi lệnh (không dấu, vd Sino.SoLieu) khi định nghĩa có trường "ten"
+        # tên hiển thị (có dấu, vd "Số liệu") khác tên gọi lệnh (không dấu, vd DuAnB.SoLieu) khi định nghĩa có trường "ten"
         function TenVai($m) { if ($m.ten) { $m.ten } else { $m.vai } }
         function Loi($m, $laManager) {
             $quyen = if ($m.quyen) { " QUYỀN CỦA BẠN: $($m.quyen)" } else { '' }
             if ($laManager) {
-                return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (cùng tab '$($def.logo) $($def.du_an) · đội' với bạn: bạn nửa trái, worker nửa phải; vai + quyền từng worker: E:\AI\Hion\doi\$($def.du_an).json).$quyen " +
-                    "Giao việc bằng TÊN, không dùng số ô: E:\AI\Hion\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
-                    "LUẬT VẬN HÀNH: E:\AI\Hion\quy-trinh-lien-mach.md (3 vùng quyền, không hỏi lại người dùng việc 🟢, không đứng chờ, brief 6 mục, báo cáo 5 trường). Việc 🔴 (tiền/gửi ra ngoài/xoá/push/đổi giá) → duyet.js them rồi làm tiếp việc khác. " +
-                    "Bây giờ: đọc file luật đó + AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\Hion\quyet-dinh.md, báo 3 dòng việc đang làm / kẹt, rồi TỰ giao việc 🟢 tiếp theo cho worker và làm tiếp."
+                return "Bạn là $($m.icon) $(TenVai $m) dự án $($def.du_an): $($m.viec). Đội của bạn: $tenWorker (cùng tab '$($def.logo) $($def.du_an) · đội' với bạn: bạn nửa trái, worker nửa phải; vai + quyền từng worker: E:\AI\TongQuanAI\doi\$($def.du_an).json).$quyen " +
+                    "Giao việc bằng TÊN, không dùng số ô: E:\AI\TongQuanAI\cai-dat\wez.ps1 send $($def.du_an).<Vai> `"việc`" rồi wez.ps1 cho $($def.du_an).<Vai> (đợi xong, đọc kết quả). " +
+                    "LUẬT VẬN HÀNH: E:\AI\TongQuanAI\quy-trinh-lien-mach.md (3 vùng quyền, không hỏi lại người dùng việc 🟢, không đứng chờ, brief 6 mục, báo cáo 5 trường). Việc 🔴 (tiền/gửi ra ngoài/xoá/push/đổi giá) → duyet.js them rồi làm tiếp việc khác. " +
+                    "Bây giờ: đọc file luật đó + AGENTS.md + tien-do của dự án + dòng [$($def.du_an)] trong E:\AI\TongQuanAI\quyet-dinh.md, báo 3 dòng việc đang làm / kẹt, rồi TỰ giao việc 🟢 tiếp theo cho worker và làm tiếp."
             }
             return "Bạn là worker $($def.logo) $($def.du_an) · $($m.icon) $(TenVai $m). Phụ trách: $($m.viec). Manager của bạn: $($def.du_an).Manager.$quyen " +
-                "Luật chung: E:\AI\Hion\quy-trinh-lien-mach.md (làm việc 🟢 không hỏi lại; xong báo Manager đủ 5 trường: Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp). Chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản Hion; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
+                "Luật chung: E:\AI\TongQuanAI\quy-trinh-lien-mach.md (làm việc 🟢 không hỏi lại; xong báo Manager đủ 5 trường: Đầu ra · Xong chưa · Bằng chứng · Còn lại · Ai làm tiếp). Chỉ nhận việc từ Manager $($def.du_an) hoặc Tổng quản TongQuanAI; làm đúng phần mình; khoá file trước khi sửa; không tự commit nếu không được dặn; không gửi tin/đăng bài/chạm tiền khi chưa được duyệt. " +
                 "Bây giờ: đọc AGENTS.md + tien-do của dự án, trả lời 3 dòng (bạn là ai, quyền của bạn tóm 1 dòng, sẵn sàng) rồi CHỜ việc. Chưa sửa file nào."
         }
         # Mở 1 ô; Claude đặt tên bằng -n (hiện trên statusline + tiêu đề ô), Codex đổi tên bằng /rename sau khi mở
@@ -647,7 +647,7 @@ switch ($Cmd) {
                 & $exe cli --no-auto-start send-text --pane-id $id -- ((Get-Content -Raw -Encoding UTF8 $loiF) -replace '"', '\"'); Start-Sleep -Milliseconds 400   # 07/10: lời có dấu " làm PS 5.1 tách đối số → lỗi "unexpected argument"
                 & $exe cli --no-auto-start send-text --no-paste --pane-id $id "`r"
                 # 04/10: lời dài bị Codex gom thành "[Pasted Content …]" và Enter đầu có khi trôi → kiểm, còn nằm ở ô nhập thì Enter lại
-                for ($k = 0; $k -lt 8; $k++) {   # 07/10: 4 lần chưa đủ (Manager Aff lời dài vẫn nằm ở ô nhập)
+                for ($k = 0; $k -lt 8; $k++) {   # 07/10: 4 lần chưa đủ (Manager DuAnE lời dài vẫn nằm ở ô nhập)
                     Start-Sleep -Milliseconds 1200
                     $man = (& $exe cli --no-auto-start get-text --pane-id $id) -join "`n"
                     if ($man -notmatch '(?m)^\s*›\s*\S.*(Pasted Content|Bạn là)') { break }
@@ -780,7 +780,7 @@ switch ($Cmd) {
         $trongDoi = @{}
         if ($doiSo) { foreach ($m in @($doiSo.manager) + @($doiSo.worker)) { if ($m -and $m.o) { $trongDoi["$($m.o)"] = $true } } }
         $giu = @{ "$env:WEZTERM_PANE" = $true }
-        $hf = Join-Path $doiDir 'Hion.json'
+        $hf = Join-Path $doiDir 'TongQuanAI.json'
         if (Test-Path $hf) { $h = Get-Content $hf -Raw -Encoding UTF8 | ConvertFrom-Json; if ($h.manager) { $giu["$($h.manager.o)"] = $true } }
         $ds = @(Get-Panes | Where-Object {
             $id = "$($_.pane_id)"
